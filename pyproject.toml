@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "batteries-query-service"
+version = "0.1.0"
+description = "Containerized Eco-worthy server rack battery telemetry collector"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.111,<1",
+  "prometheus-client>=0.20,<1",
+  "pyserial>=3.5,<4",
+  "uvicorn[standard]>=0.30,<1"
+]
+
+[project.scripts]
+batteries-query-service = "batteries_query_service.api:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

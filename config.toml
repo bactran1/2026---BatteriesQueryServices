@@ -1,0 +1,23 @@
+[server]
+host = "0.0.0.0"
+port = 8000
+
+[serial]
+port = "/dev/ttyUSB0"
+baudrate = 9600
+timeout_seconds = 2.0
+
+[polling]
+interval_seconds = 10
+
+[[batteries]]
+id = "rack-1"
+address = 1
+
+[[batteries]]
+id = "rack-2"
+address = 2
+
+[[batteries]]
+id = "rack-3"
+address = 3

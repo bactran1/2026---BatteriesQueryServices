@@ -1,0 +1,13 @@
+services:
+  batteries-query-service:
+    build: .
+    container_name: batteries-query-service
+    restart: unless-stopped
+    environment:
+      BQS_CONFIG: /config/config.toml
+    volumes:
+      - ./config.toml:/config/config.toml:ro
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    ports:
+      - "8000:8000"
