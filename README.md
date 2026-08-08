@@ -36,6 +36,46 @@ curl http://localhost:8000/api/readings
 curl http://localhost:8000/metrics
 ```
 
+## Raspberry Pi 4B deployment
+
+A Raspberry Pi 4B with 8 GB RAM is more than enough for this collector. Use Raspberry Pi OS Lite 64-bit if possible, install Docker Engine with the Compose plugin, and plug the USB-to-RS485 adapter into the Pi.
+
+On the Pi, identify the adapter:
+
+```bash
+ls -l /dev/serial/by-id/
+```
+
+If a stable adapter path is listed, prefer that over `/dev/ttyUSB0`. Update `docker-compose.yml`:
+
+```yaml
+devices:
+  - "/dev/serial/by-id/usb-Your_Adapter:/dev/ttyBMS0"
+```
+
+Then update `config.toml`:
+
+```toml
+[serial]
+port = "/dev/ttyBMS0"
+baudrate = 9600
+timeout_seconds = 2.0
+```
+
+Allow your Pi user to run Docker and access serial devices:
+
+```bash
+sudo usermod -aG docker,dialout $USER
+sudo reboot
+```
+
+After reboot:
+
+```bash
+docker compose up -d --build
+docker compose logs -f
+```
+
 ## Configuration
 
 Edit `config.toml` before starting the container. `config.example.toml` is kept as a clean reference copy.
