@@ -32,6 +32,11 @@ usage() {
 "" \
 "Environment:" \
 "  BQM_COLLECTOR_URL     Same as --collector-url" \
+"  BQM_RACK_NAME         Rack name shown on the dashboard" \
+"  BQM_RACK_LOCATION     Rack location shown on the dashboard" \
+"  BQM_BATTERY_NAMES     Comma-separated battery names" \
+"  BQM_BATTERY_IPS       Comma-separated battery IP addresses" \
+"  BQM_BATTERY_MODELS    Comma-separated battery models" \
 "  MONITOR_IMAGE_NAME    Image name, default battery-monitor" \
 "  MONITOR_IMAGE_TAG     Image tag; default is the current Git commit SHA" \
 "" \

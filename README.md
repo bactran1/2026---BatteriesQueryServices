@@ -68,6 +68,15 @@ Defaults:
 Environment overrides:
 
 - `BQM_COLLECTOR_URL`
+- `BQM_RACK_NAME`
+- `BQM_RACK_BUILDER`
+- `BQM_RACK_LOCATION`
+- `BQM_COLLECTOR_NAME`
+- `BQM_BATTERY_IDS`
+- `BQM_BATTERY_ADDRESSES`
+- `BQM_BATTERY_NAMES`
+- `BQM_BATTERY_IPS`
+- `BQM_BATTERY_MODELS`
 - `BQM_DATA_DIR`
 - `BQM_DATABASE_PATH`
 - `BQM_LOG_INTERVAL_SECONDS`
@@ -75,6 +84,19 @@ Environment overrides:
 - `BQM_HOST`
 - `BQM_PORT`
 - `BQM_LOG_LEVEL`
+
+The dashboard defaults to three rack batteries and shows the rack builder as Tran Thanh Tuan. Set the inventory values as comma-separated lists before deployment to show your actual names and addresses:
+
+```bash
+export BQM_BATTERY_NAMES="Top Battery,Middle Battery,Bottom Battery"
+export BQM_BATTERY_IPS="192.168.1.61,192.168.1.62,192.168.1.63"
+export BQM_BATTERY_MODELS="Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah"
+bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+```
+
+The IP addresses are inventory labels. Telemetry still travels from the batteries to the Raspberry Pi over RS485, then from the Pi to the monitor over the network. Leave an IP position empty when a battery does not have a directly reachable address, for example `BQM_BATTERY_IPS=192.168.1.61,,192.168.1.63`.
+
+For repeatable deployments, start with `.env.example`, put the real values in a root-level `.env` file on the x86_64 host, and run the deployment script normally. Docker Compose loads that file automatically, and `.env` is excluded from Git so host-specific addresses are not committed.
 
 At the default 60-second interval, three batteries produce roughly 4.7 million log rows across 3 years. The dashboard stores the raw reading payload for each row so cell voltages, temperatures, alarms, faults, limits, and pack metadata remain available.
 

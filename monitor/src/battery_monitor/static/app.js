@@ -5,6 +5,8 @@ const state = {
   range: "24h",
   history: [],
   storage: {},
+  rack: {},
+  collectorOnline: false,
   theme: "light",
 };
 
@@ -43,12 +45,16 @@ async function refreshLive() {
     const payload = await getJson("/api/live");
     state.batteries = payload.snapshot?.batteries || [];
     state.storage = payload.storage || {};
+    state.rack = payload.rack || {};
+    state.collectorOnline = payload.collector_status === "ok";
     if (!state.selectedBatteryId && state.batteries.length) {
       state.selectedBatteryId = state.batteries[0].id;
     }
     renderStatus(payload);
+    renderRackOverview();
     renderSummary(payload.summary || {});
     renderBatteryCards();
+    renderBatteryInventory();
     renderSelectedBattery();
     renderStorage();
   } catch (error) {
@@ -100,6 +106,25 @@ function renderSummary(summary) {
   $("fleetAlerts").textContent = `${alerts}`;
 }
 
+function renderRackOverview() {
+  const rack = state.rack;
+  const expected = rack.expected_battery_count ?? rack.batteries?.length ?? 0;
+  const observed = rack.observed_battery_count ?? 0;
+  const online = rack.online_battery_count ?? 0;
+
+  $("builderLine").textContent = `This rack is built by ${rack.builder || "Tran Thanh Tuan"}`;
+  $("rackTopName").textContent = rack.name || "Eco-worthy rack";
+  $("rackName").textContent = rack.name || "Eco-worthy Rack";
+  $("rackDescription").textContent = `${expected} ${pluralize(expected, "battery", "batteries")} configured for local monitoring with a ${formatNumber(rack.retention_days || 1095)}-day archive.`;
+  $("rackBatteryCount").textContent = `${expected} configured`;
+  $("rackObservedCount").textContent = `${observed} reporting · ${online} online`;
+  $("rackCollectorName").textContent = rack.collector?.name || "Raspberry Pi collector";
+  $("rackCollectorAddress").textContent = hostFromUrl(rack.collector?.url) || "Not configured";
+  $("rackConnection").textContent = rack.connection || "Modbus RTU over RS485";
+  $("rackLocation").textContent = rack.location || "Not specified";
+  $("rackRetention").textContent = `${formatNumber(rack.retention_days || 1095)}-day archive`;
+}
+
 function renderBatteryCards() {
   const grid = $("batteryGrid");
   grid.innerHTML = "";
@@ -110,6 +135,7 @@ function renderBatteryCards() {
 
   for (const battery of state.batteries) {
     const reading = battery.last_reading || {};
+    const profile = batteryProfile(battery);
     const soc = clamp(reading.soc_percent ?? 0, 0, 100);
     const card = document.createElement("button");
     card.type = "button";
@@ -117,14 +143,18 @@ function renderBatteryCards() {
     card.addEventListener("click", () => {
       state.selectedBatteryId = battery.id;
       renderBatteryCards();
+      renderBatteryInventory();
       renderSelectedBattery();
       refreshHistory();
     });
 
     card.innerHTML = `
       <div class="battery-card__top">
-        <span>${escapeHtml(battery.id)}</span>
-        <span class="${battery.status === "ok" ? "dot dot--ok" : "dot dot--error"}"></span>
+        <span>
+          <strong>${escapeHtml(profile?.name || battery.id)}</strong>
+          <small>${escapeHtml(battery.id)} · RS485 ${escapeHtml(battery.address ?? "--")}</small>
+        </span>
+        <span class="${batteryDotClass(battery.status)}"></span>
       </div>
       <div class="soc-ring" style="--soc:${soc}">
         <span>${Number.isFinite(soc) ? Math.round(soc) : "--"}%</span>
@@ -140,6 +170,64 @@ function renderBatteryCards() {
   }
 }
 
+function renderBatteryInventory() {
+  const inventory = state.rack.batteries || [];
+  const body = $("batteryInventory");
+  const expected = state.rack.expected_battery_count ?? inventory.length;
+  $("inventoryStatus").textContent = `${expected} ${pluralize(expected, "battery", "batteries")}`;
+
+  if (!inventory.length) {
+    body.innerHTML = `<div class="empty-mini inventory-empty">No batteries configured</div>`;
+    return;
+  }
+
+  body.innerHTML = inventory
+    .map((battery) => {
+      const status = statusPresentation(battery.status);
+      const hardware = [battery.model, battery.serial_number ? `S/N ${battery.serial_number}` : null]
+        .filter(Boolean)
+        .join(" · ");
+      const busDetail = battery.rs485_protocol || "Modbus RTU";
+      return `
+        <button class="inventory-row ${battery.id === state.selectedBatteryId ? "is-selected" : ""}" data-battery-id="${escapeHtml(battery.id)}" type="button">
+          <span class="inventory-cell" data-label="Battery">
+            <strong>${escapeHtml(battery.name || battery.id)}</strong>
+            <small>${escapeHtml(battery.id)}</small>
+          </span>
+          <span class="inventory-cell" data-label="Network">
+            <strong>${escapeHtml(battery.ip_address || "Not configured")}</strong>
+            <small>${battery.ip_address ? "Battery Wi-Fi address" : "No direct IP recorded"}</small>
+          </span>
+          <span class="inventory-cell" data-label="RS485">
+            <strong>Address ${escapeHtml(battery.address ?? "--")}</strong>
+            <small>${escapeHtml(busDetail)}</small>
+          </span>
+          <span class="inventory-cell" data-label="Hardware">
+            <strong>${escapeHtml(hardware || "Eco-worthy battery")}</strong>
+            <small>${escapeHtml(battery.firmware_version ? `Firmware ${battery.firmware_version}` : "Firmware pending")}</small>
+          </span>
+          <span class="inventory-cell inventory-cell--state" data-label="State">
+            <span class="status-pill ${status.className}">${status.label}</span>
+            <small>${battery.last_polled_at ? `Seen ${formatRelativeTime(battery.last_polled_at)}` : "Not seen yet"}</small>
+          </span>
+        </button>
+      `;
+    })
+    .join("");
+
+  body.querySelectorAll(".inventory-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      const batteryId = row.dataset.batteryId;
+      if (!state.batteries.some((battery) => battery.id === batteryId)) return;
+      state.selectedBatteryId = batteryId;
+      renderBatteryCards();
+      renderBatteryInventory();
+      renderSelectedBattery();
+      refreshHistory();
+    });
+  });
+}
+
 function renderSelectedBattery() {
   const battery = selectedBattery();
   if (!battery) {
@@ -153,9 +241,11 @@ function renderSelectedBattery() {
   }
 
   const reading = battery.last_reading || {};
-  $("selectedName").textContent = battery.id;
-  $("selectedState").textContent = battery.status || "pending";
-  $("selectedState").className = `status-pill ${battery.status === "ok" ? "status-pill--ok" : "status-pill--error"}`;
+  const profile = batteryProfile(battery);
+  $("selectedName").textContent = profile?.name || battery.id;
+  const status = statusPresentation(state.collectorOnline ? battery.status : "stale");
+  $("selectedState").textContent = status.label;
+  $("selectedState").className = `status-pill ${status.className}`;
 
   renderCells(reading.cell_voltages_v || []);
   renderTemperatures(reading.temperatures_c || []);
@@ -199,7 +289,11 @@ function renderTemperatures(temperatures) {
 }
 
 function renderDetails(reading, battery) {
+  const profile = batteryProfile(battery);
   const details = [
+    ["Battery ID", battery.id],
+    ["IP address", profile?.ip_address || "Not configured"],
+    ["Model", profile?.model],
     ["Address", battery.address],
     ["State", reading.operation_status],
     ["SOH", formatValue(reading.soh_percent, "%")],
@@ -332,6 +426,27 @@ function selectedBattery() {
   return state.batteries.find((battery) => battery.id === state.selectedBatteryId) || state.batteries[0];
 }
 
+function batteryProfile(battery) {
+  return (state.rack.batteries || []).find(
+    (profile) => profile.id === battery.id || profile.address === battery.address,
+  );
+}
+
+function statusPresentation(status) {
+  if (status === "ok") return { label: "Online", className: "status-pill--ok" };
+  if (status === "error") return { label: "Needs attention", className: "status-pill--error" };
+  if (status === "disabled") return { label: "Disabled", className: "" };
+  if (status === "stale") return { label: "Last known", className: "status-pill--pending" };
+  return { label: "Waiting", className: "status-pill--pending" };
+}
+
+function batteryDotClass(status) {
+  if (!state.collectorOnline) return "dot";
+  if (status === "ok") return "dot dot--ok";
+  if (status === "error") return "dot dot--error";
+  return "dot";
+}
+
 function groupBy(items, key) {
   const map = new Map();
   for (const item of items) {
@@ -350,6 +465,42 @@ function formatValue(value, unit = "", digits = 1) {
 function compactNumber(value) {
   if (typeof value !== "number") return "--";
   return new Intl.NumberFormat(undefined, { notation: "compact" }).format(value);
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat().format(value);
+}
+
+function pluralize(value, singular, plural) {
+  return value === 1 ? singular : plural;
+}
+
+function hostFromUrl(value) {
+  if (!value) return "";
+  try {
+    return new URL(value).host;
+  } catch {
+    return value;
+  }
+}
+
+function formatRelativeTime(value) {
+  const date = new Date(value);
+  const deltaSeconds = Math.round((date.getTime() - Date.now()) / 1000);
+  if (!Number.isFinite(deltaSeconds)) return "recently";
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const ranges = [
+    [60, "second"],
+    [60, "minute"],
+    [24, "hour"],
+    [7, "day"],
+  ];
+  let valueForRange = deltaSeconds;
+  for (const [limit, unit] of ranges) {
+    if (Math.abs(valueForRange) < limit) return formatter.format(valueForRange, unit);
+    valueForRange = Math.round(valueForRange / limit);
+  }
+  return shortDate(value);
 }
 
 function formatBytes(bytes) {

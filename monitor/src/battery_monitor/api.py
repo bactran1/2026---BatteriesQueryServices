@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .collector import CollectorClient, CollectorError
-from .config import Settings, load_settings
+from .config import Settings, load_settings, rack_details
 from .service import MonitorService
 from .storage import HistoryMetric, RetentionStore
 
@@ -94,6 +94,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "monitor": monitor.status(),
             "storage": store.stats(settings.retention_days),
             "summary": _summary(batteries),
+            "rack": rack_details(
+                settings, batteries, collector_online=collector_status == "ok"
+            ),
             "snapshot": snapshot,
         }
 

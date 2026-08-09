@@ -13,6 +13,15 @@ services:
       BQM_DATA_DIR: /data
       BQM_LOG_INTERVAL_SECONDS: 60
       BQM_RETENTION_DAYS: 1095
+      BQM_RACK_NAME: ${BQM_RACK_NAME:-Eco-worthy Rack}
+      BQM_RACK_BUILDER: ${BQM_RACK_BUILDER:-Tran Thanh Tuan}
+      BQM_RACK_LOCATION: ${BQM_RACK_LOCATION:-Battery room}
+      BQM_COLLECTOR_NAME: ${BQM_COLLECTOR_NAME:-Raspberry Pi collector}
+      BQM_BATTERY_IDS: ${BQM_BATTERY_IDS:-rack-1,rack-2,rack-3}
+      BQM_BATTERY_ADDRESSES: ${BQM_BATTERY_ADDRESSES:-1,2,3}
+      BQM_BATTERY_NAMES: ${BQM_BATTERY_NAMES:-Rack Battery 1,Rack Battery 2,Rack Battery 3}
+      BQM_BATTERY_IPS: ${BQM_BATTERY_IPS:-,,}
+      BQM_BATTERY_MODELS: ${BQM_BATTERY_MODELS:-Eco-worthy server rack battery,Eco-worthy server rack battery,Eco-worthy server rack battery}
     volumes:
       - ./data/monitor:/data
     ports:

@@ -23,7 +23,8 @@
     <div class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Eco-worthy rack</p>
+          <p id="builderLine" class="builder-line">This rack is built by Tran Thanh Tuan</p>
+          <p id="rackTopName" class="eyebrow">Eco-worthy rack</p>
           <h1>Battery Monitor</h1>
         </div>
         <div class="topbar__meta">
@@ -41,6 +42,36 @@
       </header>
 
       <main>
+        <section class="rack-overview" aria-labelledby="rackName">
+          <div class="rack-overview__identity">
+            <p class="eyebrow">Rack overview</p>
+            <h2 id="rackName">Eco-worthy Rack</h2>
+            <p id="rackDescription">Three Eco-worthy batteries with local monitoring and a three-year archive.</p>
+          </div>
+          <div class="rack-facts">
+            <div>
+              <span>Batteries</span>
+              <strong id="rackBatteryCount">3 configured</strong>
+              <small id="rackObservedCount">Waiting for collector</small>
+            </div>
+            <div>
+              <span>Collector</span>
+              <strong id="rackCollectorName">Raspberry Pi collector</strong>
+              <small id="rackCollectorAddress">raspberrypi.local</small>
+            </div>
+            <div>
+              <span>Connection</span>
+              <strong id="rackConnection">Modbus RTU</strong>
+              <small>RS485 battery bus</small>
+            </div>
+            <div>
+              <span>Location</span>
+              <strong id="rackLocation">Battery room</strong>
+              <small id="rackRetention">1,095-day archive</small>
+            </div>
+          </div>
+        </section>
+
         <section class="fleet-band" aria-label="Fleet summary">
           <div class="fleet-metric">
             <span>Average SOC</span>
@@ -61,6 +92,26 @@
         </section>
 
         <section id="batteryGrid" class="battery-grid" aria-label="Battery readings"></section>
+
+        <section class="panel inventory-panel" aria-labelledby="inventoryTitle">
+          <div class="panel-heading inventory-heading">
+            <div>
+              <p class="eyebrow">Rack inventory</p>
+              <h2 id="inventoryTitle">Battery details</h2>
+            </div>
+            <span id="inventoryStatus" class="inventory-summary">3 configured</span>
+          </div>
+          <div class="inventory-table">
+            <div class="inventory-head" aria-hidden="true">
+              <span>Battery</span>
+              <span>Network</span>
+              <span>RS485</span>
+              <span>Hardware</span>
+              <span>State</span>
+            </div>
+            <div id="batteryInventory" class="inventory-body"></div>
+          </div>
+        </section>
 
         <section class="workbench" aria-label="Monitoring workbench">
           <div class="panel chart-panel">
