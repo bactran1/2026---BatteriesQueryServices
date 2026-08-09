@@ -150,6 +150,14 @@ Open:
 http://x86-monitor-hostname:8080
 ```
 
+To rebuild and restart the monitor after updates, use the helper script:
+
+```bash
+bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+```
+
+The script builds the monitor image from `monitor/Dockerfile`. If no `battery-monitor` container exists, it creates one. If the container already exists, it updates it with the new image. In both cases, it keeps the existing `./data/monitor` log database and waits for the container health check.
+
 ## Configuration
 
 Edit `config.toml` before starting the container. `config.example.toml` is kept as a clean reference copy.
