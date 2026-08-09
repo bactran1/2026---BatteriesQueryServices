@@ -5,6 +5,7 @@ const state = {
   range: "24h",
   history: [],
   storage: {},
+  theme: "light",
 };
 
 const metricLabels = {
@@ -30,6 +31,7 @@ const metricUnits = {
 const palette = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff453a"];
 
 const $ = (id) => document.getElementById(id);
+const THEME_STORAGE_KEY = "battery-monitor-theme";
 
 async function refreshAll() {
   await refreshLive();
@@ -252,6 +254,7 @@ function renderStorage() {
 function drawChart() {
   const canvas = $("historyChart");
   const ctx = canvas.getContext("2d");
+  const theme = getThemeColors();
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   canvas.width = Math.max(1, Math.floor(rect.width * dpr));
@@ -263,7 +266,7 @@ function drawChart() {
   const width = rect.width - pad.left - pad.right;
   const height = rect.height - pad.top - pad.bottom;
 
-  ctx.strokeStyle = "rgba(60, 60, 67, 0.12)";
+  ctx.strokeStyle = theme.chartGrid;
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i += 1) {
     const y = pad.top + (height * i) / 4;
@@ -274,7 +277,7 @@ function drawChart() {
   }
 
   if (!state.history.length) {
-    ctx.fillStyle = "rgba(60, 60, 67, 0.55)";
+    ctx.fillStyle = theme.chartMuted;
     ctx.font = "14px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
     ctx.fillText("Awaiting history", pad.left, pad.top + 28);
     return;
@@ -314,12 +317,12 @@ function drawChart() {
     const labelY = pad.top + 18 + index * 20;
     ctx.fillStyle = palette[index % palette.length];
     ctx.fillRect(labelX, labelY - 9, 8, 8);
-    ctx.fillStyle = "rgba(29, 29, 31, 0.82)";
+    ctx.fillStyle = theme.chartInk;
     ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
     ctx.fillText(`${batteryId} ${formatValue(last.value, metricUnits[state.metric], 2)}`, labelX + 14, labelY);
   });
 
-  ctx.fillStyle = "rgba(60, 60, 67, 0.58)";
+  ctx.fillStyle = theme.chartMuted;
   ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   ctx.fillText(formatValue(maxValue, metricUnits[state.metric], 2), 10, pad.top + 4);
   ctx.fillText(formatValue(minValue, metricUnits[state.metric], 2), 10, pad.top + height);
@@ -395,7 +398,77 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function getThemeColors() {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    chartGrid: style.getPropertyValue("--chart-grid").trim(),
+    chartInk: style.getPropertyValue("--chart-ink").trim(),
+    chartMuted: style.getPropertyValue("--chart-muted").trim(),
+  };
+}
+
+function initTheme() {
+  const storedTheme = getStoredTheme();
+  const systemTheme = window.matchMedia?.("(prefers-color-scheme: dark)");
+  const prefersDark = systemTheme?.matches;
+  const theme = storedTheme || (prefersDark ? "dark" : "light");
+  applyTheme(theme, false);
+
+  const toggle = $("themeToggle");
+  toggle.checked = theme === "dark";
+  toggle.addEventListener("change", () => {
+    applyTheme(toggle.checked ? "dark" : "light", true);
+  });
+
+  systemTheme?.addEventListener?.("change", (event) => {
+    if (getStoredTheme()) return;
+    applyTheme(event.matches ? "dark" : "light", true);
+    toggle.checked = event.matches;
+  });
+}
+
+function applyTheme(theme, persist) {
+  const setTheme = () => {
+    state.theme = theme;
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    if (persist) {
+      setStoredTheme(theme);
+    }
+    requestAnimationFrame(drawChart);
+  };
+
+  if (persist && document.startViewTransition && !prefersReducedMotion()) {
+    document.startViewTransition(setTheme);
+    return;
+  }
+
+  setTheme();
+}
+
+function getStoredTheme() {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredTheme(theme) {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    return;
+  }
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
+
 function bindControls() {
+  initTheme();
+
   $("metricSelect").addEventListener("change", (event) => {
     state.metric = event.target.value;
     refreshHistory();

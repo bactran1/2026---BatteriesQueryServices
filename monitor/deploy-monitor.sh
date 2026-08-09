@@ -58,6 +58,28 @@ container_exists() {
   docker container inspect "${SERVICE_NAME}" >/dev/null 2>&1
 }
 
+explain_container_start_failure() {
+  local output="$1"
+
+  if [[ "${output}" == *"net.ipv4.ip_unprivileged_port_start"* ]]; then
+    printf '%s\n' "${output}" >&2
+    fail "Docker cannot start containers on this host because runc/containerd is blocked from setting net.ipv4.ip_unprivileged_port_start. This is a host-level Docker/LXC/AppArmor/user-namespace issue, not a Battery Monitor image issue. Test with: docker run --rm hello-world. If hello-world fails the same way, update/fix the x86 Docker host, move Docker out of an unprivileged LXC/container, or run it in a VM/bare-metal Docker host."
+  fi
+
+  printf '%s\n' "${output}" >&2
+  fail "Docker Compose failed to start ${SERVICE_NAME}."
+}
+
+compose_up() {
+  local output
+
+  if ! output="$("${COMPOSE[@]}" -f "${COMPOSE_FILE}" up -d --force-recreate --remove-orphans "${SERVICE_NAME}" 2>&1)"; then
+    explain_container_start_failure "${output}"
+  fi
+
+  printf '%s\n' "${output}"
+}
+
 wait_for_health() {
   local attempt
   local state
@@ -127,7 +149,7 @@ else
   log "No existing ${SERVICE_NAME} container found; creating it..."
 fi
 
-"${COMPOSE[@]}" -f "${COMPOSE_FILE}" up -d --force-recreate --remove-orphans "${SERVICE_NAME}"
+compose_up
 
 if [[ "${HEALTH_CHECK}" -eq 1 ]]; then
   wait_for_health

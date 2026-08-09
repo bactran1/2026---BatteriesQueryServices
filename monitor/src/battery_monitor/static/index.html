@@ -4,6 +4,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Battery Monitor</title>
+    <script>
+      (() => {
+        try {
+          const storedTheme = localStorage.getItem("battery-monitor-theme");
+          const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const theme = storedTheme || (systemDark ? "dark" : "light");
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -14,6 +27,14 @@
           <h1>Battery Monitor</h1>
         </div>
         <div class="topbar__meta">
+          <label class="theme-toggle" title="Switch appearance">
+            <input id="themeToggle" type="checkbox" aria-label="Switch between light and dark theme" />
+            <span class="theme-toggle__track" aria-hidden="true">
+              <span class="theme-toggle__sun"></span>
+              <span class="theme-toggle__moon"></span>
+              <span class="theme-toggle__thumb"></span>
+            </span>
+          </label>
           <span id="collectorStatus" class="status-pill status-pill--pending">Starting</span>
           <span id="lastUpdated" class="timestamp">No readings yet</span>
         </div>

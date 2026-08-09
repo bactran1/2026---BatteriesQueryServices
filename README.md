@@ -158,6 +158,14 @@ bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
 
 The script builds the monitor image from `monitor/Dockerfile`. If no `battery-monitor` container exists, it creates one. If the container already exists, it updates it with the new image. In both cases, it keeps the existing `./data/monitor` log database and waits for the container health check.
 
+If Docker fails with `net.ipv4.ip_unprivileged_port_start` permission errors, the x86_64 Docker host cannot start containers correctly. This is usually seen when Docker is running inside an unprivileged LXC/Incus/Proxmox container, or when a host update introduced a runc/containerd/AppArmor incompatibility. Confirm with:
+
+```bash
+docker run --rm hello-world
+```
+
+If `hello-world` fails the same way, fix the Docker host before redeploying the monitor. Typical fixes are updating the LXC/Proxmox/Incus host packages, using a VM or bare-metal Docker host instead of Docker-inside-unprivileged-LXC, or temporarily rolling back the affected `containerd.io` package when that is the known source on your distribution.
+
 ## Configuration
 
 Edit `config.toml` before starting the container. `config.example.toml` is kept as a clean reference copy.
