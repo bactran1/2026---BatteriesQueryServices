@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Battery Monitor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Eco-worthy rack</p>
+          <h1>Battery Monitor</h1>
+        </div>
+        <div class="topbar__meta">
+          <span id="collectorStatus" class="status-pill status-pill--pending">Starting</span>
+          <span id="lastUpdated" class="timestamp">No readings yet</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="fleet-band" aria-label="Fleet summary">
+          <div class="fleet-metric">
+            <span>Average SOC</span>
+            <strong id="fleetSoc">--</strong>
+          </div>
+          <div class="fleet-metric">
+            <span>Live power</span>
+            <strong id="fleetPower">--</strong>
+          </div>
+          <div class="fleet-metric">
+            <span>Capacity left</span>
+            <strong id="fleetCapacity">--</strong>
+          </div>
+          <div class="fleet-metric">
+            <span>Alerts</span>
+            <strong id="fleetAlerts">--</strong>
+          </div>
+        </section>
+
+        <section id="batteryGrid" class="battery-grid" aria-label="Battery readings"></section>
+
+        <section class="workbench" aria-label="Monitoring workbench">
+          <div class="panel chart-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">History</p>
+                <h2 id="chartTitle">State of charge</h2>
+              </div>
+              <div class="controls">
+                <select id="metricSelect" aria-label="Metric">
+                  <option value="soc_percent">SOC</option>
+                  <option value="voltage_v">Voltage</option>
+                  <option value="current_a">Current</option>
+                  <option value="power_w">Power</option>
+                  <option value="cell_voltage_delta_v">Cell delta</option>
+                  <option value="mosfet_temperature_c">MOSFET temp</option>
+                  <option value="ambient_temperature_c">Ambient temp</option>
+                </select>
+                <div class="segmented" aria-label="Range">
+                  <button data-range="1h">1H</button>
+                  <button data-range="24h" class="is-active">24H</button>
+                  <button data-range="7d">7D</button>
+                  <button data-range="30d">30D</button>
+                  <button data-range="3y">3Y</button>
+                </div>
+              </div>
+            </div>
+            <canvas id="historyChart" height="320" aria-label="Battery history chart"></canvas>
+          </div>
+
+          <div class="panel detail-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Selected pack</p>
+                <h2 id="selectedName">Rack</h2>
+              </div>
+              <span id="selectedState" class="status-pill status-pill--pending">Pending</span>
+            </div>
+
+            <div class="cell-strip" id="cellStrip"></div>
+            <div class="temperature-row" id="temperatureRow"></div>
+            <dl class="detail-list" id="detailList"></dl>
+          </div>
+        </section>
+
+        <section class="lower-grid" aria-label="Logs and status">
+          <div class="panel events-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Alert log</p>
+                <h2>Recent events</h2>
+              </div>
+            </div>
+            <div id="eventList" class="event-list"></div>
+          </div>
+
+          <div class="panel storage-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Archive</p>
+                <h2>Three-year log</h2>
+              </div>
+              <button id="exportButton" class="icon-button" title="Download CSV" aria-label="Download CSV">
+                <span aria-hidden="true">↓</span>
+              </button>
+            </div>
+            <div class="storage-grid">
+              <div>
+                <span>Rows</span>
+                <strong id="rowCount">--</strong>
+              </div>
+              <div>
+                <span>Size</span>
+                <strong id="dbSize">--</strong>
+              </div>
+              <div>
+                <span>Oldest</span>
+                <strong id="oldestReading">--</strong>
+              </div>
+              <div>
+                <span>Newest</span>
+                <strong id="newestReading">--</strong>
+              </div>
+            </div>
+            <pre id="payloadView" class="payload-view"></pre>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

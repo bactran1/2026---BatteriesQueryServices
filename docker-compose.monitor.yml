@@ -1,0 +1,16 @@
+services:
+  battery-monitor:
+    build:
+      context: .
+      dockerfile: monitor/Dockerfile
+    container_name: battery-monitor
+    restart: unless-stopped
+    environment:
+      BQM_COLLECTOR_URL: ${BQM_COLLECTOR_URL:-http://raspberrypi.local:8000}
+      BQM_DATA_DIR: /data
+      BQM_LOG_INTERVAL_SECONDS: 60
+      BQM_RETENTION_DAYS: 1095
+    volumes:
+      - ./data/monitor:/data
+    ports:
+      - "8080:8080"
