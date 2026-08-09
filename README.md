@@ -158,6 +158,24 @@ bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
 
 The script builds the monitor image from `monitor/Dockerfile`. If no `battery-monitor` container exists, it creates one. If the container already exists, it updates it with the new image. In both cases, it keeps the existing `./data/monitor` log database and waits for the container health check.
 
+By default, the script updates the local Git checkout to the latest remote commit before building. It tags the Docker image with that commit SHA, passes the SHA into the image metadata, rebuilds without Docker cache, and restarts the container from that image. Use this when deploying normal updates:
+
+```bash
+bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+```
+
+If you intentionally want to build whatever files are currently on disk without pulling Git first:
+
+```bash
+bash monitor/deploy-monitor.sh --skip-git-update
+```
+
+If you want a faster cached build:
+
+```bash
+bash monitor/deploy-monitor.sh --use-cache
+```
+
 If Docker fails with `net.ipv4.ip_unprivileged_port_start` permission errors, the x86_64 Docker host cannot start containers correctly. This is usually seen when Docker is running inside an unprivileged LXC/Incus/Proxmox container, or when a host update introduced a runc/containerd/AppArmor incompatibility. Confirm with:
 
 ```bash

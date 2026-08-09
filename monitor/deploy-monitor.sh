@@ -12,6 +12,8 @@ SERVICE_NAME="battery-monitor"
 DEFAULT_COLLECTOR_URL="http://raspberrypi.local:8000"
 FOLLOW_LOGS=0
 HEALTH_CHECK=1
+SKIP_GIT_UPDATE=0
+USE_CACHE=0
 
 usage() {
   printf '%s\n' \
@@ -24,15 +26,20 @@ usage() {
 "  --collector-url URL   Collector URL, for example http://192.168.1.50:8000" \
 "  --follow-logs         Follow container logs after deployment" \
 "  --no-health-check     Skip the post-restart health check" \
+"  --skip-git-update     Build the current local checkout without fetching Git" \
+"  --use-cache           Allow Docker to reuse cached build layers" \
 "  -h, --help            Show this help" \
 "" \
 "Environment:" \
 "  BQM_COLLECTOR_URL     Same as --collector-url" \
+"  MONITOR_IMAGE_NAME    Image name, default battery-monitor" \
+"  MONITOR_IMAGE_TAG     Image tag; default is the current Git commit SHA" \
 "" \
 "Examples:" \
 "  bash monitor/deploy-monitor.sh" \
 "  bash monitor/deploy-monitor.sh --collector-url http://192.168.1.50:8000" \
-"  BQM_COLLECTOR_URL=http://raspberrypi.local:8000 bash monitor/deploy-monitor.sh"
+"  BQM_COLLECTOR_URL=http://raspberrypi.local:8000 bash monitor/deploy-monitor.sh" \
+"  bash monitor/deploy-monitor.sh --skip-git-update --use-cache"
 }
 
 log() {
@@ -52,6 +59,84 @@ compose_command() {
   else
     fail "Docker Compose is not installed. Install the Docker Compose plugin or docker-compose."
   fi
+}
+
+git_is_available() {
+  command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1
+}
+
+git_worktree_is_clean() {
+  git diff --quiet --ignore-submodules -- &&
+    git diff --cached --quiet --ignore-submodules --
+}
+
+update_git_checkout() {
+  local branch
+  local upstream
+  local remote_ref
+  local before
+  local after
+
+  if [[ "${SKIP_GIT_UPDATE}" -eq 1 ]]; then
+    log "Skipping Git update; building the current local checkout."
+    return 0
+  fi
+
+  if ! git_is_available; then
+    log "No Git checkout found; building the files currently on disk."
+    return 0
+  fi
+
+  if ! git_worktree_is_clean; then
+    fail "The Git working tree has local changes. Commit, stash, or rerun with --skip-git-update to build the current checkout."
+  fi
+
+  branch="$(git branch --show-current)"
+  if [[ -z "${branch}" ]]; then
+    log "Repository is in detached HEAD; building current commit."
+    return 0
+  fi
+
+  upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+  if [[ -n "${upstream}" ]]; then
+    remote_ref="${upstream}"
+    log "Fetching latest ${remote_ref}..."
+    git fetch --prune "${remote_ref%%/*}"
+  elif git rev-parse --verify --quiet "origin/${branch}" >/dev/null; then
+    remote_ref="origin/${branch}"
+    log "Fetching latest ${remote_ref}..."
+    git fetch --prune origin
+  else
+    log "No upstream branch found for ${branch}; building current commit."
+    return 0
+  fi
+
+  before="$(git rev-parse --short=12 HEAD)"
+  git merge --ff-only "${remote_ref}"
+  after="$(git rev-parse --short=12 HEAD)"
+
+  if [[ "${before}" == "${after}" ]]; then
+    log "Git checkout is already at latest commit ${after}."
+  else
+    log "Updated Git checkout from ${before} to ${after}."
+  fi
+}
+
+set_image_identity() {
+  local commit
+  local tag
+
+  if git_is_available; then
+    commit="$(git rev-parse HEAD)"
+    tag="$(git rev-parse --short=12 HEAD)"
+  else
+    commit="unknown"
+    tag="$(date -u +%Y%m%d%H%M%S)"
+  fi
+
+  export MONITOR_COMMIT="${MONITOR_COMMIT:-${commit}}"
+  export MONITOR_IMAGE_NAME="${MONITOR_IMAGE_NAME:-battery-monitor}"
+  export MONITOR_IMAGE_TAG="${MONITOR_IMAGE_TAG:-${tag}}"
 }
 
 container_exists() {
@@ -119,6 +204,14 @@ while [[ $# -gt 0 ]]; do
       HEALTH_CHECK=0
       shift
       ;;
+    --skip-git-update)
+      SKIP_GIT_UPDATE=1
+      shift
+      ;;
+    --use-cache)
+      USE_CACHE=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -138,10 +231,18 @@ export BQM_COLLECTOR_URL="${BQM_COLLECTOR_URL:-${DEFAULT_COLLECTOR_URL}}"
 mkdir -p "${REPO_ROOT}/data/monitor"
 
 cd "${REPO_ROOT}"
+update_git_checkout
+set_image_identity
 
 log "Collector URL: ${BQM_COLLECTOR_URL}"
-log "Building the latest ${SERVICE_NAME} image..."
-"${COMPOSE[@]}" -f "${COMPOSE_FILE}" build --pull "${SERVICE_NAME}"
+log "Image: ${MONITOR_IMAGE_NAME}:${MONITOR_IMAGE_TAG}"
+log "Build commit: ${MONITOR_COMMIT}"
+log "Building ${SERVICE_NAME} from the current Git commit..."
+BUILD_ARGS=(build --pull)
+if [[ "${USE_CACHE}" -eq 0 ]]; then
+  BUILD_ARGS+=(--no-cache)
+fi
+"${COMPOSE[@]}" -f "${COMPOSE_FILE}" "${BUILD_ARGS[@]}" "${SERVICE_NAME}"
 
 if container_exists; then
   log "Existing ${SERVICE_NAME} container found; updating it with the new image..."
@@ -150,6 +251,11 @@ else
 fi
 
 compose_up
+
+RUNNING_IMAGE="$(docker inspect --format '{{.Config.Image}}' "${SERVICE_NAME}" 2>/dev/null || true)"
+if [[ -n "${RUNNING_IMAGE}" ]]; then
+  log "Running image: ${RUNNING_IMAGE}"
+fi
 
 if [[ "${HEALTH_CHECK}" -eq 1 ]]; then
   wait_for_health

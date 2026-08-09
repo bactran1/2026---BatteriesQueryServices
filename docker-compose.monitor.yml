@@ -1,8 +1,11 @@
 services:
   battery-monitor:
+    image: ${MONITOR_IMAGE_NAME:-battery-monitor}:${MONITOR_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: monitor/Dockerfile
+      args:
+        MONITOR_COMMIT: ${MONITOR_COMMIT:-unknown}
     container_name: battery-monitor
     restart: unless-stopped
     environment:

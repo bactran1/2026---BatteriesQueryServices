@@ -60,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "status": "ok",
             "version": __version__,
+            "build_commit": settings.build_commit,
             "collector_status": monitor.collector_status,
             "last_log_at": monitor.last_log_at,
             "last_error": monitor.last_error,
@@ -87,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return {
             "version": __version__,
+            "build_commit": settings.build_commit,
             "collector_status": collector_status,
             "collector_error": collector_error,
             "monitor": monitor.status(),

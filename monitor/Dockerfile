@@ -1,11 +1,17 @@
 FROM python:3.12-slim
 
+ARG MONITOR_COMMIT=unknown
+
+LABEL org.opencontainers.image.title="Battery Monitor" \
+      org.opencontainers.image.revision="${MONITOR_COMMIT}"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
     BQM_HOST=0.0.0.0 \
     BQM_PORT=8080 \
-    BQM_DATA_DIR=/data
+    BQM_DATA_DIR=/data \
+    BQM_BUILD_COMMIT=${MONITOR_COMMIT}
 
 WORKDIR /app
 

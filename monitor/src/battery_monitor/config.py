@@ -16,6 +16,7 @@ class Settings:
     log_interval_seconds: float
     retention_days: int
     log_level: str
+    build_commit: str
 
 
 def load_settings() -> Settings:
@@ -34,4 +35,5 @@ def load_settings() -> Settings:
         log_interval_seconds=float(os.getenv("BQM_LOG_INTERVAL_SECONDS", "60")),
         retention_days=int(os.getenv("BQM_RETENTION_DAYS", "1095")),
         log_level=os.getenv("BQM_LOG_LEVEL", "INFO"),
+        build_commit=os.getenv("BQM_BUILD_COMMIT", "unknown"),
     )
