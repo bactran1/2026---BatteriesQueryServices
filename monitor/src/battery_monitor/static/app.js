@@ -30,7 +30,7 @@ const metricUnits = {
   ambient_temperature_c: "°C",
 };
 
-const palette = ["#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#ff453a"];
+const palette = ["#ff7a00", "#30d158", "#bf5af2", "#34c7d9", "#ff453a"];
 
 const $ = (id) => document.getElementById(id);
 const THEME_STORAGE_KEY = "battery-monitor-theme";

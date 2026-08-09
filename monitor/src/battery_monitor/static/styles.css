@@ -18,7 +18,8 @@
   --chart-grid: rgba(60, 60, 67, 0.12);
   --chart-ink: rgba(29, 29, 31, 0.82);
   --chart-muted: rgba(60, 60, 67, 0.58);
-  --blue: #0a84ff;
+  --accent: #f06a00;
+  --accent-warm: #ffb020;
   --green: #30d158;
   --orange: #ff9f0a;
   --red: #ff453a;
@@ -47,7 +48,8 @@
   --chart-grid: rgba(235, 235, 245, 0.13);
   --chart-ink: rgba(245, 245, 247, 0.9);
   --chart-muted: rgba(235, 235, 245, 0.6);
-  --blue: #0a84ff;
+  --accent: #ff9f0a;
+  --accent-warm: #ffd06a;
   --green: #32d74b;
   --orange: #ff9f0a;
   --red: #ff453a;
@@ -117,6 +119,30 @@ button {
   font-size: 48px;
   line-height: 1;
   font-weight: 760;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 16px;
+}
+
+.brand-lockup__copy {
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
+  transition:
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .builder-line {
@@ -245,7 +271,7 @@ button {
 }
 
 .theme-toggle:focus-within .theme-toggle__track {
-  outline: 3px solid rgba(10, 132, 255, 0.24);
+  outline: 3px solid rgba(255, 122, 0, 0.28);
   outline-offset: 3px;
 }
 
@@ -452,7 +478,7 @@ button {
 .battery-card:hover,
 .battery-card.is-selected {
   transform: translateY(-2px);
-  border-color: rgba(10, 132, 255, 0.42);
+  border-color: rgba(255, 122, 0, 0.5);
   background: var(--panel-hover);
 }
 
@@ -606,7 +632,7 @@ button {
 .inventory-row:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 3px solid rgba(10, 132, 255, 0.3);
+  outline: 3px solid rgba(255, 122, 0, 0.34);
   outline-offset: -3px;
 }
 
@@ -744,7 +770,7 @@ select {
   position: relative;
   min-height: 28px;
   border-radius: 6px 6px 3px 3px;
-  background: linear-gradient(180deg, var(--blue), var(--green));
+  background: linear-gradient(180deg, var(--accent-warm), var(--accent));
 }
 
 .cell-bar span {
@@ -994,6 +1020,16 @@ select {
 
   .topbar h1 {
     font-size: 34px;
+  }
+
+  .brand-lockup {
+    gap: 12px;
+  }
+
+  .brand-mark {
+    width: 52px;
+    height: 52px;
+    flex-basis: 52px;
   }
 
   .fleet-metric strong {

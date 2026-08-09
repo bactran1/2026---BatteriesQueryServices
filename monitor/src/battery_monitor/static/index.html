@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f06a00" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#ff9f0a" media="(prefers-color-scheme: dark)" />
     <title>Battery Monitor</title>
     <script>
       (() => {
@@ -17,15 +19,26 @@
         }
       })();
     </script>
+    <link rel="icon" type="image/png" href="/static/assets/tran-t-icon.png" />
+    <link rel="apple-touch-icon" href="/static/assets/tran-t-icon.png" />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="shell">
       <header class="topbar">
-        <div>
-          <p id="builderLine" class="builder-line">This rack is built by Tran Thanh Tuan</p>
-          <p id="rackTopName" class="eyebrow">Eco-worthy rack</p>
-          <h1>Battery Monitor</h1>
+        <div class="brand-lockup">
+          <img
+            class="brand-mark"
+            src="/static/assets/tran-t-logo.png"
+            alt="Tran T logo"
+            width="64"
+            height="64"
+          />
+          <div class="brand-lockup__copy">
+            <p id="builderLine" class="builder-line">This rack is built by Tran Thanh Tuan</p>
+            <p id="rackTopName" class="eyebrow">Eco-worthy rack</p>
+            <h1>Battery Monitor</h1>
+          </div>
         </div>
         <div class="topbar__meta">
           <label class="theme-toggle" title="Switch appearance">
