@@ -104,6 +104,7 @@ class BatteryPoller:
         return {
             "service": {
                 "started_at": self.started_at,
+                "build_commit": self.settings.build_commit,
                 "poll_count": self._poll_count,
                 "poll_interval_seconds": self.settings.polling.interval_seconds,
             },
@@ -116,6 +117,7 @@ class BatteryPoller:
         return {
             "status": "ok",
             "version": __version__,
+            "build_commit": self.settings.build_commit,
             "battery_count": len(statuses),
             "ok_count": statuses.count("ok"),
             "error_count": statuses.count("error"),

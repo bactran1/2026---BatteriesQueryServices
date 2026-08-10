@@ -43,6 +43,7 @@ class Settings:
     polling: PollingSettings = field(default_factory=PollingSettings)
     batteries: list[BatterySettings] = field(default_factory=list)
     log_level: str = "INFO"
+    build_commit: str = "unknown"
 
     def safe_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -78,6 +79,7 @@ def load_settings(config_path: str | None = None) -> Settings:
         polling=polling,
         batteries=batteries,
         log_level=os.getenv("BQS_LOG_LEVEL", str(raw.get("log_level", "INFO"))),
+        build_commit=os.getenv("BQS_BUILD_COMMIT", "unknown"),
     )
 
 

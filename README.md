@@ -28,7 +28,7 @@ For three rack batteries, the usual deployment is:
 On the Raspberry Pi collector host:
 
 ```bash
-docker compose up -d --build
+bash deploy-collector.sh
 ```
 
 Then check:
@@ -110,20 +110,10 @@ On the Pi, identify the adapter:
 ls -l /dev/serial/by-id/
 ```
 
-If a stable adapter path is listed, prefer that over `/dev/ttyUSB0`. Update `docker-compose.yml`:
+If a stable adapter path is listed, prefer that over `/dev/ttyUSB0`. Pass the stable host path to the deployment script; it maps the adapter to `/dev/ttyUSB0` inside the container automatically:
 
-```yaml
-devices:
-  - "/dev/serial/by-id/usb-Your_Adapter:/dev/ttyBMS0"
-```
-
-Then update `config.toml`:
-
-```toml
-[serial]
-port = "/dev/ttyBMS0"
-baudrate = 9600
-timeout_seconds = 2.0
+```bash
+bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Your_Adapter
 ```
 
 Allow your Pi user to run Docker and access serial devices:
@@ -136,8 +126,27 @@ sudo reboot
 After reboot:
 
 ```bash
-docker compose up -d --build
-docker compose logs -f
+bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Your_Adapter
+```
+
+The script fetches and fast-forwards to the latest Git commit, tags the image with that commit SHA, pulls the latest base image, and performs a no-cache build by default. If `batteries-query-service` does not exist, it creates it. If it already exists, it replaces and restarts it with the newly built image. The script then waits for the collector health check.
+
+Use the current checkout without fetching Git when developing locally:
+
+```bash
+bash deploy-collector.sh --skip-git-update
+```
+
+Allow Docker layer caching only when you intentionally want a faster build:
+
+```bash
+bash deploy-collector.sh --use-cache
+```
+
+Follow the collector logs after a successful deployment:
+
+```bash
+bash deploy-collector.sh --follow-logs
 ```
 
 Then verify the collector from the Pi:
@@ -242,24 +251,23 @@ Environment overrides are also supported:
 - `BQS_HOST`
 - `BQS_PORT`
 - `BQS_LOG_LEVEL`
+- `BQS_BUILD_COMMIT`, set automatically by `deploy-collector.sh`
 
 ## Docker serial device
 
-The included compose file maps `/dev/ttyUSB0` into the container. If your adapter appears under another path, update this line:
+The included compose file maps `/dev/ttyUSB0` into the container. If your adapter appears under another path, pass it to the deployment script:
 
-```yaml
-devices:
-  - "/dev/ttyUSB0:/dev/ttyUSB0"
+```bash
+bash deploy-collector.sh --serial-device /dev/ttyUSB1
 ```
 
 For long-running systems, prefer a stable device path:
 
-```yaml
-devices:
-  - "/dev/serial/by-id/usb-Your_Adapter:/dev/ttyBMS0"
+```bash
+bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Your_Adapter
 ```
 
-Then set `serial.port = "/dev/ttyBMS0"` in `config.toml`.
+The same settings can be supplied as `COLLECTOR_SERIAL_DEVICE` and `COLLECTOR_CONFIG_FILE`. The running image name and build revision are available from `docker inspect batteries-query-service` and `GET /healthz`.
 
 ## API
 

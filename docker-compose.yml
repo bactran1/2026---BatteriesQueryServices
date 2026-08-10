@@ -1,13 +1,18 @@
 services:
   batteries-query-service:
-    build: .
+    image: ${COLLECTOR_IMAGE_NAME:-batteries-query-service}:${COLLECTOR_IMAGE_TAG:-latest}
+    build:
+      context: .
+      args:
+        COLLECTOR_COMMIT: ${COLLECTOR_COMMIT:-unknown}
     container_name: batteries-query-service
     restart: unless-stopped
     environment:
       BQS_CONFIG: /config/config.toml
+      BQS_SERIAL_PORT: /dev/ttyUSB0
     volumes:
-      - ./config.toml:/config/config.toml:ro
+      - ${COLLECTOR_CONFIG_FILE:-./config.toml}:/config/config.toml:ro
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0
+      - ${COLLECTOR_SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
     ports:
       - "8000:8000"
