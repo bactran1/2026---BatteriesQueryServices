@@ -18,6 +18,9 @@ class MonitorConfigTests(unittest.TestCase):
             "BQM_BATTERY_NAMES": "Top,Middle,Bottom",
             "BQM_BATTERY_IPS": "192.168.1.61,,192.168.1.63",
             "BQM_BATTERY_MODELS": "EW-A,EW-B,EW-C",
+            "BQM_LIVE_POLL_INTERVAL_SECONDS": "7",
+            "BQM_STALE_AFTER_SECONDS": "35",
+            "BQM_OFFLINE_AFTER_SECONDS": "150",
         }
 
         with patch.dict(os.environ, environment, clear=True):
@@ -28,6 +31,9 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual(settings.battery_profiles[0].name, "Top")
         self.assertEqual(settings.battery_profiles[1].ip_address, None)
         self.assertEqual(settings.battery_profiles[2].ip_address, "192.168.1.63")
+        self.assertEqual(settings.live_poll_interval_seconds, 7.0)
+        self.assertEqual(settings.stale_after_seconds, 35.0)
+        self.assertEqual(settings.offline_after_seconds, 150.0)
 
     def test_rack_details_combines_profile_and_live_reading(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

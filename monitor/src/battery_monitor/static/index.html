@@ -19,9 +19,9 @@
         }
       })();
     </script>
-    <link rel="icon" type="image/png" href="/static/assets/tran-t-icon.png" />
-    <link rel="apple-touch-icon" href="/static/assets/tran-t-icon.png" />
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="icon" type="image/png" href="/static/assets/tran-t-icon.png?v=__BUILD_COMMIT__" />
+    <link rel="apple-touch-icon" href="/static/assets/tran-t-icon.png?v=__BUILD_COMMIT__" />
+    <link rel="stylesheet" href="/static/styles.css?v=__BUILD_COMMIT__" />
   </head>
   <body>
     <div class="shell">
@@ -29,7 +29,7 @@
         <div class="brand-lockup">
           <img
             class="brand-mark"
-            src="/static/assets/tran-t-logo.png"
+            src="/static/assets/tran-t-logo.png?v=__BUILD_COMMIT__"
             alt="Tran T logo"
             width="64"
             height="64"
@@ -48,16 +48,18 @@
               <span class="theme-toggle__thumb"></span>
             </span>
           </label>
-          <span id="collectorStatus" class="status-pill status-pill--pending">Starting</span>
-          <span id="lastUpdated" class="timestamp">No readings yet</span>
+          <div class="connection-meta" aria-live="polite">
+            <span id="collectorStatus" class="status-pill status-pill--pending">Starting</span>
+            <span id="lastUpdated" class="timestamp">No readings yet</span>
+            <span id="connectionDetail" class="connection-detail">Connecting to collector</span>
+          </div>
         </div>
       </header>
 
       <main>
-        <section class="rack-overview" aria-labelledby="rackName">
+        <section class="rack-overview" aria-label="Rack overview">
           <div class="rack-overview__identity">
             <p class="eyebrow">Rack overview</p>
-            <h2 id="rackName">Eco-worthy Rack</h2>
             <p id="rackDescription">Three Eco-worthy batteries with local monitoring and a three-year archive.</p>
           </div>
           <div class="rack-facts">
@@ -208,11 +210,14 @@
                 <strong id="newestReading">--</strong>
               </div>
             </div>
-            <pre id="payloadView" class="payload-view"></pre>
+            <details id="payloadDetails" class="payload-details">
+              <summary>Raw battery payload</summary>
+              <pre id="payloadView" class="payload-view"></pre>
+            </details>
           </div>
         </section>
       </main>
     </div>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=__BUILD_COMMIT__"></script>
   </body>
 </html>

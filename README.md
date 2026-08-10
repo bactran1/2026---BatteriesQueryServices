@@ -2,7 +2,7 @@
 
 A containerized polling service for Eco-worthy 48 V / 51.2 V server rack batteries.
 
-The collector talks to the battery BMS over a USB serial adapter, polls each configured pack address, and exposes the latest telemetry as JSON and Prometheus metrics. A companion monitor app runs on a separate x86_64 Docker host, stores the telemetry for three years, and serves a local dashboard.
+The collector talks to the battery BMS over a USB serial adapter, polls each configured pack address, and exposes the latest telemetry as JSON and Prometheus metrics. It also keeps a rolling replay buffer on the Raspberry Pi. A companion monitor app runs on a separate x86_64 Docker host, stores the telemetry for three years, and serves a local dashboard.
 
 ## What it reads
 
@@ -60,15 +60,27 @@ The `battery-monitor` container runs on the dedicated x86_64 Linux Docker host. 
 
 Defaults:
 
+- Live collector refresh: 5 seconds, shared by every dashboard browser
 - Log interval: 60 seconds
 - Retention: 1095 days, approximately 3 years
 - Storage path on the x86_64 host: `./data/monitor/battery-monitor.sqlite3`
 - CSV export: dashboard download button or `GET /api/export.csv`
 
+The monitor owns one collector connection and serves a cached live snapshot to every browser. Opening more dashboard tabs does not create more requests to the Raspberry Pi. The dashboard refreshes live values every 5 seconds, pauses network work while its tab is hidden, and refreshes immediately when the tab becomes visible again.
+
+Dashboard HTML is always served with `no-store`. JavaScript, CSS, icons, and logos use a content fingerprint and immutable caching, so a normal reload after deployment picks up the new build without requiring a hard refresh.
+
+Connection states are explicit: `online` means every active battery is responding, `degraded` means the collector is reachable but at least one battery is not healthy, `stale` means last-known data is being shown during recovery, and `offline` means the collector has exceeded the configured outage threshold.
+
 Environment overrides:
 
 - `BQM_COLLECTOR_URL`
-- `BQM_RACK_NAME`
+- `BQM_COLLECTOR_TIMEOUT_SECONDS`
+- `BQM_LIVE_POLL_INTERVAL_SECONDS`
+- `BQM_STALE_AFTER_SECONDS`
+- `BQM_OFFLINE_AFTER_SECONDS`
+- `BQM_BACKFILL_PAGE_SIZE`
+- `BQM_RACK_NAME`, returned with rack metadata by the monitor API
 - `BQM_RACK_BUILDER`
 - `BQM_RACK_LOCATION`
 - `BQM_COLLECTOR_NAME`
@@ -99,6 +111,8 @@ The IP addresses are inventory labels. Telemetry still travels from the batterie
 For repeatable deployments, start with `.env.example`, put the real values in a root-level `.env` file on the x86_64 host, and run the deployment script normally. Docker Compose loads that file automatically, and `.env` is excluded from Git so host-specific addresses are not committed.
 
 At the default 60-second interval, three batteries produce roughly 4.7 million log rows across 3 years. The dashboard stores the raw reading payload for each row so cell voltages, temperatures, alarms, faults, limits, and pack metadata remain available.
+
+The Pi collector stores one sequenced replay snapshot every 60 seconds for 24 hours at `./data/collector/collector-buffer.sqlite3`. When the monitor restarts or temporarily loses the Pi, it requests every missing sequence and inserts it idempotently. This repairs short archive gaps without changing the normal 60-second sampling rate or duplicating rows.
 
 ## Raspberry Pi 4B deployment
 
@@ -248,6 +262,10 @@ Environment overrides are also supported:
 - `BQS_BATTERY_ADDRESSES`, for example `1,2,3`
 - `BQS_BATTERY_IDS`, for example `rack-1,rack-2,rack-3`
 - `BQS_POLL_INTERVAL`
+- `BQS_BUFFER_ENABLED`
+- `BQS_BUFFER_PATH`
+- `BQS_BUFFER_RETENTION_HOURS`
+- `BQS_BUFFER_SAMPLE_INTERVAL`
 - `BQS_HOST`
 - `BQS_PORT`
 - `BQS_LOG_LEVEL`
@@ -275,6 +293,7 @@ Collector:
 
 - `GET /healthz` - service health and polling status
 - `GET /api/readings` - all configured batteries
+- `GET /api/readings/history` - sequenced replay snapshots for monitor backfill
 - `GET /api/readings/{battery_id}` - one battery
 - `GET /api/config` - safe runtime configuration
 - `GET /metrics` - Prometheus exposition format
@@ -283,7 +302,7 @@ Monitor:
 
 - `GET /` - dashboard
 - `GET /healthz` - monitor health
-- `GET /api/live` - live collector snapshot with archive stats
+- `GET /api/live` - cached collector snapshot with connection state and archive stats
 - `GET /api/history` - chart history
 - `GET /api/events` - recent alarms, faults, and collector errors
 - `GET /api/export.csv` - CSV export
@@ -291,5 +310,6 @@ Monitor:
 ## Notes
 
 - The service only reads status data. It does not send write/reset/control commands.
+- The monitor health response reports database health separately from collector connectivity. A collector outage does not make the dashboard container unhealthy; a database failure does.
 - If only the master battery responds, verify the DIP switch addresses and the communication port being used. Some firmware/port combinations expose only master-pack data.
 - If Docker cannot open the serial device, check host permissions and confirm the `devices` mapping.

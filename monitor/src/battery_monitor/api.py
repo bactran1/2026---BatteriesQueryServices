@@ -7,12 +7,13 @@ import logging
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Response
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .collector import CollectorClient, CollectorError
+from .assets import asset_version, cache_control_for, render_index
+from .collector import CollectorClient
 from .config import Settings, load_settings, rack_details
 from .service import MonitorService
 from .storage import HistoryMetric, RetentionStore
@@ -24,6 +25,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
+    static_version = asset_version(settings.build_commit, STATIC_DIR)
     store = RetentionStore(settings.database_path)
     collector = CollectorClient(
         base_url=settings.collector_url,
@@ -51,51 +53,79 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+    @app.middleware("http")
+    async def cache_policy(request: Request, call_next):
+        response = await call_next(request)
+        policy = cache_control_for(
+            request.url.path,
+            request.query_params.get("v"),
+            static_version,
+        )
+        if policy:
+            response.headers["Cache-Control"] = policy
+        return response
+
     @app.get("/")
     async def index():
-        return FileResponse(STATIC_DIR / "index.html")
+        return HTMLResponse(
+            render_index(STATIC_DIR / "index.html", static_version),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/healthz")
     async def healthz():
-        return {
-            "status": "ok",
+        database = await asyncio.to_thread(store.health)
+        if monitor.last_storage_error:
+            database = {
+                **database,
+                "last_write_error": monitor.last_storage_error,
+            }
+        collector_state = monitor.connection_state()
+        payload = {
+            "status": "ok" if database["status"] == "ok" else "error",
             "version": __version__,
             "build_commit": settings.build_commit,
-            "collector_status": monitor.collector_status,
+            "collector_status": collector_state,
             "last_log_at": monitor.last_log_at,
             "last_error": monitor.last_error,
+            "database": database,
+            "collector": {
+                "status": collector_state,
+                "reachable": monitor.collector_reachable(),
+                "last_success_at": monitor.last_success_at,
+                "last_data_at": monitor.last_data_at,
+                "last_attempt_at": monitor.last_attempt_at,
+                "error": monitor.last_error,
+            },
             "retention_days": settings.retention_days,
         }
+        return JSONResponse(
+            payload,
+            status_code=200 if database["status"] == "ok" else 503,
+        )
 
     @app.get("/api/live")
     async def live():
-        try:
-            snapshot = await asyncio.to_thread(collector.fetch_snapshot)
-            collector_status = "ok"
-            collector_error = None
-            batteries = snapshot.get("batteries", [])
-        except CollectorError as exc:
-            snapshot = {
-                "service": {
-                    "source": "database",
-                    "message": "collector unavailable",
-                },
-                "batteries": store.latest_states(),
-            }
-            collector_status = "error"
-            collector_error = str(exc)
-            batteries = snapshot["batteries"]
+        snapshot, storage = await asyncio.gather(
+            asyncio.to_thread(monitor.cached_snapshot),
+            asyncio.to_thread(store.stats, settings.retention_days),
+        )
+        collector_status = monitor.connection_state()
+        batteries = snapshot.get("batteries", [])
 
         return {
             "version": __version__,
             "build_commit": settings.build_commit,
             "collector_status": collector_status,
-            "collector_error": collector_error,
+            "collector_error": monitor.last_error,
+            "collector_reachable": monitor.collector_reachable(),
             "monitor": monitor.status(),
-            "storage": store.stats(settings.retention_days),
+            "storage": storage,
             "summary": _summary(batteries),
             "rack": rack_details(
-                settings, batteries, collector_online=collector_status == "ok"
+                settings,
+                batteries,
+                collector_online=collector_status in {"online", "degraded"},
             ),
             "snapshot": snapshot,
         }
@@ -113,11 +143,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "metric": metric,
             "range": range,
             "bucket_seconds": bucket_seconds,
-            "points": store.history(
-                battery_id=battery_id,
-                metric=metric,
-                seconds=seconds,
-                bucket_seconds=bucket_seconds,
+            "points": await asyncio.to_thread(
+                store.history,
+                battery_id,
+                metric,
+                seconds,
+                bucket_seconds,
             ),
         }
 
@@ -125,7 +156,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def events(range: str = Query(default="7d"), limit: int = Query(default=80, ge=1, le=300)):
         return {
             "range": range,
-            "events": store.events(seconds=_range_seconds(range), limit=limit),
+            "events": await asyncio.to_thread(
+                store.events, _range_seconds(range), limit
+            ),
         }
 
     @app.get("/api/export.csv")
@@ -133,7 +166,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         battery_id: str = Query(default="all"),
         days: int = Query(default=30, ge=1, le=settings.retention_days),
     ):
-        rows = store.export_rows(battery_id=battery_id, days=days)
+        rows = await asyncio.to_thread(store.export_rows, battery_id, days)
         buffer = io.StringIO()
         writer = csv.DictWriter(buffer, fieldnames=store.export_fieldnames)
         writer.writeheader()

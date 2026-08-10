@@ -26,6 +26,14 @@ class PollingSettings:
 
 
 @dataclass(frozen=True)
+class BufferSettings:
+    enabled: bool = True
+    path: str = "/data/collector-buffer.sqlite3"
+    retention_hours: int = 24
+    sample_interval_seconds: float = 60.0
+
+
+@dataclass(frozen=True)
 class BatterySettings:
     id: str
     address: int
@@ -41,6 +49,7 @@ class Settings:
     server: ServerSettings = field(default_factory=ServerSettings)
     serial: SerialSettings = field(default_factory=SerialSettings)
     polling: PollingSettings = field(default_factory=PollingSettings)
+    buffer: BufferSettings = field(default_factory=BufferSettings)
     batteries: list[BatterySettings] = field(default_factory=list)
     log_level: str = "INFO"
     build_commit: str = "unknown"
@@ -56,6 +65,7 @@ def load_settings(config_path: str | None = None) -> Settings:
     server_raw = raw.get("server", {})
     serial_raw = raw.get("serial", {})
     polling_raw = raw.get("polling", {})
+    buffer_raw = raw.get("buffer", {})
 
     server = ServerSettings(
         host=os.getenv("BQS_HOST", str(server_raw.get("host", "0.0.0.0"))),
@@ -67,9 +77,32 @@ def load_settings(config_path: str | None = None) -> Settings:
         timeout_seconds=float(serial_raw.get("timeout_seconds", 2.0)),
     )
     polling = PollingSettings(
-        interval_seconds=_env_float(
-            "BQS_POLL_INTERVAL", polling_raw.get("interval_seconds", 10.0)
+        interval_seconds=max(
+            0.5,
+            _env_float(
+                "BQS_POLL_INTERVAL", polling_raw.get("interval_seconds", 10.0)
+            ),
         )
+    )
+    buffer = BufferSettings(
+        enabled=_env_bool("BQS_BUFFER_ENABLED", buffer_raw.get("enabled", True)),
+        path=os.getenv(
+            "BQS_BUFFER_PATH",
+            str(buffer_raw.get("path", "/data/collector-buffer.sqlite3")),
+        ),
+        retention_hours=max(
+            1,
+            _env_int(
+                "BQS_BUFFER_RETENTION_HOURS", buffer_raw.get("retention_hours", 24)
+            ),
+        ),
+        sample_interval_seconds=max(
+            polling.interval_seconds,
+            _env_float(
+                "BQS_BUFFER_SAMPLE_INTERVAL",
+                buffer_raw.get("sample_interval_seconds", 60.0),
+            ),
+        ),
     )
     batteries = _load_batteries(raw.get("batteries", []))
 
@@ -77,6 +110,7 @@ def load_settings(config_path: str | None = None) -> Settings:
         server=server,
         serial=serial,
         polling=polling,
+        buffer=buffer,
         batteries=batteries,
         log_level=os.getenv("BQS_LOG_LEVEL", str(raw.get("log_level", "INFO"))),
         build_commit=os.getenv("BQS_BUILD_COMMIT", "unknown"),
@@ -140,3 +174,10 @@ def _env_int(name: str, default: Any) -> int:
 
 def _env_float(name: str, default: Any) -> float:
     return float(os.getenv(name, default))
+
+
+def _env_bool(name: str, default: Any) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return bool(default)
+    return value.strip().lower() in {"1", "true", "yes", "on"}

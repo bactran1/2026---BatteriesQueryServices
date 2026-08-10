@@ -258,6 +258,7 @@ docker info >/dev/null 2>&1 || fail "Docker daemon is not reachable. Check Docke
 compose_command
 
 export COLLECTOR_SERIAL_DEVICE="${COLLECTOR_SERIAL_DEVICE:-${DEFAULT_SERIAL_DEVICE}}"
+mkdir -p "${REPO_ROOT}/data/collector"
 
 cd "${REPO_ROOT}"
 update_git_checkout

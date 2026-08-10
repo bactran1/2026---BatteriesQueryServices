@@ -10,8 +10,13 @@ services:
     environment:
       BQS_CONFIG: /config/config.toml
       BQS_SERIAL_PORT: /dev/ttyUSB0
+      BQS_BUFFER_ENABLED: ${BQS_BUFFER_ENABLED:-true}
+      BQS_BUFFER_PATH: /data/collector-buffer.sqlite3
+      BQS_BUFFER_RETENTION_HOURS: ${BQS_BUFFER_RETENTION_HOURS:-24}
+      BQS_BUFFER_SAMPLE_INTERVAL: ${BQS_BUFFER_SAMPLE_INTERVAL:-60}
     volumes:
       - ${COLLECTOR_CONFIG_FILE:-./config.toml}:/config/config.toml:ro
+      - ./data/collector:/data
     devices:
       - ${COLLECTOR_SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
     ports:

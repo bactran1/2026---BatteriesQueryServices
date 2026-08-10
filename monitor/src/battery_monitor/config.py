@@ -21,6 +21,10 @@ class Settings:
     port: int
     collector_url: str
     collector_timeout_seconds: float
+    live_poll_interval_seconds: float
+    stale_after_seconds: float
+    offline_after_seconds: float
+    backfill_page_size: int
     data_dir: Path
     database_path: Path
     log_interval_seconds: float
@@ -37,19 +41,41 @@ class Settings:
 def load_settings() -> Settings:
     data_dir = Path(os.getenv("BQM_DATA_DIR", "/data"))
     battery_profiles = _load_battery_profiles()
+    collector_timeout_seconds = max(
+        0.5, float(os.getenv("BQM_COLLECTOR_TIMEOUT_SECONDS", "5"))
+    )
+    live_poll_interval_seconds = max(
+        1.0, float(os.getenv("BQM_LIVE_POLL_INTERVAL_SECONDS", "5"))
+    )
+    stale_after_seconds = max(
+        live_poll_interval_seconds * 2,
+        float(os.getenv("BQM_STALE_AFTER_SECONDS", "30")),
+    )
+    offline_after_seconds = max(
+        stale_after_seconds + live_poll_interval_seconds,
+        float(os.getenv("BQM_OFFLINE_AFTER_SECONDS", "120")),
+    )
     return Settings(
         host=os.getenv("BQM_HOST", "0.0.0.0"),
         port=int(os.getenv("BQM_PORT", "8080")),
         collector_url=os.getenv(
             "BQM_COLLECTOR_URL", "http://batteries-query-service:8000"
         ),
-        collector_timeout_seconds=float(os.getenv("BQM_COLLECTOR_TIMEOUT_SECONDS", "5")),
+        collector_timeout_seconds=collector_timeout_seconds,
+        live_poll_interval_seconds=live_poll_interval_seconds,
+        stale_after_seconds=stale_after_seconds,
+        offline_after_seconds=offline_after_seconds,
+        backfill_page_size=max(
+            1, min(2000, int(os.getenv("BQM_BACKFILL_PAGE_SIZE", "500")))
+        ),
         data_dir=data_dir,
         database_path=Path(
             os.getenv("BQM_DATABASE_PATH", str(data_dir / "battery-monitor.sqlite3"))
         ),
-        log_interval_seconds=float(os.getenv("BQM_LOG_INTERVAL_SECONDS", "60")),
-        retention_days=int(os.getenv("BQM_RETENTION_DAYS", "1095")),
+        log_interval_seconds=max(
+            1.0, float(os.getenv("BQM_LOG_INTERVAL_SECONDS", "60"))
+        ),
+        retention_days=max(1, int(os.getenv("BQM_RETENTION_DAYS", "1095"))),
         log_level=os.getenv("BQM_LOG_LEVEL", "INFO"),
         build_commit=os.getenv("BQM_BUILD_COMMIT", "unknown"),
         rack_name=os.getenv("BQM_RACK_NAME", "Eco-worthy Rack"),

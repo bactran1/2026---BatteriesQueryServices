@@ -50,6 +50,29 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(store.stats(retention_days=90)["row_count"], 0)
             store.close()
 
+    def test_collector_sequence_is_idempotent_and_health_is_independent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            snapshot = _sample_snapshot()
+            snapshot["service"].update(
+                {
+                    "sequence": 12,
+                    "buffer_stream_id": "stream-a",
+                }
+            )
+
+            self.assertEqual(store.insert_snapshot(snapshot), 2)
+            self.assertEqual(store.insert_snapshot(snapshot), 0)
+            self.assertEqual(store.stats(retention_days=1095)["row_count"], 2)
+            self.assertEqual(store.health()["status"], "ok")
+            self.assertTrue(store.health()["writable"])
+            self.assertIsNone(store.get_metadata("__health_check__"))
+
+            store.set_metadata("collector_sequence:stream-a", "12")
+            self.assertEqual(store.get_metadata("collector_sequence:stream-a"), "12")
+            store.close()
+
 
 def _sample_snapshot() -> dict:
     return {

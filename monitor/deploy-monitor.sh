@@ -32,7 +32,7 @@ usage() {
 "" \
 "Environment:" \
 "  BQM_COLLECTOR_URL     Same as --collector-url" \
-"  BQM_RACK_NAME         Rack name shown on the dashboard" \
+"  BQM_RACK_NAME         Rack identifier returned by the monitor API" \
 "  BQM_RACK_LOCATION     Rack location shown on the dashboard" \
 "  BQM_BATTERY_NAMES     Comma-separated battery names" \
 "  BQM_BATTERY_IPS       Comma-separated battery IP addresses" \

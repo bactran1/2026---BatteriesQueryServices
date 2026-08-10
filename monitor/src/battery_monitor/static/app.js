@@ -6,7 +6,13 @@ const state = {
   history: [],
   storage: {},
   rack: {},
+  collectorState: "offline",
   collectorOnline: false,
+  lastLiveReceivedAt: 0,
+  lastHistoryRefreshAt: 0,
+  lastEventsRefreshAt: 0,
+  refreshInProgress: false,
+  resourceErrors: { live: null, history: null, events: null },
   theme: "light",
 };
 
@@ -34,33 +40,58 @@ const palette = ["#ff7a00", "#30d158", "#bf5af2", "#34c7d9", "#ff453a"];
 
 const $ = (id) => document.getElementById(id);
 const THEME_STORAGE_KEY = "battery-monitor-theme";
+const LIVE_REFRESH_MS = 5000;
+const SECONDARY_REFRESH_MS = 30000;
+const REQUEST_TIMEOUT_MS = 8000;
+const UI_OFFLINE_AFTER_MS = 120000;
+const requestControllers = new Map();
+let schedulerTimer = null;
+let chartResizeFrame = null;
 
-async function refreshAll() {
-  await refreshLive();
-  await Promise.all([refreshHistory(), refreshEvents()]);
+async function refreshCycle(forceSecondary = false) {
+  if (document.hidden || state.refreshInProgress) return;
+  state.refreshInProgress = true;
+  try {
+    const now = Date.now();
+    const jobs = [["live", refreshLive()]];
+    if (forceSecondary || now - state.lastHistoryRefreshAt >= SECONDARY_REFRESH_MS) {
+      jobs.push(["history", refreshHistory()]);
+    }
+    if (forceSecondary || now - state.lastEventsRefreshAt >= SECONDARY_REFRESH_MS) {
+      jobs.push(["events", refreshEvents()]);
+    }
+
+    const results = await Promise.allSettled(jobs.map(([, promise]) => promise));
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        handleResourceFailure(jobs[index][0], result.reason);
+      }
+    });
+  } finally {
+    state.refreshInProgress = false;
+    scheduleNextRefresh();
+  }
 }
 
 async function refreshLive() {
-  try {
-    const payload = await getJson("/api/live");
-    state.batteries = payload.snapshot?.batteries || [];
-    state.storage = payload.storage || {};
-    state.rack = payload.rack || {};
-    state.collectorOnline = payload.collector_status === "ok";
-    if (!state.selectedBatteryId && state.batteries.length) {
-      state.selectedBatteryId = state.batteries[0].id;
-    }
-    renderStatus(payload);
-    renderRackOverview();
-    renderSummary(payload.summary || {});
-    renderBatteryCards();
-    renderBatteryInventory();
-    renderSelectedBattery();
-    renderStorage();
-  } catch (error) {
-    $("collectorStatus").textContent = "Offline";
-    $("collectorStatus").className = "status-pill status-pill--error";
+  const payload = await getJson("/api/live", "live");
+  state.batteries = payload.snapshot?.batteries || [];
+  state.storage = payload.storage || {};
+  state.rack = payload.rack || {};
+  state.collectorState = payload.collector_status || "offline";
+  state.collectorOnline = ["online", "degraded"].includes(state.collectorState);
+  state.lastLiveReceivedAt = Date.now();
+  state.resourceErrors.live = null;
+  if (!state.selectedBatteryId && state.batteries.length) {
+    state.selectedBatteryId = state.batteries[0].id;
   }
+  renderStatus(payload);
+  renderRackOverview();
+  renderSummary(payload.summary || {});
+  renderBatteryCards();
+  renderBatteryInventory();
+  renderSelectedBattery();
+  renderStorage();
 }
 
 async function refreshHistory() {
@@ -69,33 +100,133 @@ async function refreshHistory() {
     metric: state.metric,
     range: state.range,
   });
-  const payload = await getJson(`/api/history?${params}`);
+  const payload = await getJson(`/api/history?${params}`, "history");
   state.history = payload.points || [];
+  state.lastHistoryRefreshAt = Date.now();
+  state.resourceErrors.history = null;
+  $("historyChart").removeAttribute("data-refresh-error");
   $("chartTitle").textContent = metricLabels[state.metric] || state.metric;
   drawChart();
 }
 
 async function refreshEvents() {
-  const payload = await getJson("/api/events?range=7d&limit=80");
+  const payload = await getJson("/api/events?range=7d&limit=80", "events");
+  state.lastEventsRefreshAt = Date.now();
+  state.resourceErrors.events = null;
+  $("eventList").removeAttribute("data-refresh-error");
   renderEvents(payload.events || []);
 }
 
-async function getJson(url) {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+async function getJson(url, resource) {
+  requestControllers.get(resource)?.abort();
+  const controller = new AbortController();
+  requestControllers.set(resource, controller);
+  const timeout = window.setTimeout(() => {
+    controller.abort(new DOMException("Request timed out", "TimeoutError"));
+  }, REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (controller.signal.reason?.name === "TimeoutError") {
+      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds`);
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    if (requestControllers.get(resource) === controller) {
+      requestControllers.delete(resource);
+    }
   }
-  return response.json();
 }
 
 function renderStatus(payload) {
   const pill = $("collectorStatus");
-  const online = payload.collector_status === "ok";
-  pill.textContent = online ? "Collector online" : "Collector offline";
-  pill.className = `status-pill ${online ? "status-pill--ok" : "status-pill--error"}`;
+  const presentation = connectionPresentation(payload.collector_status);
+  pill.textContent = presentation.label;
+  pill.className = `status-pill ${presentation.className}`;
+  pill.title = payload.collector_error || presentation.description;
 
-  const newest = payload.storage?.newest_reading_at;
-  $("lastUpdated").textContent = newest ? `Logged ${formatTime(newest)}` : "No readings yet";
+  const lastData = payload.monitor?.last_data_at || payload.monitor?.last_success_at;
+  $("lastUpdated").textContent = lastData
+    ? `Data ${formatRelativeTime(lastData)}`
+    : "No live readings yet";
+
+  const detail = $("connectionDetail");
+  if (payload.collector_error) {
+    detail.textContent = `Last error: ${payload.collector_error}`;
+  } else if (payload.monitor?.storage_error) {
+    detail.textContent = `Archive error: ${payload.monitor.storage_error}`;
+  } else if (payload.collector_status === "degraded") {
+    const summary = payload.summary || {};
+    detail.textContent = `${summary.online_count || 0} of ${summary.battery_count || 0} batteries responding`;
+  } else if (payload.collector_status === "stale") {
+    detail.textContent = lastData
+      ? `Last collector data ${formatRelativeTime(lastData)}`
+      : "Waiting for a fresh collector sample";
+  } else if (payload.collector_status === "offline") {
+    detail.textContent = "Waiting for the collector to reconnect";
+  } else if (payload.monitor?.backfill_error) {
+    detail.textContent = `Archive recovery delayed: ${payload.monitor.backfill_error}`;
+  } else {
+    detail.textContent = `Archive current · ${formatNumber(payload.storage?.row_count || 0)} rows`;
+  }
+}
+
+function handleResourceFailure(resource, error) {
+  if (error?.name === "AbortError") return;
+  const message = error?.message || String(error || "Unknown refresh error");
+  state.resourceErrors[resource] = message;
+
+  if (resource === "live") {
+    renderLiveFailure(message);
+    return;
+  }
+  if (resource === "history") {
+    $("historyChart").dataset.refreshError = message;
+    drawChart();
+    return;
+  }
+  $("eventList").dataset.refreshError = message;
+  if (!$("eventList").children.length) {
+    $("eventList").innerHTML = `<div class="empty-mini">Events could not refresh</div>`;
+  }
+}
+
+function renderLiveFailure(message) {
+  const age = state.lastLiveReceivedAt ? Date.now() - state.lastLiveReceivedAt : Infinity;
+  const status = age >= UI_OFFLINE_AFTER_MS ? "offline" : "stale";
+  const presentation = connectionPresentation(status);
+  state.collectorOnline = false;
+  $("collectorStatus").textContent = status === "offline" ? "Monitor offline" : "Data stale";
+  $("collectorStatus").className = `status-pill ${presentation.className}`;
+  $("collectorStatus").title = message;
+  $("lastUpdated").textContent = state.lastLiveReceivedAt
+    ? `Last dashboard update ${formatRelativeTime(new Date(state.lastLiveReceivedAt).toISOString())}`
+    : "No dashboard response";
+  $("connectionDetail").textContent = `Refresh error: ${message}`;
+  renderBatteryCards();
+  renderBatteryInventory();
+  renderSelectedBattery();
+}
+
+function scheduleNextRefresh(delay = LIVE_REFRESH_MS) {
+  window.clearTimeout(schedulerTimer);
+  if (document.hidden) return;
+  schedulerTimer = window.setTimeout(() => refreshCycle(false), delay);
+}
+
+function abortActiveRequests() {
+  requestControllers.forEach((controller) => controller.abort());
+  requestControllers.clear();
 }
 
 function renderSummary(summary) {
@@ -113,7 +244,6 @@ function renderRackOverview() {
   const online = rack.online_battery_count ?? 0;
 
   $("builderLine").textContent = `The system is built by ${rack.builder || "Tran Thanh Tuan"} and son`;
-  $("rackName").textContent = rack.name || "Eco-worthy Rack";
   $("rackDescription").textContent = `${expected} ${pluralize(expected, "battery", "batteries")} configured for local monitoring with a ${formatNumber(rack.retention_days || 1095)}-day archive.`;
   $("rackBatteryCount").textContent = `${expected} configured`;
   $("rackObservedCount").textContent = `${observed} reporting · ${online} online`;
@@ -144,7 +274,7 @@ function renderBatteryCards() {
       renderBatteryCards();
       renderBatteryInventory();
       renderSelectedBattery();
-      refreshHistory();
+      refreshHistory().catch((error) => handleResourceFailure("history", error));
     });
 
     card.innerHTML = `
@@ -182,7 +312,7 @@ function renderBatteryInventory() {
 
   body.innerHTML = inventory
     .map((battery) => {
-      const status = statusPresentation(battery.status);
+      const status = statusPresentation(state.collectorOnline ? battery.status : "stale");
       const hardware = [battery.model, battery.serial_number ? `S/N ${battery.serial_number}` : null]
         .filter(Boolean)
         .join(" · ");
@@ -222,7 +352,7 @@ function renderBatteryInventory() {
       renderBatteryCards();
       renderBatteryInventory();
       renderSelectedBattery();
-      refreshHistory();
+      refreshHistory().catch((error) => handleResourceFailure("history", error));
     });
   });
 }
@@ -305,7 +435,10 @@ function renderDetails(reading, battery) {
     ["Serial", reading.serial_number],
   ];
   $("detailList").innerHTML = details
-    .map(([label, value]) => `<div><dt>${label}</dt><dd>${value ?? "--"}</dd></div>`)
+    .map(
+      ([label, value]) =>
+        `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value ?? "--")}</dd></div>`,
+    )
     .join("");
 }
 
@@ -372,7 +505,11 @@ function drawChart() {
   if (!state.history.length) {
     ctx.fillStyle = theme.chartMuted;
     ctx.font = "14px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-    ctx.fillText("Awaiting history", pad.left, pad.top + 28);
+    ctx.fillText(
+      state.resourceErrors.history ? "History temporarily unavailable" : "Awaiting history",
+      pad.left,
+      pad.top + 28,
+    );
     return;
   }
 
@@ -437,6 +574,35 @@ function statusPresentation(status) {
   if (status === "disabled") return { label: "Disabled", className: "" };
   if (status === "stale") return { label: "Last known", className: "status-pill--pending" };
   return { label: "Waiting", className: "status-pill--pending" };
+}
+
+function connectionPresentation(status) {
+  if (status === "online") {
+    return {
+      label: "Collector online",
+      className: "status-pill--ok",
+      description: "Collector and all configured batteries are responding",
+    };
+  }
+  if (status === "degraded") {
+    return {
+      label: "Collector degraded",
+      className: "status-pill--warning",
+      description: "Collector is reachable, but one or more batteries need attention",
+    };
+  }
+  if (status === "stale") {
+    return {
+      label: "Data stale",
+      className: "status-pill--stale",
+      description: "Last known data is being shown while the collector reconnects",
+    };
+  }
+  return {
+    label: "Collector offline",
+    className: "status-pill--error",
+    description: "The collector has not responded within the offline threshold",
+  };
 }
 
 function batteryDotClass(status) {
@@ -621,7 +787,7 @@ function bindControls() {
 
   $("metricSelect").addEventListener("change", (event) => {
     state.metric = event.target.value;
-    refreshHistory();
+    refreshHistory().catch((error) => handleResourceFailure("history", error));
   });
 
   document.querySelectorAll(".segmented button").forEach((button) => {
@@ -629,7 +795,7 @@ function bindControls() {
       state.range = button.dataset.range;
       document.querySelectorAll(".segmented button").forEach((item) => item.classList.remove("is-active"));
       button.classList.add("is-active");
-      refreshHistory();
+      refreshHistory().catch((error) => handleResourceFailure("history", error));
     });
   });
 
@@ -638,11 +804,32 @@ function bindControls() {
     window.location.href = `/api/export.csv?battery_id=${encodeURIComponent(batteryId)}&days=30`;
   });
 
-  window.addEventListener("resize", drawChart);
+  const chartContainer = $("historyChart").parentElement;
+  if ("ResizeObserver" in window) {
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(chartResizeFrame);
+      chartResizeFrame = window.requestAnimationFrame(drawChart);
+    });
+    observer.observe(chartContainer);
+  } else {
+    window.addEventListener("resize", () => {
+      window.cancelAnimationFrame(chartResizeFrame);
+      chartResizeFrame = window.requestAnimationFrame(drawChart);
+    });
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      window.clearTimeout(schedulerTimer);
+      abortActiveRequests();
+      return;
+    }
+    refreshCycle(true);
+  });
+
+  window.addEventListener("online", () => refreshCycle(true));
+  window.addEventListener("offline", () => renderLiveFailure("Browser network is offline"));
 }
 
 bindControls();
-refreshAll();
-setInterval(refreshLive, 5000);
-setInterval(refreshHistory, 30000);
-setInterval(refreshEvents, 30000);
+refreshCycle(true);
