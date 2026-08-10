@@ -146,10 +146,11 @@ button {
 }
 
 .builder-line {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
 }
 
 .eyebrow {

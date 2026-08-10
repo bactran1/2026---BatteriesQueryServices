@@ -112,8 +112,7 @@ function renderRackOverview() {
   const observed = rack.observed_battery_count ?? 0;
   const online = rack.online_battery_count ?? 0;
 
-  $("builderLine").textContent = `This rack is built by ${rack.builder || "Tran Thanh Tuan"}`;
-  $("rackTopName").textContent = rack.name || "Eco-worthy rack";
+  $("builderLine").textContent = `The system is built by ${rack.builder || "Tran Thanh Tuan"} and son`;
   $("rackName").textContent = rack.name || "Eco-worthy Rack";
   $("rackDescription").textContent = `${expected} ${pluralize(expected, "battery", "batteries")} configured for local monitoring with a ${formatNumber(rack.retention_days || 1095)}-day archive.`;
   $("rackBatteryCount").textContent = `${expected} configured`;
