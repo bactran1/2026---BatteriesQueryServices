@@ -47,6 +47,26 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('document.addEventListener("visibilitychange"', javascript)
         self.assertIn("ResizeObserver", javascript)
 
+    def test_history_and_soc_controls_are_interactive_and_accessible(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="chartTooltip"', html)
+        self.assertIn('id="historyChart"', html)
+        self.assertIn('tabindex="0"', html)
+        self.assertIn('id="fleetSocBar"', html)
+        self.assertIn('role="progressbar"', html)
+        self.assertIn('chart.addEventListener("pointermove"', javascript)
+        self.assertIn("moveChartKeyboardSelection", javascript)
+        self.assertIn("formatChartTimestamp", javascript)
+        self.assertIn("energyFlowPresentation", javascript)
+        self.assertIn("operation_status", javascript)
+        self.assertIn("@keyframes soc-flow-sweep", css)
+        self.assertIn(".soc-progress--charging", css)
+        self.assertIn(".soc-progress--discharging", css)
+        self.assertIn(".chart-tooltip[data-mobile=\"true\"]", css)
+
     def test_layout_contracts_cover_target_viewports(self) -> None:
         css = (STATIC / "styles.css").read_text(encoding="utf-8")
         html = (STATIC / "index.html").read_text(encoding="utf-8")

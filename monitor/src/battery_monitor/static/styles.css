@@ -15,6 +15,8 @@
   --payload-ink: #2c2c2e;
   --ring-core: #ffffff;
   --ring-track: rgba(60, 60, 67, 0.11);
+  --progress-track: rgba(60, 60, 67, 0.12);
+  --tooltip-bg: rgba(255, 255, 255, 0.94);
   --chart-grid: rgba(60, 60, 67, 0.12);
   --chart-ink: rgba(29, 29, 31, 0.82);
   --chart-muted: rgba(60, 60, 67, 0.58);
@@ -45,6 +47,8 @@
   --payload-ink: #e6e6ea;
   --ring-core: #161618;
   --ring-track: rgba(235, 235, 245, 0.14);
+  --progress-track: rgba(235, 235, 245, 0.14);
+  --tooltip-bg: rgba(35, 35, 38, 0.96);
   --chart-grid: rgba(235, 235, 245, 0.13);
   --chart-ink: rgba(245, 245, 247, 0.9);
   --chart-muted: rgba(235, 235, 245, 0.6);
@@ -448,6 +452,19 @@ button {
   transition: background 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.fleet-metric--soc {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.fleet-metric__heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .fleet-metric span,
 .storage-grid span,
 .battery-card__metrics span,
@@ -464,6 +481,101 @@ button {
   font-size: 40px;
   line-height: 1;
   font-weight: 760;
+}
+
+.fleet-metric__heading strong {
+  margin-top: 0;
+  font-size: 30px;
+}
+
+.soc-progress {
+  position: relative;
+  width: 100%;
+  height: 11px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--progress-track);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.fleet-metric--soc .soc-progress {
+  margin-top: 13px;
+}
+
+.soc-progress__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--soc) * 1%);
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--orange);
+  transition:
+    width 900ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.soc-progress__fill::after {
+  position: absolute;
+  inset: 0;
+  width: 42%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.68), transparent);
+  content: "";
+  transform: translateX(-150%);
+}
+
+.soc-progress--charging .soc-progress__fill {
+  background: linear-gradient(90deg, #1fa847, var(--green));
+  animation: soc-charge-pulse 2.8s ease-in-out infinite;
+}
+
+.soc-progress--discharging .soc-progress__fill {
+  background: linear-gradient(90deg, #d92d20, var(--red));
+  animation: soc-discharge-pulse 2.4s ease-in-out infinite;
+}
+
+.soc-progress--charging .soc-progress__fill::after,
+.soc-progress--discharging .soc-progress__fill::after {
+  animation: soc-flow-sweep 1.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.soc-progress--stale .soc-progress__fill {
+  background: var(--muted);
+  opacity: 0.5;
+}
+
+.soc-flow-label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-top: 8px;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.soc-flow-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+
+.soc-progress--charging + .soc-flow-label .soc-flow-dot {
+  background: var(--green);
+}
+
+.soc-progress--discharging + .soc-flow-label .soc-flow-dot {
+  background: var(--red);
+}
+
+.soc-progress--stale + .soc-flow-label .soc-flow-dot {
+  background: var(--muted);
 }
 
 .battery-grid {
@@ -487,19 +599,52 @@ button {
 }
 
 .battery-card {
+  position: relative;
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  overflow: hidden;
   width: 100%;
-  min-height: 210px;
+  min-height: 244px;
   padding: 18px;
   color: inherit;
   text-align: left;
   transition:
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
     border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
     background 420ms cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.battery-card::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: var(--orange);
+  content: "";
+  opacity: 0.72;
+  transition: background-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.battery-card[data-flow="charging"]::before {
+  background: var(--green);
+}
+
+.battery-card[data-flow="discharging"]::before {
+  background: var(--red);
+}
+
+.battery-card[data-flow="stale"]::before {
+  background: var(--muted);
+  opacity: 0.42;
+}
+
+.battery-card.is-entering {
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 .battery-card:hover,
@@ -554,29 +699,37 @@ button {
   box-shadow: 0 0 0 5px rgba(255, 69, 58, 0.14);
 }
 
-.soc-ring {
-  display: grid;
-  place-items: center;
-  width: 108px;
-  height: 108px;
-  align-self: center;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle, var(--ring-core) 58%, transparent 59%),
-    conic-gradient(var(--green) calc(var(--soc) * 1%), var(--ring-track) 0);
-  transition: background 520ms cubic-bezier(0.22, 1, 0.36, 1);
+.battery-card__soc {
+  min-width: 0;
 }
 
-.soc-ring span {
-  font-size: 24px;
+.battery-card__soc-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.battery-card__soc-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.battery-card__soc-heading strong {
+  font-size: 26px;
+  line-height: 1;
   font-weight: 780;
 }
 
 .battery-card__metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 13px 16px;
   align-self: center;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
 }
 
 .battery-card__metrics strong {
@@ -777,10 +930,133 @@ select {
   background: var(--ink);
 }
 
+.chart-stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--soft-bg);
+  transition: background 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 #historyChart {
   display: block;
   width: 100%;
   height: 320px;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+#historyChart:focus-visible {
+  border-radius: 8px;
+  outline: 3px solid rgba(255, 122, 0, 0.38);
+  outline-offset: -3px;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  width: max-content;
+  min-width: 218px;
+  max-width: calc(100% - 24px);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--tooltip-bg);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 14px));
+  transition:
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chart-tooltip[hidden] {
+  display: none;
+}
+
+.chart-tooltip.is-below {
+  transform: translate(-50%, 14px);
+}
+
+.chart-tooltip[data-mobile="true"] {
+  right: 12px;
+  width: auto;
+  max-width: none;
+  transform: none;
+}
+
+.chart-tooltip__swatch,
+.chart-legend__swatch {
+  display: block;
+  background: var(--series-color);
+}
+
+.chart-tooltip__swatch {
+  width: 8px;
+  height: 28px;
+  border-radius: 4px;
+}
+
+.chart-tooltip__identity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.chart-tooltip__identity strong {
+  font-size: 12px;
+}
+
+.chart-tooltip__identity time {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.chart-tooltip__value {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chart-legend {
+  display: flex;
+  min-height: 30px;
+  margin-top: 10px;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.chart-legend:empty {
+  display: none;
+}
+
+.chart-legend__item {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-legend__item strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.chart-legend__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 .cell-strip {
@@ -1067,6 +1343,36 @@ select {
   background: var(--panel);
 }
 
+@keyframes soc-flow-sweep {
+  0% {
+    transform: translateX(-150%);
+  }
+  70%,
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+@keyframes soc-charge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(48, 209, 88, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(48, 209, 88, 0.48);
+  }
+}
+
+@keyframes soc-discharge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(255, 69, 58, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(255, 69, 58, 0.48);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1074,6 +1380,10 @@ select {
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
     animation-duration: 1ms !important;
+  }
+
+  .soc-progress__fill::after {
+    display: none;
   }
 }
 
@@ -1143,6 +1453,10 @@ select {
     font-size: 30px;
   }
 
+  .fleet-metric__heading strong {
+    font-size: 26px;
+  }
+
   .fleet-band,
   .storage-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1182,10 +1496,12 @@ select {
 
   .battery-card {
     grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 16px;
   }
 
-  .soc-ring {
-    justify-self: center;
+  .panel {
+    padding: 16px;
   }
 
   .panel-heading {
@@ -1199,6 +1515,10 @@ select {
 
   #historyChart {
     height: 280px;
+  }
+
+  .chart-legend {
+    gap: 4px 12px;
   }
 
   .temperature-row,
@@ -1221,24 +1541,31 @@ select {
     grid-column: 1;
   }
 
-  .fleet-band,
-  .storage-grid,
-  .battery-card__metrics {
-    grid-template-columns: 1fr;
+  .fleet-metric {
+    min-height: 104px;
+    padding: 16px 14px;
   }
 
-  .rack-facts,
+  .fleet-metric strong {
+    font-size: 27px;
+  }
+
+  .fleet-metric__heading {
+    align-items: center;
+    gap: 4px;
+  }
+
+  .fleet-metric__heading strong {
+    font-size: 21px;
+  }
+
+  .fleet-metric__heading > span {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
   .inventory-row {
     grid-template-columns: 1fr;
-  }
-
-  .rack-facts > div {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .rack-facts > div:last-child {
-    border-bottom: 0;
   }
 
   .segmented {
@@ -1253,5 +1580,10 @@ select {
   select {
     width: 100%;
     max-width: none;
+  }
+
+  .chart-tooltip__identity time {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }

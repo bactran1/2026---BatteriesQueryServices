@@ -87,9 +87,23 @@
         </section>
 
         <section class="fleet-band" aria-label="Fleet summary">
-          <div class="fleet-metric">
-            <span>Average SOC</span>
-            <strong id="fleetSoc">--</strong>
+          <div class="fleet-metric fleet-metric--soc">
+            <div class="fleet-metric__heading">
+              <span>Rack SOC</span>
+              <strong id="fleetSoc">--</strong>
+            </div>
+            <div
+              id="fleetSocBar"
+              class="soc-progress soc-progress--idle"
+              style="--soc: 0"
+              role="progressbar"
+              aria-label="Overall rack state of charge"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <span class="soc-progress__fill"></span>
+            </div>
+            <small id="fleetFlow" class="soc-flow-label">Waiting for readings</small>
           </div>
           <div class="fleet-metric">
             <span>Live power</span>
@@ -153,7 +167,17 @@
                 </div>
               </div>
             </div>
-            <canvas id="historyChart" height="320" aria-label="Battery history chart"></canvas>
+            <div id="chartStage" class="chart-stage">
+              <canvas
+                id="historyChart"
+                height="320"
+                tabindex="0"
+                aria-label="Battery history chart"
+                aria-describedby="chartTooltip"
+              ></canvas>
+              <div id="chartTooltip" class="chart-tooltip" role="status" aria-live="polite" hidden></div>
+            </div>
+            <div id="chartLegend" class="chart-legend" aria-hidden="true"></div>
           </div>
 
           <div class="panel detail-panel">
