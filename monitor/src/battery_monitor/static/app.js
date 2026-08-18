@@ -358,14 +358,18 @@ function renderRackOverview() {
   const online = rack.online_battery_count ?? 0;
 
   $("builderLine").textContent = `The system is built by ${rack.builder || "Tran Thanh Tuan"} and son`;
-  $("rackDescription").textContent = `${expected} ${pluralize(expected, "battery", "batteries")} configured for local monitoring with a ${formatNumber(rack.retention_days || 1095)}-day archive.`;
-  $("rackBatteryCount").textContent = `${expected} configured`;
-  $("rackObservedCount").textContent = `${observed} reporting · ${online} online`;
+  $("rackDescription").textContent = expected
+    ? online === expected
+      ? "All batteries online"
+      : `${online} of ${expected} online`
+    : "Waiting for rack status";
+  $("rackBatteryCount").textContent = `${expected} ${pluralize(expected, "pack", "packs")}`;
+  $("rackObservedCount").textContent = `${observed} reporting`;
   $("rackCollectorName").textContent = rack.collector?.name || "Raspberry Pi collector";
   $("rackCollectorAddress").textContent = hostFromUrl(rack.collector?.url) || "Not configured";
   $("rackConnection").textContent = rack.connection || "Modbus RTU over RS485";
   $("rackLocation").textContent = rack.location || "Not specified";
-  $("rackRetention").textContent = `${formatNumber(rack.retention_days || 1095)}-day archive`;
+  $("rackRetention").textContent = `${formatNumber(rack.retention_days || 1095)} days retained`;
 }
 
 function renderBatteryCards() {

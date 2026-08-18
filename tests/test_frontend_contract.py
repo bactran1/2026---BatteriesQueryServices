@@ -85,6 +85,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('<details id="payloadDetails"', html)
         self.assertNotIn('<details id="payloadDetails" open', html)
         self.assertNotIn('<h2 id="rackName">Eco-worthy Rack</h2>', html)
+        self.assertIn("grid-template-columns: minmax(190px, 0.5fr)", css)
+        self.assertIn('id="rackDescription">Waiting for rack status', html)
+        self.assertIn('"All batteries online"', (STATIC / "app.js").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
