@@ -394,7 +394,7 @@ button {
 
 .rack-facts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: 0;
 }
 
@@ -452,8 +452,8 @@ button {
 }
 
 .fleet-metric {
-  min-height: 112px;
-  padding: 20px;
+  min-height: 106px;
+  padding: 17px 18px;
   background: var(--panel-strong);
   transition: background 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -484,7 +484,7 @@ button {
 .fleet-metric strong {
   display: block;
   margin-top: 12px;
-  font-size: 40px;
+  font-size: 34px;
   line-height: 1;
   font-weight: 760;
 }
@@ -492,6 +492,28 @@ button {
 .fleet-metric__heading strong {
   margin-top: 0;
   font-size: 30px;
+}
+
+.fleet-metric > small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.fleet-metric--temperature strong {
+  color: var(--accent);
+}
+
+.fleet-metric--health strong {
+  font-size: 30px;
+}
+
+.fleet-metric--health.has-alerts strong {
+  color: var(--red);
 }
 
 .soc-progress {
@@ -1479,6 +1501,11 @@ select {
 
   .rack-facts > div:nth-child(-n + 2) {
     border-bottom: 1px solid var(--line);
+  }
+
+  .rack-facts > div:last-child {
+    grid-column: 1 / -1;
+    border-right: 0;
   }
 
   .rack-facts > div {

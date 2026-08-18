@@ -198,10 +198,40 @@ def _summary(batteries: list[dict]) -> dict:
         for reading in readings
         if isinstance(reading.get("power_w"), (int, float))
     ]
+    current_values = [
+        reading.get("current_a")
+        for reading in readings
+        if isinstance(reading.get("current_a"), (int, float))
+    ]
+    voltage_values = [
+        reading.get("voltage_v")
+        for reading in readings
+        if isinstance(reading.get("voltage_v"), (int, float))
+    ]
     remaining_capacity = [
         reading.get("remaining_capacity_ah")
         for reading in readings
         if isinstance(reading.get("remaining_capacity_ah"), (int, float))
+    ]
+    full_capacity = [
+        reading.get("full_capacity_ah")
+        for reading in readings
+        if isinstance(reading.get("full_capacity_ah"), (int, float))
+    ]
+    mosfet_temperatures = [
+        reading.get("mosfet_temperature_c")
+        for reading in readings
+        if isinstance(reading.get("mosfet_temperature_c"), (int, float))
+    ]
+    ambient_temperatures = [
+        reading.get("ambient_temperature_c")
+        for reading in readings
+        if isinstance(reading.get("ambient_temperature_c"), (int, float))
+    ]
+    cell_deltas = [
+        reading.get("cell_voltage_delta_v")
+        for reading in readings
+        if isinstance(reading.get("cell_voltage_delta_v"), (int, float))
     ]
     alarm_count = sum(len(reading.get("alarms") or []) for reading in readings)
     fault_count = sum(len(reading.get("faults") or []) for reading in readings)
@@ -212,8 +242,32 @@ def _summary(batteries: list[dict]) -> dict:
         if soc_values
         else None,
         "total_power_w": round(sum(power_values), 1) if power_values else None,
+        "total_current_a": round(sum(current_values), 2) if current_values else None,
+        "average_voltage_v": round(sum(voltage_values) / len(voltage_values), 2)
+        if voltage_values
+        else None,
         "remaining_capacity_ah": round(sum(remaining_capacity), 1)
         if remaining_capacity
+        else None,
+        "full_capacity_ah": round(sum(full_capacity), 1) if full_capacity else None,
+        "average_mosfet_temperature_c": round(
+            sum(mosfet_temperatures) / len(mosfet_temperatures), 1
+        )
+        if mosfet_temperatures
+        else None,
+        "maximum_mosfet_temperature_c": round(max(mosfet_temperatures), 1)
+        if mosfet_temperatures
+        else None,
+        "average_ambient_temperature_c": round(
+            sum(ambient_temperatures) / len(ambient_temperatures), 1
+        )
+        if ambient_temperatures
+        else None,
+        "maximum_ambient_temperature_c": round(max(ambient_temperatures), 1)
+        if ambient_temperatures
+        else None,
+        "maximum_cell_voltage_delta_v": round(max(cell_deltas), 4)
+        if cell_deltas
         else None,
         "alarm_count": alarm_count,
         "fault_count": fault_count,

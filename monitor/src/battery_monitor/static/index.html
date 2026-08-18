@@ -78,11 +78,6 @@
               <strong>RS485</strong>
               <small id="rackConnection">Modbus RTU</small>
             </div>
-            <div>
-              <span>Location</span>
-              <strong id="rackLocation">Battery room</strong>
-              <small id="rackRetention">1,095-day archive</small>
-            </div>
           </div>
         </section>
 
@@ -108,14 +103,37 @@
           <div class="fleet-metric">
             <span>Live power</span>
             <strong id="fleetPower">--</strong>
+            <small id="fleetPowerDetail">Net rack power</small>
+          </div>
+          <div class="fleet-metric">
+            <span>Rack current</span>
+            <strong id="fleetCurrent">--</strong>
+            <small>Net across all packs</small>
+          </div>
+          <div class="fleet-metric">
+            <span>Average voltage</span>
+            <strong id="fleetVoltage">--</strong>
+            <small>Across reporting packs</small>
           </div>
           <div class="fleet-metric">
             <span>Capacity left</span>
             <strong id="fleetCapacity">--</strong>
+            <small id="fleetCapacityDetail">Combined capacity</small>
           </div>
-          <div class="fleet-metric">
-            <span>Alerts</span>
-            <strong id="fleetAlerts">--</strong>
+          <div class="fleet-metric fleet-metric--temperature">
+            <span>MOSFET temperature</span>
+            <strong id="fleetMosfetTemp">--</strong>
+            <small id="fleetMosfetPeak">Peak unavailable</small>
+          </div>
+          <div class="fleet-metric fleet-metric--temperature">
+            <span>Ambient temperature</span>
+            <strong id="fleetAmbientTemp">--</strong>
+            <small id="fleetAmbientPeak">Peak unavailable</small>
+          </div>
+          <div id="fleetHealthMetric" class="fleet-metric fleet-metric--health">
+            <span>Rack health</span>
+            <strong id="fleetHealth">--</strong>
+            <small id="fleetCellDelta">Cell spread unavailable</small>
           </div>
         </section>
 

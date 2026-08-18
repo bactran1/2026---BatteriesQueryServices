@@ -272,9 +272,34 @@ function renderSummary(summary) {
   $("fleetFlow").textContent = flow.label;
   updateSocProgress($("fleetSocBar"), rackSoc, flow.mode);
   $("fleetPower").textContent = formatValue(summary.total_power_w, "W");
+  $("fleetPowerDetail").textContent = rackPowerDetail(flow.mode);
+  $("fleetCurrent").textContent = formatValue(summary.total_current_a, "A");
+  $("fleetVoltage").textContent = formatValue(summary.average_voltage_v, "V", 2);
   $("fleetCapacity").textContent = formatValue(summary.remaining_capacity_ah, "Ah");
+  $("fleetCapacityDetail").textContent = finiteNumber(summary.full_capacity_ah) === null
+    ? "Combined capacity"
+    : `of ${formatValue(summary.full_capacity_ah, "Ah")}`;
+  $("fleetMosfetTemp").textContent = formatValue(summary.average_mosfet_temperature_c, "°C");
+  $("fleetMosfetPeak").textContent = temperaturePeakLabel(summary.maximum_mosfet_temperature_c);
+  $("fleetAmbientTemp").textContent = formatValue(summary.average_ambient_temperature_c, "°C");
+  $("fleetAmbientPeak").textContent = temperaturePeakLabel(summary.maximum_ambient_temperature_c);
   const alerts = (summary.alarm_count || 0) + (summary.fault_count || 0);
-  $("fleetAlerts").textContent = `${alerts}`;
+  $("fleetHealth").textContent = alerts ? `${alerts} ${pluralize(alerts, "alert", "alerts")}` : "Nominal";
+  $("fleetHealthMetric").classList.toggle("has-alerts", alerts > 0);
+  $("fleetCellDelta").textContent = finiteNumber(summary.maximum_cell_voltage_delta_v) === null
+    ? "Cell spread unavailable"
+    : `Max cell Δ ${formatValue(summary.maximum_cell_voltage_delta_v, "V", 3)}`;
+}
+
+function rackPowerDetail(mode) {
+  if (mode === "charging") return "Charging input";
+  if (mode === "discharging") return "Discharge output";
+  if (mode === "stale") return "Last known power";
+  return "Net rack power";
+}
+
+function temperaturePeakLabel(value) {
+  return finiteNumber(value) === null ? "Peak unavailable" : `Peak ${formatValue(value, "°C")}`;
 }
 
 function energyFlowPresentation(reading, available = true) {
@@ -368,8 +393,6 @@ function renderRackOverview() {
   $("rackCollectorName").textContent = rack.collector?.name || "Raspberry Pi collector";
   $("rackCollectorAddress").textContent = hostFromUrl(rack.collector?.url) || "Not configured";
   $("rackConnection").textContent = rack.connection || "Modbus RTU over RS485";
-  $("rackLocation").textContent = rack.location || "Not specified";
-  $("rackRetention").textContent = `${formatNumber(rack.retention_days || 1095)} days retained`;
 }
 
 function renderBatteryCards() {
