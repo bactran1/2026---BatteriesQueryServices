@@ -114,6 +114,20 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".language-toggle__track", css)
         self.assertIn(".preference-controls", css)
 
+    def test_default_configured_labels_are_localized_in_vietnamese(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('data-i18n-alt="logo.alt"', html)
+        self.assertIn("function localizedBatteryName", javascript)
+        self.assertIn("function localizedBatteryModel", javascript)
+        self.assertIn("function localizedCollectorName", javascript)
+        self.assertIn("function localizedConnectionName", javascript)
+        self.assertIn('"battery.defaultRackName": "Pin tủ {number}"', javascript)
+        self.assertIn('"inventory.defaultModel": "Pin tủ máy chủ Eco-worthy"', javascript)
+        self.assertIn('"rack.defaultConnection": "Modbus RTU qua RS485"', javascript)
+        self.assertIn("localizedBatteryName(profile?.name || battery.id)", javascript)
+
 
 if __name__ == "__main__":
     unittest.main()

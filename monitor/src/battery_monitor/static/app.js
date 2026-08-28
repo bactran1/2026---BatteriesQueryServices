@@ -38,6 +38,7 @@ const translations = {
   en: {
     "page.title": "Battery Monitor",
     "app.title": "Battery Monitor",
+    "logo.alt": "Tran T logo",
     "brand.builderDefault": "The system is built by Tran Thanh Tuan and son",
     "brand.builder": "The system is built by {builder} and son",
     "language.switchTitle": "Switch language",
@@ -85,6 +86,7 @@ const translations = {
     "rack.batteries": "Batteries",
     "rack.collector": "Collector",
     "rack.defaultCollector": "Raspberry Pi collector",
+    "rack.defaultConnection": "Modbus RTU over RS485",
     "rack.bus": "Bus",
     "rack.allOnline": "All batteries online",
     "rack.onlineCount": "{online} of {expected} online",
@@ -132,6 +134,8 @@ const translations = {
     "flow.rackStandingBy": "Rack standing by",
     "battery.readings": "Battery readings",
     "battery.awaitingReadings": "Awaiting readings",
+    "battery.defaultRackName": "Rack Battery {number}",
+    "battery.defaultName": "Battery {number}",
     "battery.socAria": "{name} state of charge",
     "battery.voltage": "Voltage",
     "battery.current": "Current",
@@ -151,6 +155,7 @@ const translations = {
     "inventory.noDirectIp": "No direct IP recorded",
     "inventory.address": "Address {address}",
     "inventory.defaultHardware": "Eco-worthy battery",
+    "inventory.defaultModel": "Eco-worthy server rack battery",
     "inventory.firmware": "Firmware {version}",
     "inventory.firmwarePending": "Firmware pending",
     "inventory.seen": "Seen {relative}",
@@ -220,6 +225,7 @@ const translations = {
   vi: {
     "page.title": "Giám sát hệ thống pin",
     "app.title": "Giám sát hệ thống pin",
+    "logo.alt": "Logo Tran T",
     "brand.builderDefault": "Hệ thống do Tran Thanh Tuan và con trai xây dựng",
     "brand.builder": "Hệ thống do {builder} và con trai xây dựng",
     "language.switchTitle": "Chuyển ngôn ngữ",
@@ -267,6 +273,7 @@ const translations = {
     "rack.batteries": "Pin",
     "rack.collector": "Bộ thu thập",
     "rack.defaultCollector": "Bộ thu thập Raspberry Pi",
+    "rack.defaultConnection": "Modbus RTU qua RS485",
     "rack.bus": "Kết nối",
     "rack.allOnline": "Tất cả pin đang trực tuyến",
     "rack.onlineCount": "{online}/{expected} đang trực tuyến",
@@ -314,6 +321,8 @@ const translations = {
     "flow.rackStandingBy": "Tủ pin đang chờ",
     "battery.readings": "Số liệu pin",
     "battery.awaitingReadings": "Đang chờ số liệu",
+    "battery.defaultRackName": "Pin tủ {number}",
+    "battery.defaultName": "Pin {number}",
     "battery.socAria": "Mức sạc của {name}",
     "battery.voltage": "Điện áp",
     "battery.current": "Dòng điện",
@@ -333,6 +342,7 @@ const translations = {
     "inventory.noDirectIp": "Chưa ghi nhận IP trực tiếp",
     "inventory.address": "Địa chỉ {address}",
     "inventory.defaultHardware": "Pin Eco-worthy",
+    "inventory.defaultModel": "Pin tủ máy chủ Eco-worthy",
     "inventory.firmware": "Firmware {version}",
     "inventory.firmwarePending": "Đang chờ firmware",
     "inventory.seen": "Ghi nhận {relative}",
@@ -462,6 +472,9 @@ function applyStaticTranslations() {
   });
   document.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
     element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+  });
+  document.querySelectorAll("[data-i18n-alt]").forEach((element) => {
+    element.setAttribute("alt", t(element.dataset.i18nAlt));
   });
 }
 
@@ -819,9 +832,9 @@ function renderRackOverview() {
     : t("rack.waitingStatus");
   $("rackBatteryCount").textContent = `${formatNumber(expected)} ${t(expected === 1 ? "rack.pack" : "rack.packs")}`;
   $("rackObservedCount").textContent = t("rack.reporting", { count: formatNumber(observed) });
-  $("rackCollectorName").textContent = rack.collector?.name || t("rack.defaultCollector");
+  $("rackCollectorName").textContent = localizedCollectorName(rack.collector?.name);
   $("rackCollectorAddress").textContent = hostFromUrl(rack.collector?.url) || t("common.notConfigured");
-  $("rackConnection").textContent = rack.connection || "Modbus RTU over RS485";
+  $("rackConnection").textContent = localizedConnectionName(rack.connection);
 }
 
 function renderBatteryCards() {
@@ -840,6 +853,7 @@ function renderBatteryCards() {
   for (const battery of state.batteries) {
     const reading = battery.last_reading || {};
     const profile = batteryProfile(battery);
+    const displayName = localizedBatteryName(profile?.name || battery.id);
     const socValue = finiteNumber(reading.soc_percent);
     const soc = clamp(socValue ?? 0, 0, 100);
     const previousSoc = state.renderedSoc.get(battery.id) ?? 0;
@@ -872,7 +886,7 @@ function renderBatteryCards() {
     card.innerHTML = `
       <div class="battery-card__top">
         <span>
-          <strong>${escapeHtml(profile?.name || battery.id)}</strong>
+          <strong>${escapeHtml(displayName)}</strong>
           <small>${escapeHtml(battery.id)} · RS485 ${escapeHtml(battery.address ?? "--")}</small>
         </span>
         <span class="${batteryDotClass(battery.status)}"></span>
@@ -886,7 +900,7 @@ function renderBatteryCards() {
           class="soc-progress soc-progress--${flow.mode}"
           style="--soc: ${previousSoc}"
           role="progressbar"
-          aria-label="${escapeHtml(t("battery.socAria", { name: profile?.name || battery.id }))}"
+          aria-label="${escapeHtml(t("battery.socAria", { name: displayName }))}"
           aria-valuemin="0"
           aria-valuemax="100"
           ${socValue === null ? "" : `aria-valuenow="${soc}"`}
@@ -938,14 +952,18 @@ function renderBatteryInventory() {
   body.innerHTML = inventory
     .map((battery) => {
       const status = statusPresentation(state.collectorOnline ? battery.status : "stale");
-      const hardware = [battery.model, battery.serial_number ? `S/N ${battery.serial_number}` : null]
+      const displayName = localizedBatteryName(battery.name || battery.id);
+      const hardware = [
+        localizedBatteryModel(battery.model),
+        battery.serial_number ? `S/N ${battery.serial_number}` : null,
+      ]
         .filter(Boolean)
         .join(" · ");
       const busDetail = battery.rs485_protocol || "Modbus RTU";
       return `
         <button class="inventory-row ${battery.id === state.selectedBatteryId ? "is-selected" : ""}" data-battery-id="${escapeHtml(battery.id)}" type="button">
           <span class="inventory-cell" data-label="${escapeHtml(t("inventory.battery"))}">
-            <strong>${escapeHtml(battery.name || battery.id)}</strong>
+            <strong>${escapeHtml(displayName)}</strong>
             <small>${escapeHtml(battery.id)}</small>
           </span>
           <span class="inventory-cell" data-label="${escapeHtml(t("inventory.network"))}">
@@ -1004,7 +1022,7 @@ function renderSelectedBattery() {
 
   const reading = battery.last_reading || {};
   const profile = batteryProfile(battery);
-  $("selectedName").textContent = profile?.name || battery.id;
+  $("selectedName").textContent = localizedBatteryName(profile?.name || battery.id);
   const status = statusPresentation(state.collectorOnline ? battery.status : "stale");
   $("selectedState").textContent = status.label;
   $("selectedState").className = `status-pill ${status.className}`;
@@ -1058,7 +1076,7 @@ function renderDetails(reading, battery) {
   const details = [
     [t("details.batteryId"), battery.id],
     [t("details.ipAddress"), profile?.ip_address || t("common.notConfigured")],
-    [t("details.model"), profile?.model],
+    [t("details.model"), localizedBatteryModel(profile?.model)],
     [t("details.address"), battery.address],
     [t("details.state"), operationLabel(reading.operation_status)],
     [t("details.soh"), formatValue(reading.soh_percent, "%")],
@@ -1494,6 +1512,40 @@ function batteryProfile(battery) {
   return (state.rack.batteries || []).find(
     (profile) => profile.id === battery.id || profile.address === battery.address,
   );
+}
+
+function localizedBatteryName(value) {
+  if (!value || state.language !== "vi") return value;
+  const name = String(value).trim();
+  const rackBattery = /^rack battery\s+(\d+)$/i.exec(name);
+  if (rackBattery) return t("battery.defaultRackName", { number: rackBattery[1] });
+  const battery = /^battery\s+(\d+)$/i.exec(name);
+  if (battery) return t("battery.defaultName", { number: battery[1] });
+  return value;
+}
+
+function localizedBatteryModel(value) {
+  if (!value || state.language !== "vi") return value;
+  const model = String(value).trim();
+  if (/^eco-worthy server rack battery$/i.test(model)) return t("inventory.defaultModel");
+  if (/^eco-worthy battery$/i.test(model)) return t("inventory.defaultHardware");
+  return value;
+}
+
+function localizedCollectorName(value) {
+  if (!value) return t("rack.defaultCollector");
+  if (state.language === "vi" && /^raspberry pi collector$/i.test(String(value).trim())) {
+    return t("rack.defaultCollector");
+  }
+  return value;
+}
+
+function localizedConnectionName(value) {
+  if (!value) return t("rack.defaultConnection");
+  if (state.language === "vi" && /^modbus rtu over rs485$/i.test(String(value).trim())) {
+    return t("rack.defaultConnection");
+  }
+  return value;
 }
 
 function statusPresentation(status) {
