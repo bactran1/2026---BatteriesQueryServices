@@ -17,6 +17,19 @@
         } catch {
           document.documentElement.dataset.theme = "light";
         }
+
+        try {
+          const storedLanguage = localStorage.getItem("battery-monitor-language");
+          const browserLanguage = navigator.language?.toLowerCase().startsWith("vi") ? "vi" : "en";
+          const language = storedLanguage === "vi" || storedLanguage === "en"
+            ? storedLanguage
+            : browserLanguage;
+          document.documentElement.lang = language;
+          document.documentElement.dataset.language = language;
+        } catch {
+          document.documentElement.lang = "en";
+          document.documentElement.dataset.language = "en";
+        }
       })();
     </script>
     <link rel="icon" type="image/png" href="/static/assets/tran-t-icon.png?v=__BUILD_COMMIT__" />
@@ -35,56 +48,77 @@
             height="64"
           />
           <div class="brand-lockup__copy">
-            <p id="builderLine" class="builder-line">The system is built by Tran Thanh Tuan and son</p>
-            <h1>Battery Monitor</h1>
+            <p id="builderLine" class="builder-line" data-i18n="brand.builderDefault">The system is built by Tran Thanh Tuan and son</p>
+            <h1 data-i18n="app.title">Battery Monitor</h1>
           </div>
         </div>
         <div class="topbar__meta">
-          <label class="theme-toggle" title="Switch appearance">
-            <input id="themeToggle" type="checkbox" aria-label="Switch between light and dark theme" />
-            <span class="theme-toggle__track" aria-hidden="true">
-              <span class="theme-toggle__sun"></span>
-              <span class="theme-toggle__moon"></span>
-              <span class="theme-toggle__thumb"></span>
-            </span>
-          </label>
+          <div class="preference-controls">
+            <label class="language-toggle" title="Switch language" data-i18n-title="language.switchTitle">
+              <input
+                id="languageToggle"
+                type="checkbox"
+                role="switch"
+                aria-label="Switch between English and Vietnamese"
+                data-i18n-aria-label="language.switchLabel"
+              />
+              <span class="language-toggle__track" aria-hidden="true">
+                <span class="language-toggle__option">EN</span>
+                <span class="language-toggle__option">VI</span>
+                <span class="language-toggle__thumb"></span>
+              </span>
+            </label>
+            <label class="theme-toggle" title="Switch appearance" data-i18n-title="theme.switchTitle">
+              <input
+                id="themeToggle"
+                type="checkbox"
+                aria-label="Switch between light and dark theme"
+                data-i18n-aria-label="theme.switchLabel"
+              />
+              <span class="theme-toggle__track" aria-hidden="true">
+                <span class="theme-toggle__sun"></span>
+                <span class="theme-toggle__moon"></span>
+                <span class="theme-toggle__thumb"></span>
+              </span>
+            </label>
+          </div>
           <div class="connection-meta" aria-live="polite">
-            <span id="collectorStatus" class="status-pill status-pill--pending">Starting</span>
-            <span id="lastUpdated" class="timestamp">No readings yet</span>
-            <span id="connectionDetail" class="connection-detail">Connecting to collector</span>
+            <span id="collectorStatus" class="status-pill status-pill--pending" data-i18n="status.starting">Starting</span>
+            <span id="lastUpdated" class="timestamp" data-i18n="status.noReadings">No readings yet</span>
+            <span id="connectionDetail" class="connection-detail" data-i18n="status.connecting">Connecting to collector</span>
           </div>
         </div>
       </header>
 
       <main>
-        <section class="rack-overview" aria-label="Rack overview">
+        <section class="rack-overview" aria-label="Rack overview" data-i18n-aria-label="rack.overview">
           <div class="rack-overview__identity">
-            <p class="eyebrow">Rack overview</p>
-            <p id="rackDescription">Waiting for rack status</p>
+            <p class="eyebrow" data-i18n="rack.overview">Rack overview</p>
+            <p id="rackDescription" data-i18n="rack.waitingStatus">Waiting for rack status</p>
           </div>
           <div class="rack-facts">
             <div>
-              <span>Batteries</span>
+              <span data-i18n="rack.batteries">Batteries</span>
               <strong id="rackBatteryCount">3 packs</strong>
-              <small id="rackObservedCount">Waiting for data</small>
+              <small id="rackObservedCount" data-i18n="common.waitingData">Waiting for data</small>
             </div>
             <div>
-              <span>Collector</span>
-              <strong id="rackCollectorName">Raspberry Pi collector</strong>
+              <span data-i18n="rack.collector">Collector</span>
+              <strong id="rackCollectorName" data-i18n="rack.defaultCollector">Raspberry Pi collector</strong>
               <small id="rackCollectorAddress">raspberrypi.local</small>
             </div>
             <div>
-              <span>Bus</span>
+              <span data-i18n="rack.bus">Bus</span>
               <strong>RS485</strong>
               <small id="rackConnection">Modbus RTU</small>
             </div>
           </div>
         </section>
 
-        <section class="fleet-band" aria-label="Fleet summary">
+        <section class="fleet-band" aria-label="Fleet summary" data-i18n-aria-label="fleet.summary">
           <div class="fleet-metric fleet-metric--soc">
             <div class="fleet-metric__heading">
-              <span>Rack SOC</span>
+              <span data-i18n="fleet.rackSoc">Rack SOC</span>
               <strong id="fleetSoc">--</strong>
             </div>
             <div
@@ -93,90 +127,91 @@
               style="--soc: 0"
               role="progressbar"
               aria-label="Overall rack state of charge"
+              data-i18n-aria-label="fleet.socAria"
               aria-valuemin="0"
               aria-valuemax="100"
             >
               <span class="soc-progress__fill"></span>
             </div>
-            <small id="fleetFlow" class="soc-flow-label">Waiting for readings</small>
+            <small id="fleetFlow" class="soc-flow-label" data-i18n="common.waitingReadings">Waiting for readings</small>
           </div>
           <div class="fleet-metric">
-            <span>Live power</span>
+            <span data-i18n="fleet.livePower">Live power</span>
             <strong id="fleetPower">--</strong>
-            <small id="fleetPowerDetail">Net rack power</small>
+            <small id="fleetPowerDetail" data-i18n="fleet.netPower">Net rack power</small>
           </div>
           <div class="fleet-metric">
-            <span>Rack current</span>
+            <span data-i18n="fleet.rackCurrent">Rack current</span>
             <strong id="fleetCurrent">--</strong>
-            <small>Net across all packs</small>
+            <small data-i18n="fleet.netCurrentDetail">Net across all packs</small>
           </div>
           <div class="fleet-metric">
-            <span>Average voltage</span>
+            <span data-i18n="fleet.averageVoltage">Average voltage</span>
             <strong id="fleetVoltage">--</strong>
-            <small>Across reporting packs</small>
+            <small data-i18n="fleet.averageVoltageDetail">Across reporting packs</small>
           </div>
           <div class="fleet-metric">
-            <span>Capacity left</span>
+            <span data-i18n="fleet.capacityLeft">Capacity left</span>
             <strong id="fleetCapacity">--</strong>
-            <small id="fleetCapacityDetail">Combined capacity</small>
+            <small id="fleetCapacityDetail" data-i18n="fleet.combinedCapacity">Combined capacity</small>
           </div>
           <div class="fleet-metric fleet-metric--temperature">
-            <span>MOSFET temperature</span>
+            <span data-i18n="fleet.mosfetTemperature">MOSFET temperature</span>
             <strong id="fleetMosfetTemp">--</strong>
-            <small id="fleetMosfetPeak">Peak unavailable</small>
+            <small id="fleetMosfetPeak" data-i18n="fleet.peakUnavailable">Peak unavailable</small>
           </div>
           <div class="fleet-metric fleet-metric--temperature">
-            <span>Ambient temperature</span>
+            <span data-i18n="fleet.ambientTemperature">Ambient temperature</span>
             <strong id="fleetAmbientTemp">--</strong>
-            <small id="fleetAmbientPeak">Peak unavailable</small>
+            <small id="fleetAmbientPeak" data-i18n="fleet.peakUnavailable">Peak unavailable</small>
           </div>
           <div id="fleetHealthMetric" class="fleet-metric fleet-metric--health">
-            <span>Rack health</span>
+            <span data-i18n="fleet.rackHealth">Rack health</span>
             <strong id="fleetHealth">--</strong>
-            <small id="fleetCellDelta">Cell spread unavailable</small>
+            <small id="fleetCellDelta" data-i18n="fleet.cellSpreadUnavailable">Cell spread unavailable</small>
           </div>
         </section>
 
-        <section id="batteryGrid" class="battery-grid" aria-label="Battery readings"></section>
+        <section id="batteryGrid" class="battery-grid" aria-label="Battery readings" data-i18n-aria-label="battery.readings"></section>
 
         <section class="panel inventory-panel" aria-labelledby="inventoryTitle">
           <div class="panel-heading inventory-heading">
             <div>
-              <p class="eyebrow">Rack inventory</p>
-              <h2 id="inventoryTitle">Battery details</h2>
+              <p class="eyebrow" data-i18n="inventory.eyebrow">Rack inventory</p>
+              <h2 id="inventoryTitle" data-i18n="inventory.title">Battery details</h2>
             </div>
-            <span id="inventoryStatus" class="inventory-summary">3 configured</span>
+            <span id="inventoryStatus" class="inventory-summary" data-i18n="inventory.initialStatus">3 configured</span>
           </div>
           <div class="inventory-table">
             <div class="inventory-head" aria-hidden="true">
-              <span>Battery</span>
-              <span>Network</span>
+              <span data-i18n="inventory.battery">Battery</span>
+              <span data-i18n="inventory.network">Network</span>
               <span>RS485</span>
-              <span>Hardware</span>
-              <span>State</span>
+              <span data-i18n="inventory.hardware">Hardware</span>
+              <span data-i18n="inventory.state">State</span>
             </div>
             <div id="batteryInventory" class="inventory-body"></div>
           </div>
         </section>
 
-        <section class="workbench" aria-label="Monitoring workbench">
+        <section class="workbench" aria-label="Monitoring workbench" data-i18n-aria-label="workbench.aria">
           <div class="panel chart-panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">History</p>
-                <h2 id="chartTitle">State of charge</h2>
+                <p class="eyebrow" data-i18n="history.eyebrow">History</p>
+                <h2 id="chartTitle" data-i18n="metric.soc">State of charge</h2>
               </div>
               <div class="controls">
-                <select id="metricSelect" aria-label="Metric">
+                <select id="metricSelect" aria-label="Metric" data-i18n-aria-label="history.metric">
                   <option value="soc_percent">SOC</option>
-                  <option value="voltage_v">Voltage</option>
-                  <option value="current_a">Current</option>
-                  <option value="power_w">Power</option>
-                  <option value="cell_voltage_delta_v">Cell delta</option>
-                  <option value="mosfet_temperature_c">MOSFET temp</option>
-                  <option value="ambient_temperature_c">Ambient temp</option>
+                  <option value="voltage_v" data-i18n="metric.voltageShort">Voltage</option>
+                  <option value="current_a" data-i18n="metric.currentShort">Current</option>
+                  <option value="power_w" data-i18n="metric.powerShort">Power</option>
+                  <option value="cell_voltage_delta_v" data-i18n="metric.cellDelta">Cell delta</option>
+                  <option value="mosfet_temperature_c" data-i18n="metric.mosfetShort">MOSFET temp</option>
+                  <option value="ambient_temperature_c" data-i18n="metric.ambientShort">Ambient temp</option>
                 </select>
-                <div class="segmented" aria-label="Range">
+                <div class="segmented" aria-label="Range" data-i18n-aria-label="history.range">
                   <button data-range="1h">1H</button>
                   <button data-range="24h" class="is-active">24H</button>
                   <button data-range="7d">7D</button>
@@ -191,6 +226,7 @@
                 height="320"
                 tabindex="0"
                 aria-label="Battery history chart"
+                data-i18n-aria-label="history.chartAria"
                 aria-describedby="chartTooltip"
               ></canvas>
               <div id="chartTooltip" class="chart-tooltip" role="status" aria-live="polite" hidden></div>
@@ -201,10 +237,10 @@
           <div class="panel detail-panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Selected pack</p>
-                <h2 id="selectedName">Rack</h2>
+                <p class="eyebrow" data-i18n="details.selectedPack">Selected pack</p>
+                <h2 id="selectedName" data-i18n="details.rack">Rack</h2>
               </div>
-              <span id="selectedState" class="status-pill status-pill--pending">Pending</span>
+              <span id="selectedState" class="status-pill status-pill--pending" data-i18n="status.pending">Pending</span>
             </div>
 
             <div class="cell-strip" id="cellStrip"></div>
@@ -213,12 +249,12 @@
           </div>
         </section>
 
-        <section class="lower-grid" aria-label="Logs and status">
+        <section class="lower-grid" aria-label="Logs and status" data-i18n-aria-label="logs.aria">
           <div class="panel events-panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Alert log</p>
-                <h2>Recent events</h2>
+                <p class="eyebrow" data-i18n="events.eyebrow">Alert log</p>
+                <h2 data-i18n="events.title">Recent events</h2>
               </div>
             </div>
             <div id="eventList" class="event-list"></div>
@@ -227,33 +263,40 @@
           <div class="panel storage-panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Archive</p>
-                <h2>Three-year log</h2>
+                <p class="eyebrow" data-i18n="storage.eyebrow">Archive</p>
+                <h2 data-i18n="storage.title">Three-year log</h2>
               </div>
-              <button id="exportButton" class="icon-button" title="Download CSV" aria-label="Download CSV">
+              <button
+                id="exportButton"
+                class="icon-button"
+                title="Download CSV"
+                aria-label="Download CSV"
+                data-i18n-title="storage.downloadCsv"
+                data-i18n-aria-label="storage.downloadCsv"
+              >
                 <span aria-hidden="true">↓</span>
               </button>
             </div>
             <div class="storage-grid">
               <div>
-                <span>Rows</span>
+                <span data-i18n="storage.rows">Rows</span>
                 <strong id="rowCount">--</strong>
               </div>
               <div>
-                <span>Size</span>
+                <span data-i18n="storage.size">Size</span>
                 <strong id="dbSize">--</strong>
               </div>
               <div>
-                <span>Oldest</span>
+                <span data-i18n="storage.oldest">Oldest</span>
                 <strong id="oldestReading">--</strong>
               </div>
               <div>
-                <span>Newest</span>
+                <span data-i18n="storage.newest">Newest</span>
                 <strong id="newestReading">--</strong>
               </div>
             </div>
             <details id="payloadDetails" class="payload-details">
-              <summary>Raw battery payload</summary>
+              <summary data-i18n="storage.rawPayload">Raw battery payload</summary>
               <pre id="payloadView" class="payload-view"></pre>
             </details>
           </div>

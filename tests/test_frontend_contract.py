@@ -92,8 +92,27 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn('<details id="payloadDetails" open', html)
         self.assertNotIn('<h2 id="rackName">Eco-worthy Rack</h2>', html)
         self.assertIn("grid-template-columns: minmax(190px, 0.5fr)", css)
-        self.assertIn('id="rackDescription">Waiting for rack status', html)
+        self.assertIn('id="rackDescription"', html)
+        self.assertIn('data-i18n="rack.waitingStatus">Waiting for rack status', html)
         self.assertIn('"All batteries online"', (STATIC / "app.js").read_text(encoding="utf-8"))
+
+    def test_language_switch_localizes_live_ui_and_persists_preference(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="languageToggle"', html)
+        self.assertIn('role="switch"', html)
+        self.assertIn('data-i18n="app.title"', html)
+        self.assertIn("battery-monitor-language", html)
+        self.assertIn("battery-monitor-language", javascript)
+        self.assertIn("function applyLanguage", javascript)
+        self.assertIn("function rerenderLocalizedUi", javascript)
+        self.assertIn('"page.title": "Giám sát hệ thống pin"', javascript)
+        self.assertIn('"status.collectorOnline": "Bộ thu thập trực tuyến"', javascript)
+        self.assertIn('Intl.RelativeTimeFormat(currentLocale()', javascript)
+        self.assertIn(".language-toggle__track", css)
+        self.assertIn(".preference-controls", css)
 
 
 if __name__ == "__main__":

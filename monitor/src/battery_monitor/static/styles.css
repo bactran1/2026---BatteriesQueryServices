@@ -175,6 +175,13 @@ button {
   justify-content: flex-end;
 }
 
+.preference-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .connection-meta {
   display: grid;
   grid-template-columns: auto auto;
@@ -191,6 +198,90 @@ button {
   line-height: 1.35;
   text-align: right;
   overflow-wrap: anywhere;
+}
+
+.language-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.language-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.language-toggle__track {
+  position: relative;
+  display: grid;
+  width: 80px;
+  height: 36px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--control-bg);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.26);
+  transition:
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.language-toggle__option {
+  position: relative;
+  z-index: 1;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  transition: color 300ms ease;
+}
+
+.language-toggle__option:first-child {
+  color: var(--ink);
+}
+
+.language-toggle__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 36px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  box-shadow: 0 7px 16px rgba(0, 0, 0, 0.16);
+  transform: translateX(0);
+  transition:
+    transform 460ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.language-toggle input:checked + .language-toggle__track .language-toggle__thumb {
+  transform: translateX(38px);
+}
+
+.language-toggle input:checked + .language-toggle__track .language-toggle__option:first-child {
+  color: var(--muted);
+}
+
+.language-toggle input:checked + .language-toggle__track .language-toggle__option:nth-child(2) {
+  color: var(--ink);
+}
+
+.language-toggle:focus-within .language-toggle__track {
+  outline: 3px solid rgba(255, 122, 0, 0.28);
+  outline-offset: 3px;
 }
 
 .theme-toggle {
@@ -1573,6 +1664,11 @@ select {
   .connection-meta {
     grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .preference-controls {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .connection-detail {

@@ -18,16 +18,387 @@ const state = {
   chartHover: null,
   chartReveal: 1,
   renderedSoc: new Map(),
+  language: document.documentElement.lang === "vi" ? "vi" : "en",
+  livePayload: null,
+  summary: {},
+  events: [],
 };
 
-const metricLabels = {
-  soc_percent: "State of charge",
-  voltage_v: "Pack voltage",
-  current_a: "Pack current",
-  power_w: "Live power",
-  cell_voltage_delta_v: "Cell delta",
-  mosfet_temperature_c: "MOSFET temperature",
-  ambient_temperature_c: "Ambient temperature",
+const metricLabelKeys = {
+  soc_percent: "metric.soc",
+  voltage_v: "metric.packVoltage",
+  current_a: "metric.packCurrent",
+  power_w: "metric.livePower",
+  cell_voltage_delta_v: "metric.cellDelta",
+  mosfet_temperature_c: "metric.mosfetTemperature",
+  ambient_temperature_c: "metric.ambientTemperature",
+};
+
+const translations = {
+  en: {
+    "page.title": "Battery Monitor",
+    "app.title": "Battery Monitor",
+    "brand.builderDefault": "The system is built by Tran Thanh Tuan and son",
+    "brand.builder": "The system is built by {builder} and son",
+    "language.switchTitle": "Switch language",
+    "language.switchLabel": "Switch between English and Vietnamese",
+    "theme.switchTitle": "Switch appearance",
+    "theme.switchLabel": "Switch between light and dark theme",
+    "status.starting": "Starting",
+    "status.noReadings": "No readings yet",
+    "status.connecting": "Connecting to collector",
+    "status.noLiveReadings": "No live readings yet",
+    "status.dataRelative": "Data {relative}",
+    "status.lastError": "Last error: {message}",
+    "status.archiveError": "Archive error: {message}",
+    "status.responding": "{online} of {total} batteries responding",
+    "status.lastCollectorData": "Last collector data {relative}",
+    "status.waitingFresh": "Waiting for a fresh collector sample",
+    "status.waitingReconnect": "Waiting for the collector to reconnect",
+    "status.recoveryDelayed": "Archive recovery delayed: {message}",
+    "status.archiveCurrent": "Archive current · {rows} rows",
+    "status.monitorOffline": "Monitor offline",
+    "status.dataStale": "Data stale",
+    "status.lastDashboardUpdate": "Last dashboard update {relative}",
+    "status.noDashboardResponse": "No dashboard response",
+    "status.refreshError": "Refresh error: {message}",
+    "status.pending": "Pending",
+    "status.online": "Online",
+    "status.needsAttention": "Needs attention",
+    "status.disabled": "Disabled",
+    "status.lastKnown": "Last known",
+    "status.waiting": "Waiting",
+    "status.collectorOnline": "Collector online",
+    "status.collectorDegraded": "Collector degraded",
+    "status.collectorStale": "Data stale",
+    "status.collectorOffline": "Collector offline",
+    "status.collectorOnlineDescription": "Collector and all configured batteries are responding",
+    "status.collectorDegradedDescription": "Collector is reachable, but one or more batteries need attention",
+    "status.collectorStaleDescription": "Last known data is being shown while the collector reconnects",
+    "status.collectorOfflineDescription": "The collector has not responded within the offline threshold",
+    "common.waitingData": "Waiting for data",
+    "common.waitingReadings": "Waiting for readings",
+    "common.notConfigured": "Not configured",
+    "common.recently": "recently",
+    "rack.overview": "Rack overview",
+    "rack.waitingStatus": "Waiting for rack status",
+    "rack.batteries": "Batteries",
+    "rack.collector": "Collector",
+    "rack.defaultCollector": "Raspberry Pi collector",
+    "rack.bus": "Bus",
+    "rack.allOnline": "All batteries online",
+    "rack.onlineCount": "{online} of {expected} online",
+    "rack.pack": "pack",
+    "rack.packs": "packs",
+    "rack.reporting": "{count} reporting",
+    "fleet.summary": "Fleet summary",
+    "fleet.rackSoc": "Rack SOC",
+    "fleet.socAria": "Overall rack state of charge",
+    "fleet.livePower": "Live power",
+    "fleet.netPower": "Net rack power",
+    "fleet.rackCurrent": "Rack current",
+    "fleet.netCurrentDetail": "Net across all packs",
+    "fleet.averageVoltage": "Average voltage",
+    "fleet.averageVoltageDetail": "Across reporting packs",
+    "fleet.capacityLeft": "Capacity left",
+    "fleet.combinedCapacity": "Combined capacity",
+    "fleet.capacityOf": "of {value}",
+    "fleet.mosfetTemperature": "MOSFET temperature",
+    "fleet.ambientTemperature": "Ambient temperature",
+    "fleet.rackHealth": "Rack health",
+    "fleet.peakUnavailable": "Peak unavailable",
+    "fleet.peak": "Peak {value}",
+    "fleet.nominal": "Nominal",
+    "fleet.alert": "alert",
+    "fleet.alerts": "alerts",
+    "fleet.cellSpreadUnavailable": "Cell spread unavailable",
+    "fleet.maxCellDelta": "Max cell Δ {value}",
+    "fleet.chargingInput": "Charging input",
+    "fleet.dischargeOutput": "Discharge output",
+    "fleet.lastKnownPower": "Last known power",
+    "flow.lastKnownReading": "Last known reading",
+    "flow.charging": "Charging",
+    "flow.chargingCurrent": "Charging · {current}",
+    "flow.discharging": "Discharging",
+    "flow.dischargingCurrent": "Discharging · {current}",
+    "flow.standingBy": "Standing by",
+    "flow.lastKnownRack": "Last known rack level",
+    "flow.waitingRack": "Waiting for rack readings",
+    "flow.rackCharging": "Rack charging",
+    "flow.rackChargingCurrent": "Rack charging · {current}",
+    "flow.rackDischarging": "Rack discharging",
+    "flow.rackDischargingCurrent": "Rack discharging · {current}",
+    "flow.balanced": "Balanced power flow",
+    "flow.rackStandingBy": "Rack standing by",
+    "battery.readings": "Battery readings",
+    "battery.awaitingReadings": "Awaiting readings",
+    "battery.socAria": "{name} state of charge",
+    "battery.voltage": "Voltage",
+    "battery.current": "Current",
+    "battery.power": "Power",
+    "battery.cellDelta": "Cell Δ",
+    "inventory.eyebrow": "Rack inventory",
+    "inventory.title": "Battery details",
+    "inventory.initialStatus": "3 configured",
+    "inventory.battery": "Battery",
+    "inventory.network": "Network",
+    "inventory.hardware": "Hardware",
+    "inventory.state": "State",
+    "inventory.batteries": "batteries",
+    "inventory.batterySingular": "battery",
+    "inventory.noneConfigured": "No batteries configured",
+    "inventory.wifiAddress": "Battery Wi-Fi address",
+    "inventory.noDirectIp": "No direct IP recorded",
+    "inventory.address": "Address {address}",
+    "inventory.defaultHardware": "Eco-worthy battery",
+    "inventory.firmware": "Firmware {version}",
+    "inventory.firmwarePending": "Firmware pending",
+    "inventory.seen": "Seen {relative}",
+    "inventory.notSeen": "Not seen yet",
+    "workbench.aria": "Monitoring workbench",
+    "history.eyebrow": "History",
+    "history.metric": "Metric",
+    "history.range": "Range",
+    "history.chartAria": "Battery history chart",
+    "history.unavailable": "History temporarily unavailable",
+    "history.awaiting": "Awaiting history",
+    "history.pointAria": "{metric} for {battery}: {value}, {timestamp}",
+    "history.metricChartAria": "{metric} history chart",
+    "metric.soc": "State of charge",
+    "metric.packVoltage": "Pack voltage",
+    "metric.packCurrent": "Pack current",
+    "metric.livePower": "Live power",
+    "metric.cellDelta": "Cell delta",
+    "metric.mosfetTemperature": "MOSFET temperature",
+    "metric.ambientTemperature": "Ambient temperature",
+    "metric.voltageShort": "Voltage",
+    "metric.currentShort": "Current",
+    "metric.powerShort": "Power",
+    "metric.mosfetShort": "MOSFET temp",
+    "metric.ambientShort": "Ambient temp",
+    "details.selectedPack": "Selected pack",
+    "details.rack": "Rack",
+    "details.noCellData": "No cell data",
+    "details.cellTitle": "Cell {number}: {voltage}",
+    "details.noTemperatureData": "No temperature data",
+    "details.batteryId": "Battery ID",
+    "details.ipAddress": "IP address",
+    "details.model": "Model",
+    "details.address": "Address",
+    "details.state": "State",
+    "details.soh": "SOH",
+    "details.cycles": "Cycles",
+    "details.remaining": "Remaining",
+    "details.full": "Full",
+    "details.chargeLimit": "Charge limit",
+    "details.dischargeLimit": "Discharge limit",
+    "details.firmware": "Firmware",
+    "details.serial": "Serial",
+    "events.eyebrow": "Alert log",
+    "events.title": "Recent events",
+    "events.none": "No recent events",
+    "events.refreshFailed": "Events could not refresh",
+    "logs.aria": "Logs and status",
+    "storage.eyebrow": "Archive",
+    "storage.title": "Three-year log",
+    "storage.downloadCsv": "Download CSV",
+    "storage.rows": "Rows",
+    "storage.size": "Size",
+    "storage.oldest": "Oldest",
+    "storage.newest": "Newest",
+    "storage.rawPayload": "Raw battery payload",
+    "error.unknownRefresh": "Unknown refresh error",
+    "error.requestTimeout": "Request timed out after {seconds} seconds",
+    "error.browserOffline": "Browser network is offline",
+    "operation.charging": "Charging",
+    "operation.discharging": "Discharging",
+    "operation.idle": "Idle",
+    "operation.standby": "Standby",
+    "operation.fault": "Fault",
+    "operation.unknown": "Unknown",
+  },
+  vi: {
+    "page.title": "Giám sát hệ thống pin",
+    "app.title": "Giám sát hệ thống pin",
+    "brand.builderDefault": "Hệ thống do Tran Thanh Tuan và con trai xây dựng",
+    "brand.builder": "Hệ thống do {builder} và con trai xây dựng",
+    "language.switchTitle": "Chuyển ngôn ngữ",
+    "language.switchLabel": "Chuyển đổi giữa tiếng Anh và tiếng Việt",
+    "theme.switchTitle": "Chuyển giao diện",
+    "theme.switchLabel": "Chuyển đổi giữa giao diện sáng và tối",
+    "status.starting": "Đang khởi động",
+    "status.noReadings": "Chưa có dữ liệu",
+    "status.connecting": "Đang kết nối bộ thu thập",
+    "status.noLiveReadings": "Chưa có số liệu trực tiếp",
+    "status.dataRelative": "Dữ liệu {relative}",
+    "status.lastError": "Lỗi gần nhất: {message}",
+    "status.archiveError": "Lỗi lưu trữ: {message}",
+    "status.responding": "{online}/{total} pin đang phản hồi",
+    "status.lastCollectorData": "Dữ liệu cuối từ bộ thu thập {relative}",
+    "status.waitingFresh": "Đang chờ mẫu dữ liệu mới",
+    "status.waitingReconnect": "Đang chờ bộ thu thập kết nối lại",
+    "status.recoveryDelayed": "Khôi phục lưu trữ bị chậm: {message}",
+    "status.archiveCurrent": "Kho lưu trữ đã cập nhật · {rows} dòng",
+    "status.monitorOffline": "Ứng dụng giám sát ngoại tuyến",
+    "status.dataStale": "Dữ liệu đã cũ",
+    "status.lastDashboardUpdate": "Bảng điều khiển cập nhật lần cuối {relative}",
+    "status.noDashboardResponse": "Bảng điều khiển không phản hồi",
+    "status.refreshError": "Lỗi cập nhật: {message}",
+    "status.pending": "Đang chờ",
+    "status.online": "Trực tuyến",
+    "status.needsAttention": "Cần kiểm tra",
+    "status.disabled": "Đã tắt",
+    "status.lastKnown": "Dữ liệu gần nhất",
+    "status.waiting": "Đang chờ",
+    "status.collectorOnline": "Bộ thu thập trực tuyến",
+    "status.collectorDegraded": "Bộ thu thập suy giảm",
+    "status.collectorStale": "Dữ liệu đã cũ",
+    "status.collectorOffline": "Bộ thu thập ngoại tuyến",
+    "status.collectorOnlineDescription": "Bộ thu thập và tất cả pin đã cấu hình đang phản hồi",
+    "status.collectorDegradedDescription": "Bộ thu thập vẫn kết nối nhưng có pin cần kiểm tra",
+    "status.collectorStaleDescription": "Đang hiển thị dữ liệu gần nhất trong lúc bộ thu thập kết nối lại",
+    "status.collectorOfflineDescription": "Bộ thu thập không phản hồi trong thời gian cho phép",
+    "common.waitingData": "Đang chờ dữ liệu",
+    "common.waitingReadings": "Đang chờ số liệu",
+    "common.notConfigured": "Chưa cấu hình",
+    "common.recently": "gần đây",
+    "rack.overview": "Tổng quan tủ pin",
+    "rack.waitingStatus": "Đang chờ trạng thái tủ pin",
+    "rack.batteries": "Pin",
+    "rack.collector": "Bộ thu thập",
+    "rack.defaultCollector": "Bộ thu thập Raspberry Pi",
+    "rack.bus": "Kết nối",
+    "rack.allOnline": "Tất cả pin đang trực tuyến",
+    "rack.onlineCount": "{online}/{expected} đang trực tuyến",
+    "rack.pack": "bộ pin",
+    "rack.packs": "bộ pin",
+    "rack.reporting": "{count} đang báo dữ liệu",
+    "fleet.summary": "Tóm tắt tủ pin",
+    "fleet.rackSoc": "SOC tủ pin",
+    "fleet.socAria": "Mức sạc tổng thể của tủ pin",
+    "fleet.livePower": "Công suất tức thời",
+    "fleet.netPower": "Công suất ròng toàn tủ",
+    "fleet.rackCurrent": "Dòng điện toàn tủ",
+    "fleet.netCurrentDetail": "Tổng ròng của mọi bộ pin",
+    "fleet.averageVoltage": "Điện áp trung bình",
+    "fleet.averageVoltageDetail": "Trên các bộ pin đang báo dữ liệu",
+    "fleet.capacityLeft": "Dung lượng còn lại",
+    "fleet.combinedCapacity": "Tổng dung lượng",
+    "fleet.capacityOf": "trên {value}",
+    "fleet.mosfetTemperature": "Nhiệt độ MOSFET",
+    "fleet.ambientTemperature": "Nhiệt độ môi trường",
+    "fleet.rackHealth": "Tình trạng tủ pin",
+    "fleet.peakUnavailable": "Chưa có nhiệt độ đỉnh",
+    "fleet.peak": "Đỉnh {value}",
+    "fleet.nominal": "Bình thường",
+    "fleet.alert": "cảnh báo",
+    "fleet.alerts": "cảnh báo",
+    "fleet.cellSpreadUnavailable": "Chưa có độ lệch cell",
+    "fleet.maxCellDelta": "Độ lệch cell tối đa {value}",
+    "fleet.chargingInput": "Công suất sạc vào",
+    "fleet.dischargeOutput": "Công suất xả ra",
+    "fleet.lastKnownPower": "Công suất gần nhất",
+    "flow.lastKnownReading": "Số liệu gần nhất",
+    "flow.charging": "Đang sạc",
+    "flow.chargingCurrent": "Đang sạc · {current}",
+    "flow.discharging": "Đang xả",
+    "flow.dischargingCurrent": "Đang xả · {current}",
+    "flow.standingBy": "Đang chờ",
+    "flow.lastKnownRack": "Mức tủ pin gần nhất",
+    "flow.waitingRack": "Đang chờ số liệu tủ pin",
+    "flow.rackCharging": "Tủ pin đang sạc",
+    "flow.rackChargingCurrent": "Tủ pin đang sạc · {current}",
+    "flow.rackDischarging": "Tủ pin đang xả",
+    "flow.rackDischargingCurrent": "Tủ pin đang xả · {current}",
+    "flow.balanced": "Dòng năng lượng cân bằng",
+    "flow.rackStandingBy": "Tủ pin đang chờ",
+    "battery.readings": "Số liệu pin",
+    "battery.awaitingReadings": "Đang chờ số liệu",
+    "battery.socAria": "Mức sạc của {name}",
+    "battery.voltage": "Điện áp",
+    "battery.current": "Dòng điện",
+    "battery.power": "Công suất",
+    "battery.cellDelta": "Độ lệch cell",
+    "inventory.eyebrow": "Danh sách tủ pin",
+    "inventory.title": "Chi tiết pin",
+    "inventory.initialStatus": "Đã cấu hình 3 pin",
+    "inventory.battery": "Pin",
+    "inventory.network": "Mạng",
+    "inventory.hardware": "Phần cứng",
+    "inventory.state": "Trạng thái",
+    "inventory.batteries": "pin",
+    "inventory.batterySingular": "pin",
+    "inventory.noneConfigured": "Chưa cấu hình pin",
+    "inventory.wifiAddress": "Địa chỉ Wi-Fi của pin",
+    "inventory.noDirectIp": "Chưa ghi nhận IP trực tiếp",
+    "inventory.address": "Địa chỉ {address}",
+    "inventory.defaultHardware": "Pin Eco-worthy",
+    "inventory.firmware": "Firmware {version}",
+    "inventory.firmwarePending": "Đang chờ firmware",
+    "inventory.seen": "Ghi nhận {relative}",
+    "inventory.notSeen": "Chưa ghi nhận",
+    "workbench.aria": "Bảng điều khiển giám sát",
+    "history.eyebrow": "Lịch sử",
+    "history.metric": "Chỉ số",
+    "history.range": "Khoảng thời gian",
+    "history.chartAria": "Biểu đồ lịch sử pin",
+    "history.unavailable": "Lịch sử tạm thời không khả dụng",
+    "history.awaiting": "Đang chờ dữ liệu lịch sử",
+    "history.pointAria": "{metric} của {battery}: {value}, {timestamp}",
+    "history.metricChartAria": "Biểu đồ lịch sử {metric}",
+    "metric.soc": "Mức sạc",
+    "metric.packVoltage": "Điện áp bộ pin",
+    "metric.packCurrent": "Dòng điện bộ pin",
+    "metric.livePower": "Công suất tức thời",
+    "metric.cellDelta": "Độ lệch cell",
+    "metric.mosfetTemperature": "Nhiệt độ MOSFET",
+    "metric.ambientTemperature": "Nhiệt độ môi trường",
+    "metric.voltageShort": "Điện áp",
+    "metric.currentShort": "Dòng điện",
+    "metric.powerShort": "Công suất",
+    "metric.mosfetShort": "Nhiệt độ MOSFET",
+    "metric.ambientShort": "Nhiệt độ môi trường",
+    "details.selectedPack": "Bộ pin đang chọn",
+    "details.rack": "Toàn tủ",
+    "details.noCellData": "Chưa có dữ liệu cell",
+    "details.cellTitle": "Cell {number}: {voltage}",
+    "details.noTemperatureData": "Chưa có dữ liệu nhiệt độ",
+    "details.batteryId": "Mã pin",
+    "details.ipAddress": "Địa chỉ IP",
+    "details.model": "Model",
+    "details.address": "Địa chỉ",
+    "details.state": "Trạng thái",
+    "details.soh": "SOH",
+    "details.cycles": "Chu kỳ",
+    "details.remaining": "Còn lại",
+    "details.full": "Đầy",
+    "details.chargeLimit": "Giới hạn sạc",
+    "details.dischargeLimit": "Giới hạn xả",
+    "details.firmware": "Firmware",
+    "details.serial": "Số sê-ri",
+    "events.eyebrow": "Nhật ký cảnh báo",
+    "events.title": "Sự kiện gần đây",
+    "events.none": "Không có sự kiện gần đây",
+    "events.refreshFailed": "Không thể cập nhật sự kiện",
+    "logs.aria": "Nhật ký và trạng thái",
+    "storage.eyebrow": "Lưu trữ",
+    "storage.title": "Nhật ký ba năm",
+    "storage.downloadCsv": "Tải CSV",
+    "storage.rows": "Số dòng",
+    "storage.size": "Dung lượng",
+    "storage.oldest": "Cũ nhất",
+    "storage.newest": "Mới nhất",
+    "storage.rawPayload": "Dữ liệu pin thô",
+    "error.unknownRefresh": "Lỗi cập nhật không xác định",
+    "error.requestTimeout": "Yêu cầu hết thời gian sau {seconds} giây",
+    "error.browserOffline": "Trình duyệt đang mất kết nối mạng",
+    "operation.charging": "Đang sạc",
+    "operation.discharging": "Đang xả",
+    "operation.idle": "Không tải",
+    "operation.standby": "Đang chờ",
+    "operation.fault": "Lỗi",
+    "operation.unknown": "Không xác định",
+  },
 };
 
 const metricUnits = {
@@ -54,6 +425,7 @@ const palette = ["#ff7a00", "#30d158", "#bf5af2", "#34c7d9", "#ff453a"];
 
 const $ = (id) => document.getElementById(id);
 const THEME_STORAGE_KEY = "battery-monitor-theme";
+const LANGUAGE_STORAGE_KEY = "battery-monitor-language";
 const LIVE_REFRESH_MS = 5000;
 const SECONDARY_REFRESH_MS = 30000;
 const REQUEST_TIMEOUT_MS = 8000;
@@ -63,6 +435,35 @@ let schedulerTimer = null;
 let chartResizeFrame = null;
 let chartPointerFrame = null;
 let chartAnimationFrame = null;
+
+function t(key, values = {}) {
+  const table = translations[state.language] || translations.en;
+  const template = table[key] ?? translations.en[key] ?? key;
+  return String(template).replace(/\{(\w+)\}/g, (match, name) =>
+    Object.hasOwn(values, name) ? String(values[name]) : match,
+  );
+}
+
+function currentLocale() {
+  return state.language === "vi" ? "vi-VN" : "en-US";
+}
+
+function metricLabel(metric = state.metric) {
+  return t(metricLabelKeys[metric] || metric);
+}
+
+function applyStaticTranslations() {
+  document.title = t("page.title");
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    element.textContent = t(element.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((element) => {
+    element.title = t(element.dataset.i18nTitle);
+  });
+  document.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
+    element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+  });
+}
 
 async function refreshCycle(forceSecondary = false) {
   if (document.hidden || state.refreshInProgress) return;
@@ -91,9 +492,11 @@ async function refreshCycle(forceSecondary = false) {
 
 async function refreshLive() {
   const payload = await getJson("/api/live", "live");
+  state.livePayload = payload;
   state.batteries = payload.snapshot?.batteries || [];
   state.storage = payload.storage || {};
   state.rack = payload.rack || {};
+  state.summary = payload.summary || {};
   state.collectorState = payload.collector_status || "offline";
   state.collectorOnline = ["online", "degraded"].includes(state.collectorState);
   state.lastLiveReceivedAt = Date.now();
@@ -105,7 +508,7 @@ async function refreshLive() {
   }
   renderStatus(payload);
   renderRackOverview();
-  renderSummary(payload.summary || {});
+  renderSummary(state.summary);
   renderBatteryCards();
   renderBatteryInventory();
   renderSelectedBattery();
@@ -139,7 +542,7 @@ async function refreshHistory() {
   state.lastHistoryRefreshAt = Date.now();
   state.resourceErrors.history = null;
   $("historyChart").removeAttribute("data-refresh-error");
-  $("chartTitle").textContent = metricLabels[state.metric] || state.metric;
+  $("chartTitle").textContent = metricLabel();
   state.chartHover = null;
   hideChartTooltip(false);
   animateChartIn();
@@ -147,10 +550,11 @@ async function refreshHistory() {
 
 async function refreshEvents() {
   const payload = await getJson("/api/events?range=7d&limit=80", "events");
+  state.events = payload.events || [];
   state.lastEventsRefreshAt = Date.now();
   state.resourceErrors.events = null;
   $("eventList").removeAttribute("data-refresh-error");
-  renderEvents(payload.events || []);
+  renderEvents(state.events);
 }
 
 async function getJson(url, resource) {
@@ -173,7 +577,7 @@ async function getJson(url, resource) {
     return await response.json();
   } catch (error) {
     if (controller.signal.reason?.name === "TimeoutError") {
-      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds`);
+      throw new Error(t("error.requestTimeout", { seconds: REQUEST_TIMEOUT_MS / 1000 }));
     }
     throw error;
   } finally {
@@ -193,33 +597,38 @@ function renderStatus(payload) {
 
   const lastData = payload.monitor?.last_data_at || payload.monitor?.last_success_at;
   $("lastUpdated").textContent = lastData
-    ? `Data ${formatRelativeTime(lastData)}`
-    : "No live readings yet";
+    ? t("status.dataRelative", { relative: formatRelativeTime(lastData) })
+    : t("status.noLiveReadings");
 
   const detail = $("connectionDetail");
   if (payload.collector_error) {
-    detail.textContent = `Last error: ${payload.collector_error}`;
+    detail.textContent = t("status.lastError", { message: payload.collector_error });
   } else if (payload.monitor?.storage_error) {
-    detail.textContent = `Archive error: ${payload.monitor.storage_error}`;
+    detail.textContent = t("status.archiveError", { message: payload.monitor.storage_error });
   } else if (payload.collector_status === "degraded") {
     const summary = payload.summary || {};
-    detail.textContent = `${summary.online_count || 0} of ${summary.battery_count || 0} batteries responding`;
+    detail.textContent = t("status.responding", {
+      online: summary.online_count || 0,
+      total: summary.battery_count || 0,
+    });
   } else if (payload.collector_status === "stale") {
     detail.textContent = lastData
-      ? `Last collector data ${formatRelativeTime(lastData)}`
-      : "Waiting for a fresh collector sample";
+      ? t("status.lastCollectorData", { relative: formatRelativeTime(lastData) })
+      : t("status.waitingFresh");
   } else if (payload.collector_status === "offline") {
-    detail.textContent = "Waiting for the collector to reconnect";
+    detail.textContent = t("status.waitingReconnect");
   } else if (payload.monitor?.backfill_error) {
-    detail.textContent = `Archive recovery delayed: ${payload.monitor.backfill_error}`;
+    detail.textContent = t("status.recoveryDelayed", { message: payload.monitor.backfill_error });
   } else {
-    detail.textContent = `Archive current · ${formatNumber(payload.storage?.row_count || 0)} rows`;
+    detail.textContent = t("status.archiveCurrent", {
+      rows: formatNumber(payload.storage?.row_count || 0),
+    });
   }
 }
 
 function handleResourceFailure(resource, error) {
   if (error?.name === "AbortError") return;
-  const message = error?.message || String(error || "Unknown refresh error");
+  const message = error?.message || String(error || t("error.unknownRefresh"));
   state.resourceErrors[resource] = message;
 
   if (resource === "live") {
@@ -233,7 +642,7 @@ function handleResourceFailure(resource, error) {
   }
   $("eventList").dataset.refreshError = message;
   if (!$("eventList").children.length) {
-    $("eventList").innerHTML = `<div class="empty-mini">Events could not refresh</div>`;
+    $("eventList").innerHTML = `<div class="empty-mini">${escapeHtml(t("events.refreshFailed"))}</div>`;
   }
 }
 
@@ -242,13 +651,17 @@ function renderLiveFailure(message) {
   const status = age >= UI_OFFLINE_AFTER_MS ? "offline" : "stale";
   const presentation = connectionPresentation(status);
   state.collectorOnline = false;
-  $("collectorStatus").textContent = status === "offline" ? "Monitor offline" : "Data stale";
+  $("collectorStatus").textContent = status === "offline"
+    ? t("status.monitorOffline")
+    : t("status.dataStale");
   $("collectorStatus").className = `status-pill ${presentation.className}`;
   $("collectorStatus").title = message;
   $("lastUpdated").textContent = state.lastLiveReceivedAt
-    ? `Last dashboard update ${formatRelativeTime(new Date(state.lastLiveReceivedAt).toISOString())}`
-    : "No dashboard response";
-  $("connectionDetail").textContent = `Refresh error: ${message}`;
+    ? t("status.lastDashboardUpdate", {
+        relative: formatRelativeTime(new Date(state.lastLiveReceivedAt).toISOString()),
+      })
+    : t("status.noDashboardResponse");
+  $("connectionDetail").textContent = t("status.refreshError", { message });
   renderBatteryCards();
   renderBatteryInventory();
   renderSelectedBattery();
@@ -277,33 +690,39 @@ function renderSummary(summary) {
   $("fleetVoltage").textContent = formatValue(summary.average_voltage_v, "V", 2);
   $("fleetCapacity").textContent = formatValue(summary.remaining_capacity_ah, "Ah");
   $("fleetCapacityDetail").textContent = finiteNumber(summary.full_capacity_ah) === null
-    ? "Combined capacity"
-    : `of ${formatValue(summary.full_capacity_ah, "Ah")}`;
+    ? t("fleet.combinedCapacity")
+    : t("fleet.capacityOf", { value: formatValue(summary.full_capacity_ah, "Ah") });
   $("fleetMosfetTemp").textContent = formatValue(summary.average_mosfet_temperature_c, "°C");
   $("fleetMosfetPeak").textContent = temperaturePeakLabel(summary.maximum_mosfet_temperature_c);
   $("fleetAmbientTemp").textContent = formatValue(summary.average_ambient_temperature_c, "°C");
   $("fleetAmbientPeak").textContent = temperaturePeakLabel(summary.maximum_ambient_temperature_c);
   const alerts = (summary.alarm_count || 0) + (summary.fault_count || 0);
-  $("fleetHealth").textContent = alerts ? `${alerts} ${pluralize(alerts, "alert", "alerts")}` : "Nominal";
+  $("fleetHealth").textContent = alerts
+    ? `${formatNumber(alerts)} ${t(alerts === 1 ? "fleet.alert" : "fleet.alerts")}`
+    : t("fleet.nominal");
   $("fleetHealthMetric").classList.toggle("has-alerts", alerts > 0);
   $("fleetCellDelta").textContent = finiteNumber(summary.maximum_cell_voltage_delta_v) === null
-    ? "Cell spread unavailable"
-    : `Max cell Δ ${formatValue(summary.maximum_cell_voltage_delta_v, "V", 3)}`;
+    ? t("fleet.cellSpreadUnavailable")
+    : t("fleet.maxCellDelta", {
+        value: formatValue(summary.maximum_cell_voltage_delta_v, "V", 3),
+      });
 }
 
 function rackPowerDetail(mode) {
-  if (mode === "charging") return "Charging input";
-  if (mode === "discharging") return "Discharge output";
-  if (mode === "stale") return "Last known power";
-  return "Net rack power";
+  if (mode === "charging") return t("fleet.chargingInput");
+  if (mode === "discharging") return t("fleet.dischargeOutput");
+  if (mode === "stale") return t("fleet.lastKnownPower");
+  return t("fleet.netPower");
 }
 
 function temperaturePeakLabel(value) {
-  return finiteNumber(value) === null ? "Peak unavailable" : `Peak ${formatValue(value, "°C")}`;
+  return finiteNumber(value) === null
+    ? t("fleet.peakUnavailable")
+    : t("fleet.peak", { value: formatValue(value, "°C") });
 }
 
 function energyFlowPresentation(reading, available = true) {
-  if (!available) return { mode: "stale", label: "Last known reading" };
+  if (!available) return { mode: "stale", label: t("flow.lastKnownReading") };
 
   const operation = String(reading.operation_status || "").toLowerCase();
   const current = finiteNumber(reading.current_a);
@@ -316,25 +735,29 @@ function energyFlowPresentation(reading, available = true) {
   if (mode === "charging") {
     return {
       mode,
-      label: current === null ? "Charging" : `Charging · ${formatValue(Math.abs(current), "A")}`,
+      label: current === null
+        ? t("flow.charging")
+        : t("flow.chargingCurrent", { current: formatValue(Math.abs(current), "A") }),
     };
   }
   if (mode === "discharging") {
     return {
       mode,
-      label: current === null ? "Discharging" : `Discharging · ${formatValue(Math.abs(current), "A")}`,
+      label: current === null
+        ? t("flow.discharging")
+        : t("flow.dischargingCurrent", { current: formatValue(Math.abs(current), "A") }),
     };
   }
-  return { mode, label: "Standing by" };
+  return { mode, label: t("flow.standingBy") };
 }
 
 function rackEnergyFlow(batteries) {
-  if (!state.collectorOnline) return { mode: "stale", label: "Last known rack level" };
+  if (!state.collectorOnline) return { mode: "stale", label: t("flow.lastKnownRack") };
 
   const liveReadings = batteries
     .filter((battery) => battery.status === "ok" && battery.last_reading)
     .map((battery) => battery.last_reading);
-  if (!liveReadings.length) return { mode: "stale", label: "Waiting for rack readings" };
+  if (!liveReadings.length) return { mode: "stale", label: t("flow.waitingRack") };
 
   const currents = liveReadings.map((reading) => finiteNumber(reading.current_a)).filter((value) => value !== null);
   const netCurrent = currents.length ? currents.reduce((total, value) => total + value, 0) : null;
@@ -351,17 +774,21 @@ function rackEnergyFlow(batteries) {
   if (mode === "charging") {
     return {
       mode,
-      label: netCurrent === null ? "Rack charging" : `Rack charging · ${formatValue(Math.abs(netCurrent), "A")}`,
+      label: netCurrent === null
+        ? t("flow.rackCharging")
+        : t("flow.rackChargingCurrent", { current: formatValue(Math.abs(netCurrent), "A") }),
     };
   }
   if (mode === "discharging") {
     return {
       mode,
-      label: netCurrent === null ? "Rack discharging" : `Rack discharging · ${formatValue(Math.abs(netCurrent), "A")}`,
+      label: netCurrent === null
+        ? t("flow.rackDischarging")
+        : t("flow.rackDischargingCurrent", { current: formatValue(Math.abs(netCurrent), "A") }),
     };
   }
-  if (chargingCount && dischargingCount) return { mode, label: "Balanced power flow" };
-  return { mode, label: "Rack standing by" };
+  if (chargingCount && dischargingCount) return { mode, label: t("flow.balanced") };
+  return { mode, label: t("flow.rackStandingBy") };
 }
 
 function updateSocProgress(progress, value, mode) {
@@ -382,23 +809,25 @@ function renderRackOverview() {
   const observed = rack.observed_battery_count ?? 0;
   const online = rack.online_battery_count ?? 0;
 
-  $("builderLine").textContent = `The system is built by ${rack.builder || "Tran Thanh Tuan"} and son`;
+  $("builderLine").textContent = t("brand.builder", {
+    builder: rack.builder || "Tran Thanh Tuan",
+  });
   $("rackDescription").textContent = expected
     ? online === expected
-      ? "All batteries online"
-      : `${online} of ${expected} online`
-    : "Waiting for rack status";
-  $("rackBatteryCount").textContent = `${expected} ${pluralize(expected, "pack", "packs")}`;
-  $("rackObservedCount").textContent = `${observed} reporting`;
-  $("rackCollectorName").textContent = rack.collector?.name || "Raspberry Pi collector";
-  $("rackCollectorAddress").textContent = hostFromUrl(rack.collector?.url) || "Not configured";
+      ? t("rack.allOnline")
+      : t("rack.onlineCount", { online, expected })
+    : t("rack.waitingStatus");
+  $("rackBatteryCount").textContent = `${formatNumber(expected)} ${t(expected === 1 ? "rack.pack" : "rack.packs")}`;
+  $("rackObservedCount").textContent = t("rack.reporting", { count: formatNumber(observed) });
+  $("rackCollectorName").textContent = rack.collector?.name || t("rack.defaultCollector");
+  $("rackCollectorAddress").textContent = hostFromUrl(rack.collector?.url) || t("common.notConfigured");
   $("rackConnection").textContent = rack.connection || "Modbus RTU over RS485";
 }
 
 function renderBatteryCards() {
   const grid = $("batteryGrid");
   if (!state.batteries.length) {
-    grid.innerHTML = `<div class="empty-state">Awaiting readings</div>`;
+    grid.innerHTML = `<div class="empty-state">${escapeHtml(t("battery.awaitingReadings"))}</div>`;
     return;
   }
 
@@ -450,14 +879,14 @@ function renderBatteryCards() {
       </div>
       <div class="battery-card__soc">
         <div class="battery-card__soc-heading">
-          <span>State of charge</span>
+          <span>${escapeHtml(t("metric.soc"))}</span>
           <strong>${socValue === null ? "--" : `${Math.round(soc)}%`}</strong>
         </div>
         <div
           class="soc-progress soc-progress--${flow.mode}"
           style="--soc: ${previousSoc}"
           role="progressbar"
-          aria-label="${escapeHtml(profile?.name || battery.id)} state of charge"
+          aria-label="${escapeHtml(t("battery.socAria", { name: profile?.name || battery.id }))}"
           aria-valuemin="0"
           aria-valuemax="100"
           ${socValue === null ? "" : `aria-valuenow="${soc}"`}
@@ -467,10 +896,10 @@ function renderBatteryCards() {
         <small class="soc-flow-label"><span class="soc-flow-dot" aria-hidden="true"></span>${escapeHtml(flow.label)}</small>
       </div>
       <div class="battery-card__metrics">
-        <div><span>Voltage</span><strong>${formatValue(reading.voltage_v, "V")}</strong></div>
-        <div><span>Current</span><strong>${formatValue(reading.current_a, "A")}</strong></div>
-        <div><span>Power</span><strong>${formatValue(reading.power_w, "W")}</strong></div>
-        <div><span>Cell Δ</span><strong>${formatValue(reading.cell_voltage_delta_v, "V", 3)}</strong></div>
+        <div><span>${escapeHtml(t("battery.voltage"))}</span><strong>${formatValue(reading.voltage_v, "V")}</strong></div>
+        <div><span>${escapeHtml(t("battery.current"))}</span><strong>${formatValue(reading.current_a, "A")}</strong></div>
+        <div><span>${escapeHtml(t("battery.power"))}</span><strong>${formatValue(reading.power_w, "W")}</strong></div>
+        <div><span>${escapeHtml(t("battery.cellDelta"))}</span><strong>${formatValue(reading.cell_voltage_delta_v, "V", 3)}</strong></div>
       </div>
     `;
     grid.appendChild(card);
@@ -497,10 +926,12 @@ function renderBatteryInventory() {
   const inventory = state.rack.batteries || [];
   const body = $("batteryInventory");
   const expected = state.rack.expected_battery_count ?? inventory.length;
-  $("inventoryStatus").textContent = `${expected} ${pluralize(expected, "battery", "batteries")}`;
+  $("inventoryStatus").textContent = `${formatNumber(expected)} ${t(
+    expected === 1 ? "inventory.batterySingular" : "inventory.batteries",
+  )}`;
 
   if (!inventory.length) {
-    body.innerHTML = `<div class="empty-mini inventory-empty">No batteries configured</div>`;
+    body.innerHTML = `<div class="empty-mini inventory-empty">${escapeHtml(t("inventory.noneConfigured"))}</div>`;
     return;
   }
 
@@ -513,25 +944,33 @@ function renderBatteryInventory() {
       const busDetail = battery.rs485_protocol || "Modbus RTU";
       return `
         <button class="inventory-row ${battery.id === state.selectedBatteryId ? "is-selected" : ""}" data-battery-id="${escapeHtml(battery.id)}" type="button">
-          <span class="inventory-cell" data-label="Battery">
+          <span class="inventory-cell" data-label="${escapeHtml(t("inventory.battery"))}">
             <strong>${escapeHtml(battery.name || battery.id)}</strong>
             <small>${escapeHtml(battery.id)}</small>
           </span>
-          <span class="inventory-cell" data-label="Network">
-            <strong>${escapeHtml(battery.ip_address || "Not configured")}</strong>
-            <small>${battery.ip_address ? "Battery Wi-Fi address" : "No direct IP recorded"}</small>
+          <span class="inventory-cell" data-label="${escapeHtml(t("inventory.network"))}">
+            <strong>${escapeHtml(battery.ip_address || t("common.notConfigured"))}</strong>
+            <small>${escapeHtml(battery.ip_address ? t("inventory.wifiAddress") : t("inventory.noDirectIp"))}</small>
           </span>
           <span class="inventory-cell" data-label="RS485">
-            <strong>Address ${escapeHtml(battery.address ?? "--")}</strong>
+            <strong>${escapeHtml(t("inventory.address", { address: battery.address ?? "--" }))}</strong>
             <small>${escapeHtml(busDetail)}</small>
           </span>
-          <span class="inventory-cell" data-label="Hardware">
-            <strong>${escapeHtml(hardware || "Eco-worthy battery")}</strong>
-            <small>${escapeHtml(battery.firmware_version ? `Firmware ${battery.firmware_version}` : "Firmware pending")}</small>
+          <span class="inventory-cell" data-label="${escapeHtml(t("inventory.hardware"))}">
+            <strong>${escapeHtml(hardware || t("inventory.defaultHardware"))}</strong>
+            <small>${escapeHtml(
+              battery.firmware_version
+                ? t("inventory.firmware", { version: battery.firmware_version })
+                : t("inventory.firmwarePending"),
+            )}</small>
           </span>
-          <span class="inventory-cell inventory-cell--state" data-label="State">
+          <span class="inventory-cell inventory-cell--state" data-label="${escapeHtml(t("inventory.state"))}">
             <span class="status-pill ${status.className}">${status.label}</span>
-            <small>${battery.last_polled_at ? `Seen ${formatRelativeTime(battery.last_polled_at)}` : "Not seen yet"}</small>
+            <small>${escapeHtml(
+              battery.last_polled_at
+                ? t("inventory.seen", { relative: formatRelativeTime(battery.last_polled_at) })
+                : t("inventory.notSeen"),
+            )}</small>
           </span>
         </button>
       `;
@@ -554,8 +993,8 @@ function renderBatteryInventory() {
 function renderSelectedBattery() {
   const battery = selectedBattery();
   if (!battery) {
-    $("selectedName").textContent = "Rack";
-    $("selectedState").textContent = "Pending";
+    $("selectedName").textContent = t("details.rack");
+    $("selectedState").textContent = t("status.pending");
     $("cellStrip").innerHTML = "";
     $("temperatureRow").innerHTML = "";
     $("detailList").innerHTML = "";
@@ -580,7 +1019,7 @@ function renderCells(cells) {
   const strip = $("cellStrip");
   strip.innerHTML = "";
   if (!cells.length) {
-    strip.innerHTML = `<div class="empty-mini">No cell data</div>`;
+    strip.innerHTML = `<div class="empty-mini">${escapeHtml(t("details.noCellData"))}</div>`;
     return;
   }
   const min = Math.min(...cells);
@@ -590,7 +1029,10 @@ function renderCells(cells) {
     const cell = document.createElement("div");
     cell.className = "cell-bar";
     cell.style.height = `${height}px`;
-    cell.title = `Cell ${index + 1}: ${voltage.toFixed(3)} V`;
+    cell.title = t("details.cellTitle", {
+      number: index + 1,
+      voltage: formatValue(voltage, "V", 3),
+    });
     cell.innerHTML = `<span>${index + 1}</span>`;
     strip.appendChild(cell);
   }
@@ -600,7 +1042,7 @@ function renderTemperatures(temperatures) {
   const row = $("temperatureRow");
   row.innerHTML = "";
   if (!temperatures.length) {
-    row.innerHTML = `<div class="empty-mini">No temperature data</div>`;
+    row.innerHTML = `<div class="empty-mini">${escapeHtml(t("details.noTemperatureData"))}</div>`;
     return;
   }
   for (const [index, temperature] of temperatures.entries()) {
@@ -614,19 +1056,19 @@ function renderTemperatures(temperatures) {
 function renderDetails(reading, battery) {
   const profile = batteryProfile(battery);
   const details = [
-    ["Battery ID", battery.id],
-    ["IP address", profile?.ip_address || "Not configured"],
-    ["Model", profile?.model],
-    ["Address", battery.address],
-    ["State", reading.operation_status],
-    ["SOH", formatValue(reading.soh_percent, "%")],
-    ["Cycles", reading.cycle_count],
-    ["Remaining", formatValue(reading.remaining_capacity_ah, "Ah")],
-    ["Full", formatValue(reading.full_capacity_ah, "Ah")],
-    ["Charge limit", formatValue(reading.charge_current_limit_a, "A")],
-    ["Discharge limit", formatValue(reading.discharge_current_limit_a, "A")],
-    ["Firmware", reading.firmware_version],
-    ["Serial", reading.serial_number],
+    [t("details.batteryId"), battery.id],
+    [t("details.ipAddress"), profile?.ip_address || t("common.notConfigured")],
+    [t("details.model"), profile?.model],
+    [t("details.address"), battery.address],
+    [t("details.state"), operationLabel(reading.operation_status)],
+    [t("details.soh"), formatValue(reading.soh_percent, "%")],
+    [t("details.cycles"), reading.cycle_count],
+    [t("details.remaining"), formatValue(reading.remaining_capacity_ah, "Ah")],
+    [t("details.full"), formatValue(reading.full_capacity_ah, "Ah")],
+    [t("details.chargeLimit"), formatValue(reading.charge_current_limit_a, "A")],
+    [t("details.dischargeLimit"), formatValue(reading.discharge_current_limit_a, "A")],
+    [t("details.firmware"), reading.firmware_version],
+    [t("details.serial"), reading.serial_number],
   ];
   $("detailList").innerHTML = details
     .map(
@@ -639,13 +1081,15 @@ function renderDetails(reading, battery) {
 function renderEvents(events) {
   const list = $("eventList");
   if (!events.length) {
-    list.innerHTML = `<div class="empty-mini">No recent events</div>`;
+    list.innerHTML = `<div class="empty-mini">${escapeHtml(t("events.none"))}</div>`;
     return;
   }
   list.innerHTML = events
     .map((event) => {
       const labels = [...(event.faults || []), ...(event.alarms || [])];
-      const title = labels.length ? labels.join(", ") : event.last_error || event.status;
+      const title = labels.length
+        ? labels.join(", ")
+        : event.last_error || statusPresentation(event.status).label;
       return `
         <div class="event-row">
           <span class="${event.fault_count ? "event-dot event-dot--fault" : "event-dot"}"></span>
@@ -797,7 +1241,7 @@ function drawEmptyChart(ctx, theme, pad, width, height) {
   ctx.fillStyle = theme.chartMuted;
   ctx.font = "14px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   ctx.fillText(
-    state.resourceErrors.history ? "History temporarily unavailable" : "Awaiting history",
+    state.resourceErrors.history ? t("history.unavailable") : t("history.awaiting"),
     pad.left,
     pad.top + 28,
   );
@@ -897,7 +1341,7 @@ function renderChartLegend(groups) {
     color: palette[index % palette.length],
     point: points[points.length - 1],
   }));
-  const signature = `${state.metric}:${items
+  const signature = `${state.language}:${state.metric}:${items
     .map((item) => `${item.batteryId}:${item.point.unix}:${item.point.value}`)
     .join("|")}`;
   if (legend.dataset.signature === signature) return;
@@ -941,7 +1385,12 @@ function renderChartTooltip(activePoint, canvasRect) {
   }
   $("historyChart").setAttribute(
     "aria-label",
-    `${metricLabels[state.metric]} for ${activePoint.batteryId}: ${value}, ${timestamp}`,
+    t("history.pointAria", {
+      metric: metricLabel(),
+      battery: activePoint.batteryId,
+      value,
+      timestamp,
+    }),
   );
 }
 
@@ -951,7 +1400,10 @@ function hideChartTooltip(redraw = true) {
   tooltip.hidden = true;
   tooltip.classList.remove("is-below");
   delete tooltip.dataset.mobile;
-  $("historyChart").setAttribute("aria-label", `${metricLabels[state.metric]} history chart`);
+  $("historyChart").setAttribute(
+    "aria-label",
+    t("history.metricChartAria", { metric: metricLabel() }),
+  );
   if (redraw) window.requestAnimationFrame(drawChart);
 }
 
@@ -1007,16 +1459,16 @@ function formatHistoryValue(value) {
 function formatChartTick(unix) {
   const date = new Date(unix * 1000);
   if (state.range === "1h" || state.range === "24h") {
-    return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+    return new Intl.DateTimeFormat(currentLocale(), { hour: "numeric", minute: "2-digit" }).format(date);
   }
   if (state.range === "3y") {
-    return new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" }).format(date);
+    return new Intl.DateTimeFormat(currentLocale(), { month: "short", year: "2-digit" }).format(date);
   }
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  return new Intl.DateTimeFormat(currentLocale(), { month: "short", day: "numeric" }).format(date);
 }
 
 function formatChartTimestamp(value) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -1045,40 +1497,52 @@ function batteryProfile(battery) {
 }
 
 function statusPresentation(status) {
-  if (status === "ok") return { label: "Online", className: "status-pill--ok" };
-  if (status === "error") return { label: "Needs attention", className: "status-pill--error" };
-  if (status === "disabled") return { label: "Disabled", className: "" };
-  if (status === "stale") return { label: "Last known", className: "status-pill--pending" };
-  return { label: "Waiting", className: "status-pill--pending" };
+  if (status === "ok") return { label: t("status.online"), className: "status-pill--ok" };
+  if (status === "error") return { label: t("status.needsAttention"), className: "status-pill--error" };
+  if (status === "disabled") return { label: t("status.disabled"), className: "" };
+  if (status === "stale") return { label: t("status.lastKnown"), className: "status-pill--pending" };
+  return { label: t("status.waiting"), className: "status-pill--pending" };
 }
 
 function connectionPresentation(status) {
   if (status === "online") {
     return {
-      label: "Collector online",
+      label: t("status.collectorOnline"),
       className: "status-pill--ok",
-      description: "Collector and all configured batteries are responding",
+      description: t("status.collectorOnlineDescription"),
     };
   }
   if (status === "degraded") {
     return {
-      label: "Collector degraded",
+      label: t("status.collectorDegraded"),
       className: "status-pill--warning",
-      description: "Collector is reachable, but one or more batteries need attention",
+      description: t("status.collectorDegradedDescription"),
     };
   }
   if (status === "stale") {
     return {
-      label: "Data stale",
+      label: t("status.collectorStale"),
       className: "status-pill--stale",
-      description: "Last known data is being shown while the collector reconnects",
+      description: t("status.collectorStaleDescription"),
     };
   }
   return {
-    label: "Collector offline",
+    label: t("status.collectorOffline"),
     className: "status-pill--error",
-    description: "The collector has not responded within the offline threshold",
+    description: t("status.collectorOfflineDescription"),
   };
+}
+
+function operationLabel(value) {
+  if (!value) return null;
+  const operation = String(value).toLowerCase();
+  if (operation.includes("discharg")) return t("operation.discharging");
+  if (operation.includes("charg")) return t("operation.charging");
+  if (operation.includes("idle")) return t("operation.idle");
+  if (operation.includes("standby") || operation.includes("stand by")) return t("operation.standby");
+  if (operation.includes("fault") || operation.includes("error")) return t("operation.fault");
+  if (operation === "unknown") return t("operation.unknown");
+  return value;
 }
 
 function batteryDotClass(status) {
@@ -1100,16 +1564,21 @@ function groupBy(items, key) {
 
 function formatValue(value, unit = "", digits = 1) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "--";
-  return `${value.toFixed(digits).replace(/\.0$/, "")}${unit}`;
+  const minimumFractionDigits = digits === 1 ? 0 : digits;
+  const formatted = new Intl.NumberFormat(currentLocale(), {
+    minimumFractionDigits,
+    maximumFractionDigits: digits,
+  }).format(value);
+  return `${formatted}${unit}`;
 }
 
 function compactNumber(value) {
   if (typeof value !== "number") return "--";
-  return new Intl.NumberFormat(undefined, { notation: "compact" }).format(value);
+  return new Intl.NumberFormat(currentLocale(), { notation: "compact" }).format(value);
 }
 
 function formatNumber(value) {
-  return new Intl.NumberFormat().format(value);
+  return new Intl.NumberFormat(currentLocale()).format(value);
 }
 
 function pluralize(value, singular, plural) {
@@ -1128,8 +1597,8 @@ function hostFromUrl(value) {
 function formatRelativeTime(value) {
   const date = new Date(value);
   const deltaSeconds = Math.round((date.getTime() - Date.now()) / 1000);
-  if (!Number.isFinite(deltaSeconds)) return "recently";
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  if (!Number.isFinite(deltaSeconds)) return t("common.recently");
+  const formatter = new Intl.RelativeTimeFormat(currentLocale(), { numeric: "auto" });
   const ranges = [
     [60, "second"],
     [60, "minute"],
@@ -1153,11 +1622,14 @@ function formatBytes(bytes) {
     size /= 1024;
     index += 1;
   }
-  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+  return `${new Intl.NumberFormat(currentLocale(), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: index === 0 ? 0 : 1,
+  }).format(size)} ${units[index]}`;
 }
 
 function formatTime(value) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(currentLocale(), {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
@@ -1165,7 +1637,7 @@ function formatTime(value) {
 }
 
 function shortDate(value) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -1201,6 +1673,79 @@ function getThemeColors() {
     chartInk: style.getPropertyValue("--chart-ink").trim(),
     chartMuted: style.getPropertyValue("--chart-muted").trim(),
   };
+}
+
+function initLanguage() {
+  const storedLanguage = getStoredLanguage();
+  const browserLanguage = navigator.language?.toLowerCase().startsWith("vi") ? "vi" : "en";
+  const language = storedLanguage || (document.documentElement.lang === "vi" ? "vi" : browserLanguage);
+  applyLanguage(language, false);
+
+  const toggle = $("languageToggle");
+  toggle.checked = language === "vi";
+  toggle.addEventListener("change", () => {
+    applyLanguage(toggle.checked ? "vi" : "en", true);
+  });
+}
+
+function applyLanguage(language, persist) {
+  const nextLanguage = language === "vi" ? "vi" : "en";
+  const setLanguage = () => {
+    state.language = nextLanguage;
+    document.documentElement.lang = nextLanguage;
+    document.documentElement.dataset.language = nextLanguage;
+    if (persist) setStoredLanguage(nextLanguage);
+    applyStaticTranslations();
+    rerenderLocalizedUi();
+    $("languageToggle").checked = nextLanguage === "vi";
+  };
+
+  if (persist && document.startViewTransition && !prefersReducedMotion()) {
+    document.startViewTransition(setLanguage);
+    return;
+  }
+  setLanguage();
+}
+
+function rerenderLocalizedUi() {
+  $("chartTitle").textContent = metricLabel();
+  $("chartLegend").dataset.signature = "";
+  hideChartTooltip(false);
+
+  if (state.livePayload) {
+    renderStatus(state.livePayload);
+    renderRackOverview();
+    renderSummary(state.summary);
+    renderBatteryCards();
+    renderBatteryInventory();
+    renderSelectedBattery();
+    renderStorage();
+  }
+  if (state.lastEventsRefreshAt || state.resourceErrors.events) {
+    renderEvents(state.events);
+    if (state.resourceErrors.events && !state.events.length) {
+      $("eventList").innerHTML = `<div class="empty-mini">${escapeHtml(t("events.refreshFailed"))}</div>`;
+    }
+  }
+  if (state.resourceErrors.live) renderLiveFailure(state.resourceErrors.live);
+  window.requestAnimationFrame(drawChart);
+}
+
+function getStoredLanguage() {
+  try {
+    const language = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return language === "vi" || language === "en" ? language : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredLanguage(language) {
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  } catch {
+    return;
+  }
 }
 
 function initTheme() {
@@ -1263,6 +1808,7 @@ function prefersReducedMotion() {
 }
 
 function bindControls() {
+  initLanguage();
   initTheme();
 
   $("metricSelect").addEventListener("change", (event) => {
@@ -1328,7 +1874,7 @@ function bindControls() {
   });
 
   window.addEventListener("online", () => refreshCycle(true));
-  window.addEventListener("offline", () => renderLiveFailure("Browser network is offline"));
+  window.addEventListener("offline", () => renderLiveFailure(t("error.browserOffline")));
 }
 
 bindControls();
