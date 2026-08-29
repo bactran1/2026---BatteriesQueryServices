@@ -131,6 +131,7 @@
           data-power="0"
           data-soc="0"
           data-battery-count="0"
+          data-pack-telemetry="[]"
           aria-labelledby="energyFlowTitle"
         >
           <div class="energy-flow__copy">
@@ -147,7 +148,11 @@
             ></canvas>
             <div id="energyFlowFallback" class="energy-flow__fallback" aria-hidden="true">
               <span class="energy-flow__fallback-source"></span>
-              <span class="energy-flow__fallback-path"></span>
+              <span class="energy-flow__fallback-path">
+                <i></i>
+                <i></i>
+                <i></i>
+              </span>
               <span class="energy-flow__fallback-rack">
                 <i></i>
                 <i></i>

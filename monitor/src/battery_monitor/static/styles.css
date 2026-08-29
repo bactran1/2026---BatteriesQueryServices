@@ -703,29 +703,72 @@ button {
 .energy-flow__fallback-path {
   position: relative;
   width: calc(100% - 150px);
-  height: 3px;
-  overflow: hidden;
+  height: 82px;
+}
+
+.energy-flow__fallback-path::before,
+.energy-flow__fallback-path > i {
+  position: absolute;
+  left: 0;
+  width: 52%;
+  height: 2px;
   background: color-mix(in srgb, var(--flow-color) 34%, var(--line));
+  content: "";
+}
+
+.energy-flow__fallback-path::before {
+  top: 50%;
+}
+
+.energy-flow__fallback-path > i {
+  top: 50%;
+  left: 48%;
+  display: block;
+  transform-origin: left center;
+}
+
+.energy-flow__fallback-path > i:first-child {
+  transform: rotate(-18deg);
+}
+
+.energy-flow__fallback-path > i:nth-child(3) {
+  transform: rotate(18deg);
 }
 
 .energy-flow__fallback-path::after {
   position: absolute;
-  top: -3px;
-  left: -28px;
-  width: 28px;
-  height: 9px;
+  top: calc(50% - 4px);
+  left: -18px;
+  width: 18px;
+  height: 8px;
   background: var(--flow-color);
   content: "";
   box-shadow: 0 0 14px color-mix(in srgb, var(--flow-color) 70%, transparent);
-  animation: energy-flow-fallback 1.4s linear infinite;
+  animation: energy-flow-fallback-trunk 1.25s linear infinite;
 }
 
-.energy-flow[data-mode="discharging"] .energy-flow__fallback-path::after {
+.energy-flow__fallback-path > i::after {
+  position: absolute;
+  top: -3px;
+  left: -14px;
+  width: 14px;
+  height: 8px;
+  background: var(--flow-color);
+  content: "";
+  box-shadow: 0 0 12px color-mix(in srgb, var(--flow-color) 70%, transparent);
+  animation: energy-flow-fallback-branch 1.25s linear infinite;
+  animation-delay: 520ms;
+}
+
+.energy-flow[data-mode="discharging"] .energy-flow__fallback-path::after,
+.energy-flow[data-mode="discharging"] .energy-flow__fallback-path > i::after {
   animation-direction: reverse;
 }
 
 .energy-flow[data-mode="idle"] .energy-flow__fallback-path::after,
-.energy-flow[data-mode="stale"] .energy-flow__fallback-path::after {
+.energy-flow[data-mode="stale"] .energy-flow__fallback-path::after,
+.energy-flow[data-mode="idle"] .energy-flow__fallback-path > i::after,
+.energy-flow[data-mode="stale"] .energy-flow__fallback-path > i::after {
   display: none;
 }
 
@@ -744,9 +787,15 @@ button {
   opacity: 0.8;
 }
 
-@keyframes energy-flow-fallback {
+@keyframes energy-flow-fallback-trunk {
   to {
-    left: calc(100% + 28px);
+    left: 52%;
+  }
+}
+
+@keyframes energy-flow-fallback-branch {
+  to {
+    left: calc(100% + 14px);
   }
 }
 
@@ -1724,7 +1773,8 @@ select {
     display: none;
   }
 
-  .energy-flow__fallback-path::after {
+  .energy-flow__fallback-path::after,
+  .energy-flow__fallback-path > i::after {
     animation: none;
   }
 }

@@ -782,6 +782,18 @@ function renderEnergyFlow(summary, flow) {
   const batteryCount = state.batteries.filter(
     (battery) => battery.status === "ok" && battery.last_reading,
   ).length;
+  const packTelemetry = state.batteries.slice(0, 3).map((battery) => {
+    const reading = battery.last_reading || {};
+    const reporting = state.collectorOnline && battery.status === "ok" && Boolean(battery.last_reading);
+    return {
+      id: battery.id,
+      mode: energyFlowPresentation(reading, reporting).mode,
+      current: finiteNumber(reading.current_a),
+      power: finiteNumber(reading.power_w),
+      soc: finiteNumber(reading.soc_percent),
+      reporting,
+    };
+  });
   const rate = power === null ? t("energy.unavailable") : formatValue(Math.abs(power), "W");
   const packs = `${formatNumber(batteryCount)} ${t(batteryCount === 1 ? "energy.pack" : "energy.packs")}`;
 
@@ -807,13 +819,14 @@ function renderEnergyFlow(summary, flow) {
   section.dataset.power = String(power ?? 0);
   section.dataset.soc = String(soc ?? 0);
   section.dataset.batteryCount = String(batteryCount);
+  section.dataset.packTelemetry = JSON.stringify(packTelemetry);
   $("energyFlowTitle").textContent = t(titleKey);
   $("energyFlowDirection").textContent = t(directionKey);
   $("energyFlowRate").textContent = mode === "stale" ? t("energy.unavailable") : rate;
   $("energyFlowDescription").textContent = t(descriptionKey, { rate, packs });
 
   window.dispatchEvent(new CustomEvent("battery-energy-flow", {
-    detail: { mode, current, power, soc, batteryCount },
+    detail: { mode, current, power, soc, batteryCount, packs: packTelemetry },
   }));
 }
 

@@ -43,8 +43,8 @@ function startEnergyFlowScene() {
   const materials = createMaterials();
   const source = createPowerSource(materials);
   const rack = createBatteryRack(materials);
-  const conduit = createConduit(materials);
-  root.add(source.group, rack.group, conduit.group);
+  const network = createFlowNetwork(materials);
+  root.add(source.group, rack.group, network.group);
 
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(8.4, 3.6),
@@ -74,6 +74,7 @@ function startEnergyFlowScene() {
     power: 0,
     soc: 0,
     batteryCount: 0,
+    packs: [],
   };
   const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   const finePointerQuery = window.matchMedia("(hover: hover) and (pointer: fine)");
@@ -94,31 +95,40 @@ function startEnergyFlowScene() {
       power: finite(detail.power ?? section.dataset.power),
       soc: clamp(finite(detail.soc ?? section.dataset.soc), 0, 100),
       batteryCount: Math.max(0, Math.round(finite(detail.batteryCount ?? section.dataset.batteryCount))),
+      packs: normalizePackTelemetry(detail.packs ?? section.dataset.packTelemetry),
     };
   }
 
   function applyFlowState(detail = {}) {
     Object.assign(flowState, readSectionState(detail));
     const color = FLOW_COLORS[flowState.mode];
-    materials.conduit.emissive.setHex(color);
-    materials.conduit.emissiveIntensity = isActiveMode() ? 0.48 : 0.08;
-    materials.conduit.color.setHex(flowState.mode === "stale" ? 0x73737a : color);
-    materials.particle.color.setHex(color);
-    materials.particle.emissive.setHex(color);
     materials.sourceSignal.color.setHex(color);
     materials.sourceSignal.emissive.setHex(color);
     materials.sourceSignal.emissiveIntensity = isActiveMode() ? 1.8 : 0.35;
+    network.hubMaterial.color.setHex(color);
+    network.hubMaterial.emissive.setHex(color);
+    network.hubMaterial.emissiveIntensity = isActiveMode() ? 1.55 : 0.24;
 
-    const normalizedSoc = flowState.soc / 100;
+    const rackMagnitude = Math.max(Math.abs(flowState.current), Math.abs(flowState.power) / 54);
+    configureRoute(network.trunk, flowState.mode, rackMagnitude, flowState.batteryCount > 0);
+
     rack.modules.forEach((module, index) => {
-      const isReporting = index < flowState.batteryCount;
-      module.signal.color.setHex(isReporting ? color : 0x8e8e93);
-      module.signal.emissive.setHex(isReporting ? color : 0x8e8e93);
-      module.signal.emissiveIntensity = isReporting && isActiveMode() ? 1.35 : 0.18;
+      const pack = flowState.packs[index];
+      const isReporting = pack ? pack.reporting : index < flowState.batteryCount;
+      const packMode = isReporting ? validMode(pack?.mode ?? flowState.mode) : "stale";
+      const packColor = FLOW_COLORS[packMode];
+      const packMagnitude = pack
+        ? Math.max(Math.abs(pack.current), Math.abs(pack.power) / 54)
+        : rackMagnitude / Math.max(flowState.batteryCount, 1);
+      const normalizedSoc = clamp(pack?.soc ?? flowState.soc, 0, 100) / 100;
+      configureRoute(network.branches[index], packMode, packMagnitude, isReporting);
+      module.signal.color.setHex(packColor);
+      module.signal.emissive.setHex(packColor);
+      module.signal.emissiveIntensity = isReporting && isActiveMode(packMode) ? 1.35 : 0.18;
       module.fill.scale.x = Math.max(0.025, normalizedSoc);
       module.fill.position.x = -0.6 + (1.2 * module.fill.scale.x) / 2;
-      module.fillMaterial.color.setHex(isReporting ? color : 0x8e8e93);
-      module.fillMaterial.emissive.setHex(isReporting ? color : 0x8e8e93);
+      module.fillMaterial.color.setHex(packColor);
+      module.fillMaterial.emissive.setHex(packColor);
       module.fillMaterial.opacity = isReporting ? 0.95 : 0.32;
     });
 
@@ -128,13 +138,14 @@ function startEnergyFlowScene() {
         ? "reverse"
         : "paused";
     canvas.dataset.energyMode = flowState.mode;
+    canvas.dataset.activeRoutes = String(network.routes.filter((route) => isActiveMode(route.mode)).length);
     if (disposed) return;
     renderOnce(performance.now());
     scheduleFrame();
   }
 
-  function isActiveMode() {
-    return flowState.mode === "charging" || flowState.mode === "discharging";
+  function isActiveMode(mode = flowState.mode) {
+    return mode === "charging" || mode === "discharging";
   }
 
   function shouldAnimate() {
@@ -142,35 +153,52 @@ function startEnergyFlowScene() {
       && !motionQuery.matches
       && isIntersecting
       && isDocumentVisible
-      && isActiveMode();
+      && network.routes.some((route) => isActiveMode(route.mode));
   }
 
   function updateParticles(time) {
-    const active = isActiveMode();
-    const magnitude = Math.max(Math.abs(flowState.current), Math.abs(flowState.power) / 54);
-    const activeCount = active ? Math.round(clamp(7 + magnitude * 0.6, 7, conduit.particles.length)) : 0;
-    const speed = clamp(0.09 + magnitude * 0.006, 0.09, 0.34);
-    const direction = flowState.mode === "discharging" ? -1 : 1;
     const tangent = new THREE.Vector3();
     const position = new THREE.Vector3();
 
-    conduit.particles.forEach((particle, index) => {
-      particle.visible = index < activeCount;
-      if (!particle.visible) return;
-      const phase = index / activeCount;
-      const progress = wrap01(phase + direction * time * 0.001 * speed);
-      conduit.curve.getPointAt(progress, position);
-      conduit.curve.getTangentAt(progress, tangent).multiplyScalar(direction).normalize();
-      particle.position.copy(position);
-      particle.quaternion.setFromUnitVectors(conduit.forwardAxis, tangent);
-      const pulse = motionQuery.matches ? 1 : 0.84 + Math.sin(time * 0.006 + index) * 0.16;
-      particle.scale.setScalar(pulse);
+    network.routes.forEach((route, routeIndex) => {
+      const active = route.reporting && isActiveMode(route.mode);
+      const activeCount = active
+        ? Math.round(clamp(2 + route.magnitude * 0.65, 2, route.particles.length))
+        : 0;
+      const speed = clamp(0.12 + route.magnitude * 0.008, 0.12, 0.38);
+      const direction = route.mode === "discharging" ? -1 : 1;
+
+      route.particles.forEach((particle, index) => {
+        particle.visible = index < activeCount;
+        if (!particle.visible) return;
+        const phase = index / activeCount + route.phaseOffset;
+        const progress = wrap01(phase + direction * time * 0.001 * speed);
+        route.curve.getPointAt(progress, position);
+        route.curve.getTangentAt(progress, tangent).multiplyScalar(direction).normalize();
+        particle.position.copy(position);
+        particle.quaternion.setFromUnitVectors(route.forwardAxis, tangent);
+        const motionPulse = motionQuery.matches
+          ? 1
+          : 0.9 + Math.sin(time * 0.006 + index + routeIndex) * 0.1;
+        const endpointFade = clamp(Math.sin(Math.PI * progress) * 1.45, 0.42, 1);
+        particle.scale.setScalar(motionPulse * endpointFade);
+      });
+
+      route.particleMaterial.emissiveIntensity = active
+        ? 1.65 + Math.sin(time * 0.005 + routeIndex) * 0.4
+        : 0.2;
     });
 
-    const pulse = active && !motionQuery.matches ? 1.15 + Math.sin(time * 0.004) * 0.35 : 0.7;
-    materials.particle.emissiveIntensity = pulse * 2.2;
+    const systemActive = isActiveMode();
+    materials.sourceSignal.emissiveIntensity = systemActive && !motionQuery.matches
+      ? 1.45 + Math.sin(time * 0.004) * 0.35
+      : 0.35;
+    network.hubMaterial.emissiveIntensity = systemActive && !motionQuery.matches
+      ? 1.2 + Math.sin(time * 0.004 + 0.7) * 0.3
+      : 0.24;
     rack.modules.forEach((module, index) => {
-      if (index < flowState.batteryCount && active) {
+      const route = network.branches[index];
+      if (route.reporting && isActiveMode(route.mode)) {
         module.signal.emissiveIntensity = 1.1 + Math.sin(time * 0.004 + index * 0.75) * 0.35;
       }
     });
@@ -348,11 +376,12 @@ function createMaterials() {
     conduit: new THREE.MeshStandardMaterial({
       color: FLOW_COLORS.stale,
       emissive: FLOW_COLORS.stale,
-      emissiveIntensity: 0.08,
+      emissiveIntensity: 0.04,
       metalness: 0.55,
       roughness: 0.38,
       transparent: true,
-      opacity: 0.66,
+      opacity: 0.2,
+      depthWrite: false,
     }),
     particle: new THREE.MeshStandardMaterial({
       color: FLOW_COLORS.stale,
@@ -423,27 +452,105 @@ function createBatteryRack(materials) {
   return { group, modules };
 }
 
-function createConduit(materials) {
+function createFlowNetwork(materials) {
   const group = new THREE.Group();
-  const curve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-2.13, -0.02, 0.1),
-    new THREE.Vector3(-1.35, 0.15, 0.28),
-    new THREE.Vector3(0, 0.42, 0.54),
-    new THREE.Vector3(1.28, 0.16, 0.3),
-    new THREE.Vector3(1.7, -0.02, 0.1),
-  ]);
-  const tube = mesh(new THREE.TubeGeometry(curve, 72, 0.035, 8, false), materials.conduit);
+  const junction = new THREE.Vector3(0.08, -0.14, 0.58);
+  const trunk = createRoute(new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-2.13, -0.18, 0.5),
+    new THREE.Vector3(-1.42, -0.03, 0.57),
+    new THREE.Vector3(-0.62, 0.05, 0.62),
+    junction,
+  ]), materials, 9, 0);
+  group.add(trunk.group);
+
+  const branches = [-0.89, -0.22, 0.45].map((targetY, index) => {
+    const route = createRoute(new THREE.CatmullRomCurve3([
+      junction,
+      new THREE.Vector3(0.55, -0.14 + (targetY + 0.14) * 0.32, 0.65),
+      new THREE.Vector3(1.1, -0.14 + (targetY + 0.14) * 0.74, 0.62),
+      new THREE.Vector3(1.7, targetY, 0.54),
+    ]), materials, 6, 0.08 + index * 0.11);
+    group.add(route.group);
+    return route;
+  });
+
+  const hubMaterial = materials.sourceSignal.clone();
+  const hubBack = mesh(new THREE.BoxGeometry(0.42, 0.42, 0.08), materials.face);
+  hubBack.position.copy(junction).add(new THREE.Vector3(0, 0, -0.05));
+  const hub = mesh(new THREE.BoxGeometry(0.2, 0.2, 0.12), hubMaterial);
+  hub.position.copy(junction).add(new THREE.Vector3(0, 0, 0.04));
+  group.add(hubBack, hub);
+
+  return { group, trunk, branches, routes: [trunk, ...branches], hubMaterial };
+}
+
+function createRoute(curve, materials, particleCount, phaseOffset) {
+  const group = new THREE.Group();
+  const lineMaterial = materials.conduit.clone();
+  const particleMaterial = materials.particle.clone();
+  const tube = mesh(new THREE.TubeGeometry(curve, 56, 0.018, 6, false), lineMaterial);
   group.add(tube);
 
-  const particleGeometry = new THREE.BoxGeometry(0.075, 0.075, 0.26);
-  const particles = Array.from({ length: 20 }, () => {
-    const particle = mesh(particleGeometry, materials.particle);
+  const particleGeometry = new THREE.BoxGeometry(0.065, 0.065, 0.18);
+  const particles = Array.from({ length: particleCount }, () => {
+    const particle = mesh(particleGeometry, particleMaterial);
     particle.visible = false;
     group.add(particle);
     return particle;
   });
 
-  return { group, curve, particles, forwardAxis: new THREE.Vector3(0, 0, 1) };
+  return {
+    group,
+    curve,
+    particles,
+    lineMaterial,
+    particleMaterial,
+    phaseOffset,
+    forwardAxis: new THREE.Vector3(0, 0, 1),
+    mode: "stale",
+    magnitude: 0,
+    reporting: false,
+  };
+}
+
+function configureRoute(route, mode, magnitude, reporting) {
+  route.mode = reporting ? validMode(mode) : "stale";
+  route.magnitude = Math.max(0, finite(magnitude));
+  route.reporting = Boolean(reporting);
+  const active = route.reporting && (route.mode === "charging" || route.mode === "discharging");
+  const color = FLOW_COLORS[route.mode];
+  route.lineMaterial.color.setHex(color);
+  route.lineMaterial.emissive.setHex(color);
+  route.lineMaterial.emissiveIntensity = active ? 0.3 : 0.04;
+  route.lineMaterial.opacity = active ? 0.36 : route.reporting ? 0.2 : 0.11;
+  route.particleMaterial.color.setHex(color);
+  route.particleMaterial.emissive.setHex(color);
+}
+
+function normalizePackTelemetry(value) {
+  let packs = value;
+  if (typeof value === "string") {
+    try {
+      packs = JSON.parse(value);
+    } catch {
+      packs = [];
+    }
+  }
+  if (!Array.isArray(packs)) return [];
+  return packs.slice(0, 3).map((pack) => ({
+    id: String(pack?.id || ""),
+    mode: validMode(pack?.mode),
+    current: finite(pack?.current),
+    power: finite(pack?.power),
+    soc: optionalFinite(pack?.soc),
+    reporting: Boolean(pack?.reporting),
+  }));
+}
+
+function optionalFinite(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function mesh(geometry, material, castShadow = false) {
