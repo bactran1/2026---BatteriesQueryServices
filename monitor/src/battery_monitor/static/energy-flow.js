@@ -66,7 +66,9 @@ function startEnergyFlowScene() {
   keyLight.shadow.camera.bottom = -4;
   const rimLight = new THREE.DirectionalLight(0xff9f0a, 1.25);
   rimLight.position.set(5, 2, -4);
-  scene.add(ambient, keyLight, rimLight);
+  const fillLight = new THREE.DirectionalLight(0xf4f6ff, 1.1);
+  fillLight.position.set(0.5, 1.8, 7);
+  scene.add(ambient, keyLight, rimLight, fillLight);
 
   const flowState = {
     mode: "stale",
@@ -274,18 +276,19 @@ function startEnergyFlowScene() {
   function updateTheme() {
     const dark = document.documentElement.dataset.theme === "dark";
     const palette = dark
-      ? { body: 0x24252a, face: 0x101114, trim: 0x777982, rail: 0x4b4c52, floor: 0x000000 }
+      ? { body: 0x555861, face: 0x292b31, trim: 0xc8cad1, rail: 0x797c85, floor: 0x000000 }
       : { body: 0xc8c9ce, face: 0x2c2d32, trim: 0xf1f1f3, rail: 0x85868d, floor: 0x000000 };
     materials.body.color.setHex(palette.body);
     materials.face.color.setHex(palette.face);
     materials.trim.color.setHex(palette.trim);
     materials.rail.color.setHex(palette.rail);
     floor.material.color.setHex(palette.floor);
-    floor.material.opacity = dark ? 0.3 : 0.13;
-    ambient.intensity = dark ? 1.25 : 1.75;
-    keyLight.intensity = dark ? 2.6 : 3.4;
-    rimLight.intensity = dark ? 1.55 : 0.9;
-    renderer.toneMappingExposure = dark ? 1.12 : 1.02;
+    floor.material.opacity = dark ? 0.18 : 0.13;
+    ambient.intensity = dark ? 1.8 : 1.75;
+    keyLight.intensity = dark ? 3.25 : 3.4;
+    rimLight.intensity = dark ? 1.7 : 0.9;
+    fillLight.intensity = dark ? 2.35 : 1.1;
+    renderer.toneMappingExposure = dark ? 1.18 : 1.02;
     needsPixelAudit = true;
     renderOnce(performance.now());
   }

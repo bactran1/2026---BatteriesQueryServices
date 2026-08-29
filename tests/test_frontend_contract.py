@@ -134,6 +134,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("THREE.CatmullRomCurve3", scene)
         self.assertIn("function createFlowNetwork", scene)
         self.assertIn("function configureRoute", scene)
+        self.assertIn("const fillLight = new THREE.DirectionalLight", scene)
+        self.assertIn("fillLight.intensity = dark ?", scene)
         self.assertIn("network.branches[index]", scene)
         self.assertIn("canvas.dataset.activeRoutes", scene)
         self.assertIn("IntersectionObserver", scene)
