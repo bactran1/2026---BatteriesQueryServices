@@ -135,41 +135,57 @@
           aria-labelledby="energyFlowTitle"
         >
           <div class="energy-flow__copy">
-            <p class="eyebrow" data-i18n="energy.eyebrow">Live energy</p>
-            <h2 id="energyFlowTitle" data-i18n="energy.title">Energy flow</h2>
-            <p id="energyFlowDescription" data-i18n="energy.waiting">Waiting for rack telemetry</p>
+            <p class="eyebrow" data-i18n="energy.eyebrow">Live home energy</p>
+            <h2 id="energyFlowTitle" data-i18n="energy.title">Home power flow</h2>
+            <p id="energyFlowDescription" data-i18n="energy.waiting">Waiting for battery telemetry</p>
           </div>
           <div id="energyFlowStage" class="energy-flow__stage">
             <canvas
               id="energyFlowCanvas"
               role="img"
-              aria-label="Three-dimensional rack energy flow"
+              aria-label="Three-dimensional home power flow"
               data-i18n-aria-label="energy.sceneAria"
             ></canvas>
             <div id="energyFlowFallback" class="energy-flow__fallback" aria-hidden="true">
-              <span class="energy-flow__fallback-source"></span>
-              <span class="energy-flow__fallback-path">
-                <i></i>
-                <i></i>
-                <i></i>
-              </span>
-              <span class="energy-flow__fallback-rack">
+              <span class="energy-flow__fallback-node energy-flow__fallback-grid"></span>
+              <span class="energy-flow__fallback-link energy-flow__fallback-link--grid"></span>
+              <span class="energy-flow__fallback-node energy-flow__fallback-inverter"></span>
+              <span class="energy-flow__fallback-link energy-flow__fallback-link--load"></span>
+              <span class="energy-flow__fallback-node energy-flow__fallback-home"></span>
+              <span class="energy-flow__fallback-link energy-flow__fallback-link--battery"></span>
+              <span class="energy-flow__fallback-node energy-flow__fallback-battery">
                 <i></i>
                 <i></i>
                 <i></i>
               </span>
             </div>
-            <span class="energy-flow__node-label energy-flow__node-label--source" data-i18n="energy.source">Rack bus</span>
-            <span class="energy-flow__node-label energy-flow__node-label--storage" data-i18n="energy.storage">Battery rack</span>
           </div>
           <div class="energy-flow__readout" aria-live="polite">
             <div>
-              <span data-i18n="energy.direction">Direction</span>
+              <span data-i18n="energy.direction">Observed path</span>
               <strong id="energyFlowDirection" data-i18n="energy.waitingShort">Waiting</strong>
             </div>
             <div>
-              <span data-i18n="energy.rate">Flow rate</span>
+              <span data-i18n="energy.rate">Battery power</span>
               <strong id="energyFlowRate">--</strong>
+            </div>
+          </div>
+          <div class="energy-flow__nodes">
+            <div>
+              <span data-i18n="energy.grid">Grid</span>
+              <strong id="energyGridValue" data-i18n="energy.unmetered">Not metered</strong>
+            </div>
+            <div>
+              <span data-i18n="energy.inverter">Inverter</span>
+              <strong id="energyInverterValue" data-i18n="energy.waitingShort">Waiting</strong>
+            </div>
+            <div>
+              <span data-i18n="energy.storage">Battery rack</span>
+              <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
+            </div>
+            <div>
+              <span data-i18n="energy.load">Home load</span>
+              <strong id="energyLoadValue" data-i18n="energy.unmetered">Not metered</strong>
             </div>
           </div>
         </section>
