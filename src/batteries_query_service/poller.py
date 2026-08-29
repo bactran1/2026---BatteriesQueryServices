@@ -8,9 +8,11 @@ from typing import Any
 
 from . import __version__
 from .buffer import SnapshotBuffer
-from .config import BatterySettings, Settings
+from .config import BatterySettings, InverterSettings, Settings
 from .ecoworthy import EcoWorthyModbusClient, SerialConnectionSettings
+from .megarevo import MegarevoR8KLNAClient, R8KLNA_PROFILE
 from .metrics import MetricsPublisher
+from .renogy_x import RenogyXSerialSettings
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ class BatteryPoller:
         self._states: dict[str, dict[str, Any]] = {
             battery.id: self._pending_state(battery) for battery in settings.batteries
         }
+        self._inverter_state = self._pending_inverter_state(settings.inverter)
         self._poll_count = 0
         self._latest_sequence = 0
         self._last_completed_at: str | None = None
@@ -38,7 +41,11 @@ class BatteryPoller:
         self._last_buffered_monotonic: float | None = None
 
     async def run(self) -> None:
-        logger.info("battery poller started with %d configured batteries", len(self.settings.batteries))
+        logger.info(
+            "collector poller started with %d batteries and inverter %s",
+            len(self.settings.batteries),
+            "enabled" if self.settings.inverter.enabled else "disabled",
+        )
         while not self._stop.is_set():
             await self.poll_once()
             try:
@@ -110,6 +117,7 @@ class BatteryPoller:
                 },
             )
 
+        await self._poll_inverter()
         self._last_completed_at = _utc_now()
         if self.snapshot_buffer is not None and self._buffer_sample_is_due():
             try:
@@ -136,6 +144,7 @@ class BatteryPoller:
     async def snapshot(self) -> dict[str, Any]:
         async with self._lock:
             batteries = [dict(state) for state in self._states.values()]
+            inverter = dict(self._inverter_state)
         return {
             "service": {
                 "started_at": self.started_at,
@@ -151,11 +160,13 @@ class BatteryPoller:
                 ),
             },
             "batteries": batteries,
+            "inverter": inverter,
         }
 
     async def health(self) -> dict[str, Any]:
         snapshot = await self.snapshot()
         statuses = [battery["status"] for battery in snapshot["batteries"]]
+        inverter_status = snapshot["inverter"]["status"]
         buffer_status = (
             await asyncio.to_thread(self.snapshot_buffer.stats)
             if self.snapshot_buffer is not None
@@ -171,13 +182,89 @@ class BatteryPoller:
             "ok_count": statuses.count("ok"),
             "error_count": statuses.count("error"),
             "pending_count": statuses.count("pending"),
+            "inverter_enabled": self.settings.inverter.enabled,
+            "inverter_status": inverter_status,
             "poll_count": self._poll_count,
             "buffer": buffer_status,
         }
 
+    async def _poll_inverter(self) -> None:
+        inverter = self.settings.inverter
+        if not inverter.enabled:
+            await self._set_inverter_state(self._disabled_inverter_state(inverter))
+            return
+
+        client = MegarevoR8KLNAClient(
+            RenogyXSerialSettings(
+                port=inverter.serial_port,
+                baudrate=inverter.baudrate,
+                timeout_seconds=inverter.timeout_seconds,
+                parity=inverter.parity,
+            ),
+            retries=inverter.retries,
+        )
+        polled_at = _utc_now()
+        try:
+            reading = await asyncio.to_thread(
+                client.read_status,
+                inverter.address,
+                inverter.id,
+                inverter.model,
+            )
+        except Exception as exc:
+            logger.warning(
+                "inverter poll failed for %s address %s on %s: %s",
+                inverter.id,
+                inverter.address,
+                inverter.serial_port,
+                exc,
+            )
+            self.metrics.record_inverter_error(inverter.id, inverter.address)
+            async with self._lock:
+                previous_reading = self._inverter_state.get("last_reading")
+                previous_success = self._inverter_state.get("last_success_at")
+            await self._set_inverter_state(
+                {
+                    "id": inverter.id,
+                    "model": inverter.model,
+                    "profile": R8KLNA_PROFILE,
+                    "address": inverter.address,
+                    "serial_port": inverter.serial_port,
+                    "status": "error",
+                    "last_polled_at": polled_at,
+                    "last_success_at": previous_success,
+                    "last_error": str(exc),
+                    "read_errors": [],
+                    "last_reading": previous_reading,
+                }
+            )
+            return
+
+        self.metrics.record_inverter_reading(reading)
+        status = "degraded" if reading.read_errors else "ok"
+        await self._set_inverter_state(
+            {
+                "id": inverter.id,
+                "model": inverter.model,
+                "profile": reading.profile,
+                "address": inverter.address,
+                "serial_port": inverter.serial_port,
+                "status": status,
+                "last_polled_at": polled_at,
+                "last_success_at": reading.timestamp,
+                "last_error": None,
+                "read_errors": reading.read_errors,
+                "last_reading": reading.to_dict(),
+            }
+        )
+
     async def _set_state(self, battery_id: str, state: dict[str, Any]) -> None:
         async with self._lock:
             self._states[battery_id] = state
+
+    async def _set_inverter_state(self, state: dict[str, Any]) -> None:
+        async with self._lock:
+            self._inverter_state = state
 
     def _pending_state(self, battery: BatterySettings) -> dict[str, Any]:
         return {
@@ -200,6 +287,26 @@ class BatteryPoller:
             "last_error": None,
             "last_reading": None,
         }
+
+    def _pending_inverter_state(self, inverter: InverterSettings) -> dict[str, Any]:
+        return {
+            "id": inverter.id,
+            "model": inverter.model,
+            "profile": R8KLNA_PROFILE,
+            "address": inverter.address,
+            "serial_port": inverter.serial_port,
+            "status": "pending" if inverter.enabled else "disabled",
+            "last_polled_at": None,
+            "last_success_at": None,
+            "last_error": None,
+            "read_errors": [],
+            "last_reading": None,
+        }
+
+    def _disabled_inverter_state(self, inverter: InverterSettings) -> dict[str, Any]:
+        state = self._pending_inverter_state(inverter)
+        state["last_polled_at"] = _utc_now()
+        return state
 
 
 def _utc_now() -> str:

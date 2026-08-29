@@ -45,11 +45,25 @@ class BatterySettings:
 
 
 @dataclass(frozen=True)
+class InverterSettings:
+    enabled: bool = False
+    id: str = "renogy-x-8k"
+    model: str = "Renogy X 8K (Megarevo R8KLNA-compatible)"
+    serial_port: str = "/dev/ttyUSB1"
+    address: int = 1
+    baudrate: int = 9600
+    timeout_seconds: float = 2.0
+    parity: str = "N"
+    retries: int = 2
+
+
+@dataclass(frozen=True)
 class Settings:
     server: ServerSettings = field(default_factory=ServerSettings)
     serial: SerialSettings = field(default_factory=SerialSettings)
     polling: PollingSettings = field(default_factory=PollingSettings)
     buffer: BufferSettings = field(default_factory=BufferSettings)
+    inverter: InverterSettings = field(default_factory=InverterSettings)
     batteries: list[BatterySettings] = field(default_factory=list)
     log_level: str = "INFO"
     build_commit: str = "unknown"
@@ -66,6 +80,7 @@ def load_settings(config_path: str | None = None) -> Settings:
     serial_raw = raw.get("serial", {})
     polling_raw = raw.get("polling", {})
     buffer_raw = raw.get("buffer", {})
+    inverter_raw = raw.get("inverter", {})
 
     server = ServerSettings(
         host=os.getenv("BQS_HOST", str(server_raw.get("host", "0.0.0.0"))),
@@ -104,6 +119,7 @@ def load_settings(config_path: str | None = None) -> Settings:
             ),
         ),
     )
+    inverter = _load_inverter(inverter_raw)
     batteries = _load_batteries(raw.get("batteries", []))
 
     return Settings(
@@ -111,9 +127,55 @@ def load_settings(config_path: str | None = None) -> Settings:
         serial=serial,
         polling=polling,
         buffer=buffer,
+        inverter=inverter,
         batteries=batteries,
         log_level=os.getenv("BQS_LOG_LEVEL", str(raw.get("log_level", "INFO"))),
         build_commit=os.getenv("BQS_BUILD_COMMIT", "unknown"),
+    )
+
+
+def _load_inverter(raw_inverter: Any) -> InverterSettings:
+    if raw_inverter and not isinstance(raw_inverter, dict):
+        raise ValueError("[inverter] must be a table")
+    raw = raw_inverter or {}
+    parity = os.getenv("BQS_INVERTER_PARITY", str(raw.get("parity", "N"))).upper()
+    if parity not in {"N", "E", "O"}:
+        raise ValueError("Inverter parity must be N, E, or O")
+
+    address = _env_int("BQS_INVERTER_ADDRESS", raw.get("address", 1))
+    if not 1 <= address <= 247:
+        raise ValueError("Inverter Modbus address must be between 1 and 247")
+
+    baudrate = _env_int("BQS_INVERTER_BAUDRATE", raw.get("baudrate", 9600))
+    if baudrate <= 0:
+        raise ValueError("Inverter baudrate must be greater than zero")
+
+    return InverterSettings(
+        enabled=_env_bool("BQS_INVERTER_ENABLED", raw.get("enabled", False)),
+        id=os.getenv("BQS_INVERTER_ID", str(raw.get("id", "renogy-x-8k"))),
+        model=os.getenv(
+            "BQS_INVERTER_MODEL",
+            str(
+                raw.get(
+                    "model",
+                    "Renogy X 8K (Megarevo R8KLNA-compatible)",
+                )
+            ),
+        ),
+        serial_port=os.getenv(
+            "BQS_INVERTER_SERIAL_PORT",
+            str(raw.get("serial_port", "/dev/ttyUSB1")),
+        ),
+        address=address,
+        baudrate=baudrate,
+        timeout_seconds=max(
+            0.1,
+            _env_float(
+                "BQS_INVERTER_TIMEOUT_SECONDS", raw.get("timeout_seconds", 2.0)
+            ),
+        ),
+        parity=parity,
+        retries=max(0, min(5, _env_int("BQS_INVERTER_RETRIES", raw.get("retries", 2)))),
     )
 
 

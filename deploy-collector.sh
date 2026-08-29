@@ -10,6 +10,7 @@ REPO_ROOT="${SCRIPT_DIR}"
 COMPOSE_FILE="${REPO_ROOT}/docker-compose.yml"
 SERVICE_NAME="batteries-query-service"
 DEFAULT_SERIAL_DEVICE="/dev/ttyUSB0"
+DEFAULT_INVERTER_SERIAL_DEVICE="/dev/ttyUSB1"
 DEFAULT_CONFIG_FILE="${REPO_ROOT}/config.toml"
 FOLLOW_LOGS=0
 HEALTH_CHECK=1
@@ -24,7 +25,9 @@ usage() {
 "  bash deploy-collector.sh [options]" \
 "" \
 "Options:" \
-"  --serial-device PATH  Host USB serial device, including /dev/serial/by-id paths" \
+"  --serial-device PATH  Host USB serial device for the battery bus" \
+"  --inverter-serial-device PATH" \
+"                        Host USB serial device for the Renogy X inverter" \
 "  --config PATH         Collector TOML file, default ./config.toml" \
 "  --follow-logs         Follow container logs after deployment" \
 "  --no-health-check     Skip the post-restart health check" \
@@ -34,13 +37,15 @@ usage() {
 "" \
 "Environment:" \
 "  COLLECTOR_SERIAL_DEVICE  Same as --serial-device" \
+"  COLLECTOR_INVERTER_SERIAL_DEVICE" \
+"                           Same as --inverter-serial-device" \
 "  COLLECTOR_CONFIG_FILE    Same as --config" \
 "  COLLECTOR_IMAGE_NAME     Image name, default batteries-query-service" \
 "  COLLECTOR_IMAGE_TAG      Image tag; default is the current Git commit SHA" \
 "" \
 "Examples:" \
 "  bash deploy-collector.sh" \
-"  bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Your_Adapter" \
+"  bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Battery_Adapter --inverter-serial-device /dev/serial/by-id/usb-Inverter_Adapter" \
 "  bash deploy-collector.sh --skip-git-update --use-cache"
 }
 
@@ -168,7 +173,7 @@ explain_container_start_failure() {
 
   if [[ "${output}" == *"error gathering device information"* || "${output}" == *"no such file or directory"* ]]; then
     printf '%s\n' "${output}" >&2
-    fail "Docker could not attach ${COLLECTOR_SERIAL_DEVICE}. Confirm the USB adapter is connected and use --serial-device with its current path."
+    fail "Docker could not attach a configured serial device. Confirm both USB adapters are connected and verify --serial-device and --inverter-serial-device."
   fi
 
   if [[ "${output}" == *"net.ipv4.ip_unprivileged_port_start"* ]]; then
@@ -221,6 +226,11 @@ while [[ $# -gt 0 ]]; do
       export COLLECTOR_SERIAL_DEVICE="$2"
       shift 2
       ;;
+    --inverter-serial-device)
+      [[ $# -ge 2 ]] || fail "--inverter-serial-device requires a path"
+      export COLLECTOR_INVERTER_SERIAL_DEVICE="$2"
+      shift 2
+      ;;
     --config)
       [[ $# -ge 2 ]] || fail "--config requires a path"
       export COLLECTOR_CONFIG_FILE="$2"
@@ -258,6 +268,7 @@ docker info >/dev/null 2>&1 || fail "Docker daemon is not reachable. Check Docke
 compose_command
 
 export COLLECTOR_SERIAL_DEVICE="${COLLECTOR_SERIAL_DEVICE:-${DEFAULT_SERIAL_DEVICE}}"
+export COLLECTOR_INVERTER_SERIAL_DEVICE="${COLLECTOR_INVERTER_SERIAL_DEVICE:-${DEFAULT_INVERTER_SERIAL_DEVICE}}"
 mkdir -p "${REPO_ROOT}/data/collector"
 
 cd "${REPO_ROOT}"
@@ -269,7 +280,21 @@ if [[ ! -e "${COLLECTOR_SERIAL_DEVICE}" ]]; then
   log "WARNING: Serial device is not currently present: ${COLLECTOR_SERIAL_DEVICE}"
 fi
 
-log "Serial device: ${COLLECTOR_SERIAL_DEVICE} -> /dev/ttyUSB0"
+if [[ -e "${COLLECTOR_SERIAL_DEVICE}" && -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
+  if [[ "$(readlink -f "${COLLECTOR_SERIAL_DEVICE}")" == "$(readlink -f "${COLLECTOR_INVERTER_SERIAL_DEVICE}")" ]]; then
+    fail "Battery and inverter serial devices resolve to the same adapter. Configure two different USB-to-RS485 devices."
+  fi
+fi
+
+INVERTER_SERIAL_DEVICE_DISPLAY="${COLLECTOR_INVERTER_SERIAL_DEVICE}"
+if [[ ! -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
+  log "WARNING: Inverter serial device is not present: ${COLLECTOR_INVERTER_SERIAL_DEVICE}"
+  log "The collector will keep running with inverter telemetry in an error state."
+  export COLLECTOR_INVERTER_SERIAL_DEVICE="/dev/null"
+fi
+
+log "Battery serial device: ${COLLECTOR_SERIAL_DEVICE} -> /dev/ttyUSB0"
+log "Inverter serial device: ${INVERTER_SERIAL_DEVICE_DISPLAY} -> /dev/ttyUSB1"
 log "Config file: ${COLLECTOR_CONFIG_FILE}"
 log "Image: ${COLLECTOR_IMAGE_NAME}:${COLLECTOR_IMAGE_TAG}"
 log "Build commit: ${COLLECTOR_COMMIT}"

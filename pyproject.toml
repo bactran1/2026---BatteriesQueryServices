@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 batteries-query-service = "batteries_query_service.api:main"
+renogy-x-probe = "batteries_query_service.inverter_probe:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

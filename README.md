@@ -1,8 +1,19 @@
 # Batteries Query Service
 
-A containerized polling service for Eco-worthy 48 V / 51.2 V server rack batteries.
+A containerized polling service for Eco-worthy 48 V / 51.2 V server rack
+batteries and a Renogy X 8K hybrid inverter.
 
-The collector talks to the battery BMS over a USB serial adapter, polls each configured pack address, and exposes the latest telemetry as JSON and Prometheus metrics. It also keeps a rolling replay buffer on the Raspberry Pi. A companion monitor app runs on a separate x86_64 Docker host, stores the telemetry for three years, and serves a local dashboard.
+The collector uses two independent USB-to-RS485 adapters: one for the battery
+bus and one for the inverter host/EMS port. It exposes the latest telemetry as
+JSON and Prometheus metrics and keeps a rolling replay buffer on the Raspberry
+Pi. A companion monitor app runs on a separate x86_64 Docker host, stores the
+battery telemetry for three years, and serves a local dashboard.
+
+The inverter driver is read-only and implements the Megarevo R8KLNA Modbus
+V2.12 telemetry profile that matches the Renogy X hardware and manuals. Because
+Renogy does not publish an explicit OEM declaration or model-specific register
+map, compare the first readings with the inverter LCD before relying on them.
+See [Renogy X inverter telemetry](docs/renogy-x-telemetry.md).
 
 ## What it reads
 
@@ -11,17 +22,21 @@ The collector talks to the battery BMS over a USB serial adapter, polls each con
 - Battery temperatures
 - Charge and discharge limits
 - MOSFET state, operating state, alarms, faults, firmware, serial number, and known parallel pack addresses when reported by the BMS
+- Inverter PV1-PV4 voltage, current, power, and total solar power
+- Grid import/export, L1/L2 voltage/current/power, frequency, backup load, and measured home load
+- Inverter-side battery voltage/current/power/SOC, temperatures, operating state, alarms, faults, and energy counters
 
 ## Hardware assumptions
 
 This first driver targets Eco-worthy/JBD-UP style Modbus RTU frames at 9600 baud. Eco-worthy documentation lists RS485-1 for host computer/inverter access and RS232 for host computer access; their protocol table lists PYLON-LV on RS485-1 and JBD-UP/Solar Assistant/Overkill on RS232.
 
-For three rack batteries, the usual deployment is:
+For three rack batteries and the inverter, the usual deployment is:
 
 1. Set the battery DIP switches so the packs have addresses 1, 2, and 3.
-2. Connect the Raspberry Pi to the battery communication port through a USB RS485 or RS232 adapter.
-3. Pass that serial device into the Pi collector container, commonly `/dev/ttyUSB0` or a stable `/dev/serial/by-id/...` path.
-4. Point the x86_64 monitor container at the Pi collector URL.
+2. Connect the Raspberry Pi to the battery communication port through the first USB RS485 or RS232 adapter.
+3. Connect the inverter's dedicated host/EMS RS-485 port through a second, preferably isolated, USB-to-RS485 adapter. Do not use the inverter BMS port.
+4. Map both stable `/dev/serial/by-id/...` host paths into the Pi collector container.
+5. Point the x86_64 monitor container at the Pi collector URL.
 
 ## Quick start
 
@@ -118,16 +133,20 @@ The Pi collector stores one sequenced replay snapshot every 60 seconds for 24 ho
 
 A Raspberry Pi 4B with 8 GB RAM is more than enough for the collector. Use Raspberry Pi OS Lite 64-bit if possible, install Docker Engine with the Compose plugin, and plug the USB-to-RS485 adapter into the Pi. The monitor/dashboard does not run on the Pi.
 
-On the Pi, identify the adapter:
+On the Pi, identify both adapters:
 
 ```bash
 ls -l /dev/serial/by-id/
 ```
 
-If a stable adapter path is listed, prefer that over `/dev/ttyUSB0`. Pass the stable host path to the deployment script; it maps the adapter to `/dev/ttyUSB0` inside the container automatically:
+Prefer the stable paths over `/dev/ttyUSB0` and `/dev/ttyUSB1`. Pass both host
+paths to the deployment script; it always maps them to `/dev/ttyUSB0` for the
+batteries and `/dev/ttyUSB1` for the inverter inside the container:
 
 ```bash
-bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Your_Adapter
+bash deploy-collector.sh \
+  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
+  --inverter-serial-device /dev/serial/by-id/usb-Inverter_RS485_Adapter
 ```
 
 Allow your Pi user to run Docker and access serial devices:
@@ -140,10 +159,19 @@ sudo reboot
 After reboot:
 
 ```bash
-bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Your_Adapter
+bash deploy-collector.sh \
+  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
+  --inverter-serial-device /dev/serial/by-id/usb-Inverter_RS485_Adapter
 ```
 
-The script fetches and fast-forwards to the latest Git commit, tags the image with that commit SHA, pulls the latest base image, and performs a no-cache build by default. If `batteries-query-service` does not exist, it creates it. If it already exists, it replaces and restarts it with the newly built image. The script then waits for the collector health check.
+The script fetches and fast-forwards to the latest Git commit, tags the image
+with that commit SHA, pulls the latest base image, and performs a no-cache build
+by default. If `batteries-query-service` does not exist, it creates it. If it
+already exists, it replaces and restarts it with the newly built image. The
+script then waits for the collector health check. If the inverter adapter is
+temporarily absent, battery collection still starts and the inverter is exposed
+with `status: "error"` until its adapter is restored and the container is
+redeployed.
 
 Use the current checkout without fetching Git when developing locally:
 
@@ -242,6 +270,17 @@ timeout_seconds = 2.0
 [polling]
 interval_seconds = 10
 
+[inverter]
+enabled = true
+id = "renogy-x-8k"
+model = "Renogy X 8K (Megarevo R8KLNA-compatible)"
+serial_port = "/dev/ttyUSB1"
+address = 1
+baudrate = 9600
+timeout_seconds = 2.0
+parity = "N"
+retries = 2
+
 [[batteries]]
 id = "rack-1"
 address = 1
@@ -259,6 +298,15 @@ Environment overrides are also supported:
 
 - `BQS_CONFIG`
 - `BQS_SERIAL_PORT`
+- `BQS_INVERTER_ENABLED`
+- `BQS_INVERTER_ID`
+- `BQS_INVERTER_MODEL`
+- `BQS_INVERTER_SERIAL_PORT`
+- `BQS_INVERTER_ADDRESS`
+- `BQS_INVERTER_BAUDRATE`
+- `BQS_INVERTER_TIMEOUT_SECONDS`
+- `BQS_INVERTER_PARITY`
+- `BQS_INVERTER_RETRIES`
 - `BQS_BATTERY_ADDRESSES`, for example `1,2,3`
 - `BQS_BATTERY_IDS`, for example `rack-1,rack-2,rack-3`
 - `BQS_POLL_INTERVAL`
@@ -271,30 +319,39 @@ Environment overrides are also supported:
 - `BQS_LOG_LEVEL`
 - `BQS_BUILD_COMMIT`, set automatically by `deploy-collector.sh`
 
-## Docker serial device
+## Docker serial devices
 
-The included compose file maps `/dev/ttyUSB0` into the container. If your adapter appears under another path, pass it to the deployment script:
+The included compose file maps both adapters into fixed container paths. Pass
+the actual host paths to the deployment script:
 
 ```bash
-bash deploy-collector.sh --serial-device /dev/ttyUSB1
+bash deploy-collector.sh \
+  --serial-device /dev/ttyUSB0 \
+  --inverter-serial-device /dev/ttyUSB1
 ```
 
 For long-running systems, prefer a stable device path:
 
 ```bash
-bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Your_Adapter
+bash deploy-collector.sh \
+  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
+  --inverter-serial-device /dev/serial/by-id/usb-Inverter_RS485_Adapter
 ```
 
-The same settings can be supplied as `COLLECTOR_SERIAL_DEVICE` and `COLLECTOR_CONFIG_FILE`. The running image name and build revision are available from `docker inspect batteries-query-service` and `GET /healthz`.
+The same settings can be supplied as `COLLECTOR_SERIAL_DEVICE`,
+`COLLECTOR_INVERTER_SERIAL_DEVICE`, and `COLLECTOR_CONFIG_FILE`. The running
+image name and build revision are available from
+`docker inspect batteries-query-service` and `GET /healthz`.
 
 ## API
 
 Collector:
 
 - `GET /healthz` - service health and polling status
-- `GET /api/readings` - all configured batteries
+- `GET /api/readings` - all configured batteries plus inverter state
 - `GET /api/readings/history` - sequenced replay snapshots for monitor backfill
 - `GET /api/readings/{battery_id}` - one battery
+- `GET /api/inverter` - Renogy X inverter state and latest telemetry
 - `GET /api/config` - safe runtime configuration
 - `GET /metrics` - Prometheus exposition format
 
@@ -310,6 +367,7 @@ Monitor:
 ## Notes
 
 - The service only reads status data. It does not send write/reset/control commands.
+- Megarevo grid power is positive for export and negative for import. Battery current and power are positive while charging and negative while discharging.
 - The monitor health response reports database health separately from collector connectivity. A collector outage does not make the dashboard container unhealthy; a database failure does.
 - If only the master battery responds, verify the DIP switch addresses and the communication port being used. Some firmware/port combinations expose only master-pack data.
 - If Docker cannot open the serial device, check host permissions and confirm the `devices` mapping.

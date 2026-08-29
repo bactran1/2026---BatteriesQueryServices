@@ -74,6 +74,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             snapshot_buffer.read_after, after_sequence, limit
         )
 
+    @app.get("/api/inverter")
+    async def inverter():
+        snapshot = await poller.snapshot()
+        return snapshot["inverter"]
+
     @app.get("/api/readings/{battery_id}")
     async def reading(battery_id: str):
         snapshot = await poller.snapshot()

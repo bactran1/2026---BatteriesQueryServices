@@ -16,6 +16,17 @@ path = "/data/collector-buffer.sqlite3"
 retention_hours = 24
 sample_interval_seconds = 60
 
+[inverter]
+enabled = true
+id = "renogy-x-8k"
+model = "Renogy X 8K (Megarevo R8KLNA-compatible)"
+serial_port = "/dev/ttyUSB1"
+address = 1
+baudrate = 9600
+timeout_seconds = 2.0
+parity = "N"
+retries = 2
+
 [[batteries]]
 id = "rack-1"
 address = 1
