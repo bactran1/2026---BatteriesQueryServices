@@ -534,20 +534,20 @@ button {
 .energy-flow {
   --flow-color: var(--orange);
   position: relative;
-  min-height: 440px;
+  min-height: 600px;
   margin-bottom: 14px;
   overflow: hidden;
   isolation: isolate;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.48);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0f1012;
   transition:
     background-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
     border-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 :root[data-theme="dark"] .energy-flow {
-  background: rgba(20, 20, 23, 0.58);
+  background: #0d0e10;
 }
 
 .energy-flow[data-mode="charging"] {
@@ -567,27 +567,37 @@ button {
   z-index: 2;
   top: 24px;
   left: 22px;
-  width: min(350px, calc(100% - 44px));
+  width: min(420px, calc(100% - 44px));
   pointer-events: none;
 }
 
 .energy-flow__copy .eyebrow {
-  color: var(--flow-color);
+  color: rgba(255, 255, 255, 0.48);
   transition: color 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .energy-flow__copy h2 {
   margin: 0;
-  font-size: 27px;
+  color: #f5f5f7;
+  font-size: 31px;
   line-height: 1.08;
   font-weight: 760;
   letter-spacing: 0;
 }
 
+.energy-flow__state {
+  margin: 7px 0 0;
+  color: var(--flow-color);
+  font-size: 18px;
+  font-weight: 690;
+  line-height: 1.2;
+  transition: color 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .energy-flow__copy > p:last-child {
-  max-width: 330px;
-  margin: 9px 0 0;
-  color: var(--muted);
+  max-width: 390px;
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.52);
   font-size: 12px;
   font-weight: 620;
   line-height: 1.45;
@@ -611,100 +621,102 @@ button {
   outline: 0;
 }
 
-.energy-flow__readout {
+.energy-flow__callouts {
   position: absolute;
+  inset: 0;
   z-index: 2;
-  top: 25px;
-  right: 22px;
-  display: flex;
   pointer-events: none;
 }
 
-.energy-flow__readout > div {
-  min-width: 122px;
-  padding: 1px 18px;
-  border-left: 1px solid var(--line);
+.energy-flow__callout {
+  --leader-length: 128px;
+  position: absolute;
+  min-width: 116px;
+  color: #f5f5f7;
 }
 
-.energy-flow__readout span,
-.energy-flow__nodes span {
+.energy-flow__callout strong,
+.energy-flow__callout span {
   display: block;
-  color: var(--muted);
+}
+
+.energy-flow__callout strong {
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  font-weight: 590;
+  line-height: 1.15;
+}
+
+.energy-flow__callout span {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.48);
   font-size: 10px;
   font-weight: 720;
   line-height: 1.2;
   text-transform: uppercase;
 }
 
-.energy-flow__readout strong {
-  display: block;
-  margin-top: 6px;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.2;
-  font-weight: 740;
-  white-space: nowrap;
-}
-
-#energyFlowDirection {
-  color: var(--flow-color);
-  transition: color 360ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.energy-flow__nodes {
+.energy-flow__callout::after {
   position: absolute;
-  z-index: 2;
-  right: 22px;
-  bottom: 17px;
-  left: 22px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  pointer-events: none;
-}
-
-.energy-flow__nodes > div {
-  --node-color: var(--flow-color);
-  min-width: 0;
-  padding: 0 16px;
-  border-left: 1px solid var(--line);
-}
-
-.energy-flow__nodes > div:first-child {
-  --node-color: #64d2ff;
-  padding-left: 0;
-  border-left: 0;
-}
-
-.energy-flow__nodes > div:nth-child(2) {
-  --node-color: var(--orange);
-}
-
-.energy-flow__nodes > div:last-child {
-  --node-color: #ffd60a;
-}
-
-.energy-flow__nodes span::before {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  margin: 0 7px 1px 0;
-  border-radius: 50%;
-  background: var(--node-color);
+  left: -10px;
+  width: 1px;
+  height: var(--leader-length);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.1));
   content: "";
-  box-shadow: 0 0 10px color-mix(in srgb, var(--node-color) 70%, transparent);
 }
 
-.energy-flow__nodes strong {
-  display: block;
-  min-width: 0;
-  margin-top: 5px;
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 730;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.energy-flow__callout--inverter {
+  --leader-length: 110px;
+  top: 190px;
+  left: 27%;
+}
+
+.energy-flow__callout--solar {
+  --leader-length: 126px;
+  top: 132px;
+  left: 34%;
+}
+
+.energy-flow__callout--load {
+  --leader-length: 158px;
+  top: 132px;
+  right: 7%;
+}
+
+.energy-flow__callout--inverter::after,
+.energy-flow__callout--solar::after,
+.energy-flow__callout--load::after {
+  top: -3px;
+}
+
+.energy-flow__callout--inverter::before {
+  position: absolute;
+  top: calc(var(--leader-length) - 3px);
+  left: -10px;
+  width: 155px;
+  height: 1px;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.08));
+  content: "";
+  transform: rotate(24deg);
+  transform-origin: left center;
+}
+
+.energy-flow__callout--battery {
+  --leader-length: 112px;
+  bottom: 24px;
+  left: 38%;
+}
+
+.energy-flow__callout--grid {
+  --leader-length: 104px;
+  right: 11%;
+  bottom: 24px;
+}
+
+.energy-flow__callout--battery::after,
+.energy-flow__callout--grid::after {
+  bottom: -3px;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.1));
 }
 
 .energy-flow__fallback {
@@ -1928,7 +1940,7 @@ select {
   }
 
   .energy-flow {
-    min-height: 470px;
+    min-height: 610px;
   }
 
   .energy-flow__copy {
@@ -1945,31 +1957,28 @@ select {
     max-width: 420px;
   }
 
-  .energy-flow__readout {
-    top: auto;
-    right: 16px;
-    bottom: 78px;
-    left: 16px;
+  .energy-flow__callout--inverter {
+    left: 5%;
   }
 
-  .energy-flow__readout > div {
-    min-width: 0;
-    width: 50%;
-    padding: 0 14px;
+  .energy-flow__callout--solar {
+    left: 35%;
   }
 
-  .energy-flow__readout > div:first-child {
-    padding-left: 0;
-    border-left: 0;
+  .energy-flow__callout--load {
+    right: 4%;
   }
 
-  .energy-flow__nodes {
-    right: 16px;
-    left: 16px;
+  .energy-flow__callout--battery {
+    left: 37%;
+  }
+
+  .energy-flow__callout--grid {
+    right: 7%;
   }
 
   .energy-flow__fallback {
-    inset: 118px 8% 132px;
+    inset: 150px 8% 130px;
   }
 
   .fleet-band,
@@ -2094,53 +2103,77 @@ select {
   }
 
   .energy-flow {
-    min-height: 526px;
+    min-height: 660px;
   }
 
   .energy-flow__copy h2 {
-    font-size: 22px;
+    font-size: 27px;
+  }
+
+  .energy-flow__state {
+    font-size: 16px;
   }
 
   .energy-flow__copy > p:last-child {
+    max-width: 275px;
     font-size: 11px;
   }
 
-  .energy-flow__readout strong {
-    overflow: hidden;
+  .energy-flow__callout {
+    min-width: 78px;
+  }
+
+  .energy-flow__callout strong {
     font-size: 13px;
-    text-overflow: ellipsis;
   }
 
-  .energy-flow__readout {
-    bottom: 132px;
+  .energy-flow__callout span {
+    font-size: 9px;
   }
 
-  .energy-flow__nodes {
-    bottom: 13px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .energy-flow__callout::after {
+    left: -6px;
   }
 
-  .energy-flow__nodes > div {
-    min-height: 48px;
-    padding: 7px 10px;
+  .energy-flow__callout--inverter,
+  .energy-flow__callout--solar,
+  .energy-flow__callout--load {
+    top: 190px;
   }
 
-  .energy-flow__nodes > div:first-child,
-  .energy-flow__nodes > div:nth-child(3) {
-    padding-left: 0;
-    border-left: 0;
+  .energy-flow__callout--inverter {
+    --leader-length: 168px;
+    left: 4%;
   }
 
-  .energy-flow__nodes > div:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
+  .energy-flow__callout--inverter::before {
+    display: none;
   }
 
-  .energy-flow__nodes strong {
-    font-size: 11px;
+  .energy-flow__callout--solar {
+    --leader-length: 148px;
+    left: 40%;
+  }
+
+  .energy-flow__callout--load {
+    --leader-length: 176px;
+    right: 0;
+  }
+
+  .energy-flow__callout--battery {
+    --leader-length: 238px;
+    bottom: 24px;
+    left: 34%;
+  }
+
+  .energy-flow__callout--grid {
+    --leader-length: 218px;
+    right: 2%;
+    bottom: 24px;
   }
 
   .energy-flow__fallback {
-    inset: 118px 4% 184px;
+    inset: 190px 4% 168px;
     grid-template-columns: 46px 1fr 54px 1fr 62px;
   }
 

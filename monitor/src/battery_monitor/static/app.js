@@ -100,6 +100,7 @@ const translations = {
     "energy.sceneAria": "Three-dimensional power flow between the grid, inverter, battery rack, and home load",
     "energy.grid": "Grid",
     "energy.inverter": "Inverter",
+    "energy.solar": "Solar",
     "energy.storage": "Battery rack",
     "energy.load": "Home load",
     "energy.direction": "Observed path",
@@ -315,6 +316,7 @@ const translations = {
     "energy.sceneAria": "Mô phỏng ba chiều dòng điện giữa điện lưới, biến tần, tủ pin và phụ tải trong nhà",
     "energy.grid": "Điện lưới",
     "energy.inverter": "Biến tần",
+    "energy.solar": "Điện mặt trời",
     "energy.storage": "Tủ pin",
     "energy.load": "Phụ tải nhà",
     "energy.direction": "Đường truyền quan sát",
@@ -808,19 +810,15 @@ function renderEnergyFlow(summary, flow) {
   const packs = `${formatNumber(batteryCount)} ${t(batteryCount === 1 ? "energy.pack" : "energy.packs")}`;
 
   let titleKey = "energy.stale";
-  let directionKey = "energy.unavailable";
   let descriptionKey = "energy.staleDescription";
   if (mode === "charging") {
     titleKey = "energy.charging";
-    directionKey = "energy.toBattery";
     descriptionKey = "energy.chargingDescription";
   } else if (mode === "discharging") {
     titleKey = "energy.discharging";
-    directionKey = "energy.fromBattery";
     descriptionKey = "energy.dischargingDescription";
   } else if (mode === "idle") {
     titleKey = "energy.idle";
-    directionKey = "energy.noTransfer";
     descriptionKey = "energy.idleDescription";
   }
 
@@ -830,11 +828,11 @@ function renderEnergyFlow(summary, flow) {
   section.dataset.soc = String(soc ?? 0);
   section.dataset.batteryCount = String(batteryCount);
   section.dataset.packTelemetry = JSON.stringify(packTelemetry);
-  $("energyFlowTitle").textContent = t(titleKey);
-  $("energyFlowDirection").textContent = t(directionKey);
-  $("energyFlowRate").textContent = mode === "stale" ? t("energy.unavailable") : rate;
+  $("energyFlowTitle").textContent = t("energy.title");
+  $("energyFlowState").textContent = t(titleKey);
   $("energyFlowDescription").textContent = t(descriptionKey, { rate, packs });
   $("energyGridValue").textContent = t("energy.unmetered");
+  $("energySolarValue").textContent = t("energy.unmetered");
   $("energyLoadValue").textContent = t("energy.unmetered");
   $("energyInverterValue").textContent = mode === "stale"
     ? t("energy.unavailable")

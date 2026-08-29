@@ -137,6 +137,7 @@
           <div class="energy-flow__copy">
             <p class="eyebrow" data-i18n="energy.eyebrow">Live home energy</p>
             <h2 id="energyFlowTitle" data-i18n="energy.title">Home power flow</h2>
+            <p id="energyFlowState" class="energy-flow__state" data-i18n="energy.waitingShort">Waiting</p>
             <p id="energyFlowDescription" data-i18n="energy.waiting">Waiting for battery telemetry</p>
           </div>
           <div id="energyFlowStage" class="energy-flow__stage">
@@ -160,32 +161,26 @@
               </span>
             </div>
           </div>
-          <div class="energy-flow__readout" aria-live="polite">
-            <div>
-              <span data-i18n="energy.direction">Observed path</span>
-              <strong id="energyFlowDirection" data-i18n="energy.waitingShort">Waiting</strong>
-            </div>
-            <div>
-              <span data-i18n="energy.rate">Battery power</span>
-              <strong id="energyFlowRate">--</strong>
-            </div>
-          </div>
-          <div class="energy-flow__nodes">
-            <div>
-              <span data-i18n="energy.grid">Grid</span>
-              <strong id="energyGridValue" data-i18n="energy.unmetered">Not metered</strong>
-            </div>
-            <div>
-              <span data-i18n="energy.inverter">Inverter</span>
+          <div class="energy-flow__callouts" aria-live="polite">
+            <div class="energy-flow__callout energy-flow__callout--inverter">
               <strong id="energyInverterValue" data-i18n="energy.waitingShort">Waiting</strong>
+              <span data-i18n="energy.inverter">Inverter</span>
             </div>
-            <div>
-              <span data-i18n="energy.storage">Battery rack</span>
-              <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
+            <div class="energy-flow__callout energy-flow__callout--solar">
+              <strong id="energySolarValue" data-i18n="energy.unmetered">Not metered</strong>
+              <span data-i18n="energy.solar">Solar</span>
             </div>
-            <div>
-              <span data-i18n="energy.load">Home load</span>
+            <div class="energy-flow__callout energy-flow__callout--load">
               <strong id="energyLoadValue" data-i18n="energy.unmetered">Not metered</strong>
+              <span data-i18n="energy.load">Home load</span>
+            </div>
+            <div class="energy-flow__callout energy-flow__callout--battery">
+              <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
+              <span data-i18n="energy.storage">Battery rack</span>
+            </div>
+            <div class="energy-flow__callout energy-flow__callout--grid">
+              <strong id="energyGridValue" data-i18n="energy.unmetered">Not metered</strong>
+              <span data-i18n="energy.grid">Grid</span>
             </div>
           </div>
         </section>
