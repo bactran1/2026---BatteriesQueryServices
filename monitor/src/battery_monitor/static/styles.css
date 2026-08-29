@@ -629,10 +629,11 @@ button {
 }
 
 .energy-flow__callout {
+  --callout-color: rgba(255, 255, 255, 0.88);
   --leader-length: 128px;
   position: absolute;
   min-width: 116px;
-  color: #f5f5f7;
+  color: #fff;
 }
 
 .energy-flow__callout strong,
@@ -643,16 +644,18 @@ button {
 .energy-flow__callout strong {
   overflow-wrap: anywhere;
   font-size: 17px;
-  font-weight: 590;
+  font-weight: 650;
   line-height: 1.15;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.96), 0 0 14px rgba(0, 0, 0, 0.82);
 }
 
 .energy-flow__callout span {
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.48);
+  color: var(--callout-color);
   font-size: 10px;
-  font-weight: 720;
+  font-weight: 760;
   line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.96), 0 0 10px rgba(0, 0, 0, 0.76);
   text-transform: uppercase;
 }
 
@@ -661,23 +664,31 @@ button {
   left: -10px;
   width: 1px;
   height: var(--leader-length);
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.1));
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--callout-color) 78%, transparent),
+    color-mix(in srgb, var(--callout-color) 18%, transparent)
+  );
+  box-shadow: 0 0 8px color-mix(in srgb, var(--callout-color) 24%, transparent);
   content: "";
 }
 
 .energy-flow__callout--inverter {
+  --callout-color: #ffb340;
   --leader-length: 110px;
   top: 190px;
   left: 27%;
 }
 
 .energy-flow__callout--solar {
+  --callout-color: #9fc1ff;
   --leader-length: 126px;
   top: 132px;
   left: 34%;
 }
 
 .energy-flow__callout--load {
+  --callout-color: #ffe47a;
   --leader-length: 158px;
   top: 132px;
   right: 7%;
@@ -695,19 +706,26 @@ button {
   left: -10px;
   width: 155px;
   height: 1px;
-  background: linear-gradient(to right, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.08));
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--callout-color) 72%, transparent),
+    color-mix(in srgb, var(--callout-color) 14%, transparent)
+  );
+  box-shadow: 0 0 8px color-mix(in srgb, var(--callout-color) 22%, transparent);
   content: "";
   transform: rotate(24deg);
   transform-origin: left center;
 }
 
 .energy-flow__callout--battery {
+  --callout-color: var(--flow-color);
   --leader-length: 112px;
   bottom: 24px;
   left: 38%;
 }
 
 .energy-flow__callout--grid {
+  --callout-color: #7ed7ff;
   --leader-length: 104px;
   right: 11%;
   bottom: 24px;
@@ -716,7 +734,11 @@ button {
 .energy-flow__callout--battery::after,
 .energy-flow__callout--grid::after {
   bottom: -3px;
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.1));
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--callout-color) 78%, transparent),
+    color-mix(in srgb, var(--callout-color) 18%, transparent)
+  );
 }
 
 .energy-flow__fallback {
@@ -2152,7 +2174,7 @@ select {
 
   .energy-flow__callout--solar {
     --leader-length: 148px;
-    left: 40%;
+    left: 43%;
   }
 
   .energy-flow__callout--load {

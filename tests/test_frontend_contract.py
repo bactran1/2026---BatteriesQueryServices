@@ -157,6 +157,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="energyBatteryValue"', html)
         self.assertIn('id="energyLoadValue"', html)
         self.assertIn(".energy-flow__callout--solar", css)
+        self.assertIn("--callout-color: #9fc1ff", css)
+        self.assertIn("--callout-color: #ffe47a", css)
+        self.assertIn("text-shadow: 0 1px 2px rgba(0, 0, 0, 0.96)", css)
 
         self.assertTrue((STATIC / "vendor" / "three.module.min.js").is_file())
         self.assertTrue((STATIC / "vendor" / "three.core.min.js").is_file())
