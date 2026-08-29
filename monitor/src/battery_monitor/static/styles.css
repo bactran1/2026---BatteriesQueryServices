@@ -534,20 +534,20 @@ button {
 .energy-flow {
   --flow-color: var(--orange);
   position: relative;
-  min-height: 600px;
+  min-height: 650px;
   margin-bottom: 14px;
   overflow: hidden;
   isolation: isolate;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: #0f1012;
+  background: #18191b;
   transition:
     background-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
     border-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 :root[data-theme="dark"] .energy-flow {
-  background: #0d0e10;
+  background: #121315;
 }
 
 .energy-flow[data-mode="charging"] {
@@ -564,10 +564,12 @@ button {
 
 .energy-flow__copy {
   position: absolute;
-  z-index: 2;
-  top: 24px;
-  left: 22px;
-  width: min(420px, calc(100% - 44px));
+  z-index: 3;
+  top: 22px;
+  left: 24px;
+  width: calc(100% - 48px);
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   pointer-events: none;
 }
 
@@ -579,28 +581,47 @@ button {
 .energy-flow__copy h2 {
   margin: 0;
   color: #f5f5f7;
-  font-size: 31px;
+  font-size: 30px;
   line-height: 1.08;
   font-weight: 760;
   letter-spacing: 0;
 }
 
+.energy-flow__system-state {
+  display: flex;
+  align-items: center;
+  margin-top: 7px;
+  gap: 8px;
+}
+
+.energy-flow__system-state i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--flow-color);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--flow-color) 65%, transparent);
+  transition:
+    background-color 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .energy-flow__state {
-  margin: 7px 0 0;
+  margin: 0;
   color: var(--flow-color);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 690;
   line-height: 1.2;
   transition: color 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .energy-flow__copy > p:last-child {
-  max-width: 390px;
-  margin: 8px 0 0;
-  color: rgba(255, 255, 255, 0.52);
-  font-size: 12px;
+  max-width: 430px;
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
   font-weight: 620;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .energy-flow__stage,
@@ -629,10 +650,13 @@ button {
 }
 
 .energy-flow__callout {
-  --callout-color: rgba(255, 255, 255, 0.88);
-  --leader-length: 128px;
+  --callout-color: rgba(255, 255, 255, 0.82);
+  --leader-length: 145px;
   position: absolute;
-  min-width: 116px;
+  width: 132px;
+  min-width: 0;
+  padding-left: 11px;
+  border-left: 1px solid color-mix(in srgb, var(--callout-color) 72%, transparent);
   color: #fff;
 }
 
@@ -643,10 +667,10 @@ button {
 
 .energy-flow__callout strong {
   overflow-wrap: anywhere;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: 18px;
+  font-weight: 680;
   line-height: 1.15;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.96), 0 0 14px rgba(0, 0, 0, 0.82);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.94), 0 0 12px rgba(0, 0, 0, 0.72);
 }
 
 .energy-flow__callout span {
@@ -655,90 +679,84 @@ button {
   font-size: 10px;
   font-weight: 760;
   line-height: 1.2;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.96), 0 0 10px rgba(0, 0, 0, 0.76);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.94), 0 0 10px rgba(0, 0, 0, 0.72);
   text-transform: uppercase;
 }
 
 .energy-flow__callout::after {
   position: absolute;
-  left: -10px;
+  top: 100%;
+  left: -1px;
   width: 1px;
   height: var(--leader-length);
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--callout-color) 78%, transparent),
-    color-mix(in srgb, var(--callout-color) 18%, transparent)
-  );
-  box-shadow: 0 0 8px color-mix(in srgb, var(--callout-color) 24%, transparent);
+  background: color-mix(in srgb, var(--callout-color) 46%, transparent);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--callout-color) 18%, transparent);
   content: "";
 }
 
 .energy-flow__callout--inverter {
-  --callout-color: #ffb340;
-  --leader-length: 110px;
-  top: 190px;
-  left: 27%;
+  --callout-color: #ffb24a;
+  --leader-length: 168px;
+  top: 166px;
+  left: 6%;
+  width: 150px;
 }
 
 .energy-flow__callout--solar {
-  --callout-color: #9fc1ff;
-  --leader-length: 126px;
-  top: 132px;
-  left: 34%;
+  --callout-color: #f2ef50;
+  --leader-length: 148px;
+  top: 166px;
+  left: 43%;
+}
+
+.energy-flow__callout--grid {
+  --callout-color: #72d7ff;
+  --leader-length: 166px;
+  top: 166px;
+  right: 6%;
+}
+
+.energy-flow__callout--bottom {
+  bottom: 30px;
+}
+
+.energy-flow__callout--bottom::after {
+  top: auto;
+  bottom: 100%;
 }
 
 .energy-flow__callout--load {
-  --callout-color: #ffe47a;
-  --leader-length: 158px;
-  top: 132px;
-  right: 7%;
-}
-
-.energy-flow__callout--inverter::after,
-.energy-flow__callout--solar::after,
-.energy-flow__callout--load::after {
-  top: -3px;
-}
-
-.energy-flow__callout--inverter::before {
-  position: absolute;
-  top: calc(var(--leader-length) - 3px);
-  left: -10px;
-  width: 155px;
-  height: 1px;
-  background: linear-gradient(
-    to right,
-    color-mix(in srgb, var(--callout-color) 72%, transparent),
-    color-mix(in srgb, var(--callout-color) 14%, transparent)
-  );
-  box-shadow: 0 0 8px color-mix(in srgb, var(--callout-color) 22%, transparent);
-  content: "";
-  transform: rotate(24deg);
-  transform-origin: left center;
+  --callout-color: #ffdf87;
+  --leader-length: 116px;
+  left: 24%;
 }
 
 .energy-flow__callout--battery {
   --callout-color: var(--flow-color);
-  --leader-length: 112px;
-  bottom: 24px;
-  left: 38%;
+  --leader-length: 108px;
+  left: 59%;
+  width: 176px;
 }
 
-.energy-flow__callout--grid {
-  --callout-color: #7ed7ff;
-  --leader-length: 104px;
-  right: 11%;
-  bottom: 24px;
+.energy-flow[data-mode="charging"] .energy-flow__callout--inverter::after,
+.energy-flow[data-mode="charging"] .energy-flow__callout--grid::after,
+.energy-flow[data-mode="charging"] .energy-flow__callout--battery::after,
+.energy-flow[data-mode="discharging"] .energy-flow__callout--inverter::after,
+.energy-flow[data-mode="discharging"] .energy-flow__callout--load::after,
+.energy-flow[data-mode="discharging"] .energy-flow__callout--battery::after {
+  animation: energy-flow-leader-pulse 1.7s ease-in-out infinite;
 }
 
-.energy-flow__callout--battery::after,
-.energy-flow__callout--grid::after {
-  bottom: -3px;
-  background: linear-gradient(
-    to top,
-    color-mix(in srgb, var(--callout-color) 78%, transparent),
-    color-mix(in srgb, var(--callout-color) 18%, transparent)
-  );
+@keyframes energy-flow-leader-pulse {
+  0%,
+  100% {
+    opacity: 0.52;
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 11px color-mix(in srgb, var(--callout-color) 42%, transparent);
+  }
 }
 
 .energy-flow__fallback {
@@ -1888,6 +1906,10 @@ select {
   .energy-flow__fallback-link::after {
     animation: none;
   }
+
+  .energy-flow__callout::after {
+    animation: none !important;
+  }
 }
 
 @media (max-width: 1120px) {
@@ -1962,7 +1984,7 @@ select {
   }
 
   .energy-flow {
-    min-height: 610px;
+    min-height: 660px;
   }
 
   .energy-flow__copy {
@@ -1972,7 +1994,7 @@ select {
   }
 
   .energy-flow__copy h2 {
-    font-size: 24px;
+    font-size: 26px;
   }
 
   .energy-flow__copy > p:last-child {
@@ -1980,23 +2002,23 @@ select {
   }
 
   .energy-flow__callout--inverter {
-    left: 5%;
+    left: 4%;
   }
 
   .energy-flow__callout--solar {
-    left: 35%;
-  }
-
-  .energy-flow__callout--load {
-    right: 4%;
-  }
-
-  .energy-flow__callout--battery {
-    left: 37%;
+    left: 41%;
   }
 
   .energy-flow__callout--grid {
-    right: 7%;
+    right: 3%;
+  }
+
+  .energy-flow__callout--load {
+    left: 18%;
+  }
+
+  .energy-flow__callout--battery {
+    left: 60%;
   }
 
   .energy-flow__fallback {
@@ -2125,7 +2147,7 @@ select {
   }
 
   .energy-flow {
-    min-height: 660px;
+    min-height: 700px;
   }
 
   .energy-flow__copy h2 {
@@ -2133,16 +2155,17 @@ select {
   }
 
   .energy-flow__state {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .energy-flow__copy > p:last-child {
-    max-width: 275px;
+    max-width: 286px;
     font-size: 11px;
   }
 
   .energy-flow__callout {
-    min-width: 78px;
+    width: 88px;
+    padding-left: 7px;
   }
 
   .energy-flow__callout strong {
@@ -2154,44 +2177,53 @@ select {
   }
 
   .energy-flow__callout::after {
-    left: -6px;
+    left: -1px;
   }
 
   .energy-flow__callout--inverter,
   .energy-flow__callout--solar,
-  .energy-flow__callout--load {
-    top: 190px;
+  .energy-flow__callout--grid {
+    top: 198px;
   }
 
   .energy-flow__callout--inverter {
-    --leader-length: 168px;
-    left: 4%;
+    --leader-length: 138px;
+    left: 2%;
+    width: 104px;
   }
 
-  .energy-flow__callout--inverter::before {
-    display: none;
+  .energy-flow__callout--inverter strong {
+    font-size: 11px;
   }
 
   .energy-flow__callout--solar {
-    --leader-length: 148px;
-    left: 43%;
-  }
-
-  .energy-flow__callout--load {
-    --leader-length: 176px;
-    right: 0;
-  }
-
-  .energy-flow__callout--battery {
-    --leader-length: 238px;
-    bottom: 24px;
-    left: 34%;
+    --leader-length: 126px;
+    left: 40%;
+    width: 90px;
   }
 
   .energy-flow__callout--grid {
-    --leader-length: 218px;
-    right: 2%;
+    --leader-length: 144px;
+    right: 0;
+    width: 80px;
+  }
+
+  .energy-flow__callout--bottom {
+    top: auto;
     bottom: 24px;
+  }
+
+  .energy-flow__callout--load {
+    --leader-length: 130px;
+    left: 12%;
+    width: 96px;
+  }
+
+  .energy-flow__callout--battery {
+    --leader-length: 122px;
+    right: 7%;
+    left: auto;
+    width: 110px;
   }
 
   .energy-flow__fallback {

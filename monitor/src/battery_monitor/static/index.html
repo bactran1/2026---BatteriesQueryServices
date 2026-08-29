@@ -137,7 +137,10 @@
           <div class="energy-flow__copy">
             <p class="eyebrow" data-i18n="energy.eyebrow">Live home energy</p>
             <h2 id="energyFlowTitle" data-i18n="energy.title">Home power flow</h2>
-            <p id="energyFlowState" class="energy-flow__state" data-i18n="energy.waitingShort">Waiting</p>
+            <div class="energy-flow__system-state">
+              <i aria-hidden="true"></i>
+              <p id="energyFlowState" class="energy-flow__state" data-i18n="energy.waitingShort">Waiting</p>
+            </div>
             <p id="energyFlowDescription" data-i18n="energy.waiting">Waiting for battery telemetry</p>
           </div>
           <div id="energyFlowStage" class="energy-flow__stage">
@@ -170,17 +173,17 @@
               <strong id="energySolarValue" data-i18n="energy.unmetered">Not metered</strong>
               <span data-i18n="energy.solar">Solar</span>
             </div>
-            <div class="energy-flow__callout energy-flow__callout--load">
-              <strong id="energyLoadValue" data-i18n="energy.unmetered">Not metered</strong>
-              <span data-i18n="energy.load">Home load</span>
-            </div>
-            <div class="energy-flow__callout energy-flow__callout--battery">
-              <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
-              <span data-i18n="energy.storage">Battery rack</span>
-            </div>
             <div class="energy-flow__callout energy-flow__callout--grid">
               <strong id="energyGridValue" data-i18n="energy.unmetered">Not metered</strong>
               <span data-i18n="energy.grid">Grid</span>
+            </div>
+            <div class="energy-flow__callout energy-flow__callout--load energy-flow__callout--bottom">
+              <strong id="energyLoadValue" data-i18n="energy.unmetered">Not metered</strong>
+              <span data-i18n="energy.load">Home load</span>
+            </div>
+            <div class="energy-flow__callout energy-flow__callout--battery energy-flow__callout--bottom">
+              <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
+              <span data-i18n="energy.storage">Battery rack</span>
             </div>
           </div>
         </section>
