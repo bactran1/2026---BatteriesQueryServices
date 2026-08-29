@@ -35,6 +35,13 @@
     <link rel="icon" type="image/png" href="/static/assets/tran-t-icon.png?v=__BUILD_COMMIT__" />
     <link rel="apple-touch-icon" href="/static/assets/tran-t-icon.png?v=__BUILD_COMMIT__" />
     <link rel="stylesheet" href="/static/styles.css?v=__BUILD_COMMIT__" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/static/vendor/three.module.min.js?v=__BUILD_COMMIT__"
+        }
+      }
+    </script>
   </head>
   <body>
     <div class="shell">
@@ -112,6 +119,52 @@
               <span data-i18n="rack.bus">Bus</span>
               <strong>RS485</strong>
               <small id="rackConnection">Modbus RTU</small>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="energyFlowSection"
+          class="energy-flow"
+          data-mode="stale"
+          data-current="0"
+          data-power="0"
+          data-soc="0"
+          data-battery-count="0"
+          aria-labelledby="energyFlowTitle"
+        >
+          <div class="energy-flow__copy">
+            <p class="eyebrow" data-i18n="energy.eyebrow">Live energy</p>
+            <h2 id="energyFlowTitle" data-i18n="energy.title">Energy flow</h2>
+            <p id="energyFlowDescription" data-i18n="energy.waiting">Waiting for rack telemetry</p>
+          </div>
+          <div id="energyFlowStage" class="energy-flow__stage">
+            <canvas
+              id="energyFlowCanvas"
+              role="img"
+              aria-label="Three-dimensional rack energy flow"
+              data-i18n-aria-label="energy.sceneAria"
+            ></canvas>
+            <div id="energyFlowFallback" class="energy-flow__fallback" aria-hidden="true">
+              <span class="energy-flow__fallback-source"></span>
+              <span class="energy-flow__fallback-path"></span>
+              <span class="energy-flow__fallback-rack">
+                <i></i>
+                <i></i>
+                <i></i>
+              </span>
+            </div>
+            <span class="energy-flow__node-label energy-flow__node-label--source" data-i18n="energy.source">Rack bus</span>
+            <span class="energy-flow__node-label energy-flow__node-label--storage" data-i18n="energy.storage">Battery rack</span>
+          </div>
+          <div class="energy-flow__readout" aria-live="polite">
+            <div>
+              <span data-i18n="energy.direction">Direction</span>
+              <strong id="energyFlowDirection" data-i18n="energy.waitingShort">Waiting</strong>
+            </div>
+            <div>
+              <span data-i18n="energy.rate">Flow rate</span>
+              <strong id="energyFlowRate">--</strong>
             </div>
           </div>
         </section>
@@ -305,5 +358,6 @@
       </main>
     </div>
     <script src="/static/app.js?v=__BUILD_COMMIT__"></script>
+    <script type="module" src="/static/energy-flow.js?v=__BUILD_COMMIT__"></script>
   </body>
 </html>

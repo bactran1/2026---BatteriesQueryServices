@@ -93,6 +93,29 @@ const translations = {
     "rack.pack": "pack",
     "rack.packs": "packs",
     "rack.reporting": "{count} reporting",
+    "energy.eyebrow": "Live energy",
+    "energy.title": "Energy flow",
+    "energy.waiting": "Waiting for rack telemetry",
+    "energy.waitingShort": "Waiting",
+    "energy.sceneAria": "Three-dimensional rack energy flow",
+    "energy.source": "Rack bus",
+    "energy.storage": "Battery rack",
+    "energy.direction": "Direction",
+    "energy.rate": "Flow rate",
+    "energy.charging": "Charging rack",
+    "energy.discharging": "Supplying the system",
+    "energy.idle": "Standing by",
+    "energy.stale": "Live flow paused",
+    "energy.toBattery": "Into batteries",
+    "energy.fromBattery": "From batteries",
+    "energy.noTransfer": "No transfer",
+    "energy.unavailable": "Unavailable",
+    "energy.pack": "battery pack",
+    "energy.packs": "battery packs",
+    "energy.chargingDescription": "{rate} is flowing from the rack bus into {packs}.",
+    "energy.dischargingDescription": "{rate} is flowing from {packs} back to the rack bus.",
+    "energy.idleDescription": "The rack is connected with no significant power transfer.",
+    "energy.staleDescription": "Live flow is paused until fresh collector data arrives.",
     "fleet.summary": "Fleet summary",
     "fleet.rackSoc": "Rack SOC",
     "fleet.socAria": "Overall rack state of charge",
@@ -280,6 +303,29 @@ const translations = {
     "rack.pack": "bộ pin",
     "rack.packs": "bộ pin",
     "rack.reporting": "{count} đang báo dữ liệu",
+    "energy.eyebrow": "Năng lượng trực tiếp",
+    "energy.title": "Dòng năng lượng",
+    "energy.waiting": "Đang chờ dữ liệu tủ pin",
+    "energy.waitingShort": "Đang chờ",
+    "energy.sceneAria": "Mô phỏng ba chiều dòng năng lượng của tủ pin",
+    "energy.source": "Bus hệ thống",
+    "energy.storage": "Tủ pin",
+    "energy.direction": "Hướng truyền",
+    "energy.rate": "Công suất",
+    "energy.charging": "Đang nạp tủ pin",
+    "energy.discharging": "Đang cấp điện cho hệ thống",
+    "energy.idle": "Đang chờ",
+    "energy.stale": "Đã tạm dừng",
+    "energy.toBattery": "Vào tủ pin",
+    "energy.fromBattery": "Từ tủ pin",
+    "energy.noTransfer": "Không truyền tải",
+    "energy.unavailable": "Chưa có dữ liệu",
+    "energy.pack": "bộ pin",
+    "energy.packs": "bộ pin",
+    "energy.chargingDescription": "{rate} đang truyền từ bus hệ thống vào {packs}.",
+    "energy.dischargingDescription": "{rate} đang truyền từ {packs} trở lại bus hệ thống.",
+    "energy.idleDescription": "Tủ pin đang kết nối và không có dòng công suất đáng kể.",
+    "energy.staleDescription": "Dòng trực tiếp tạm dừng cho đến khi có dữ liệu mới từ bộ thu thập.",
     "fleet.summary": "Tóm tắt tủ pin",
     "fleet.rackSoc": "SOC tủ pin",
     "fleet.socAria": "Mức sạc tổng thể của tủ pin",
@@ -678,6 +724,7 @@ function renderLiveFailure(message) {
   renderBatteryCards();
   renderBatteryInventory();
   renderSelectedBattery();
+  renderEnergyFlow(state.summary, { mode: "stale", label: t("flow.lastKnownRack") });
 }
 
 function scheduleNextRefresh(delay = LIVE_REFRESH_MS) {
@@ -719,6 +766,55 @@ function renderSummary(summary) {
     : t("fleet.maxCellDelta", {
         value: formatValue(summary.maximum_cell_voltage_delta_v, "V", 3),
       });
+  renderEnergyFlow(summary, flow);
+}
+
+function renderEnergyFlow(summary, flow) {
+  const section = $("energyFlowSection");
+  if (!section) return;
+
+  const mode = ["charging", "discharging", "idle", "stale"].includes(flow?.mode)
+    ? flow.mode
+    : "stale";
+  const current = finiteNumber(summary?.total_current_a);
+  const power = finiteNumber(summary?.total_power_w);
+  const soc = finiteNumber(summary?.average_soc_percent);
+  const batteryCount = state.batteries.filter(
+    (battery) => battery.status === "ok" && battery.last_reading,
+  ).length;
+  const rate = power === null ? t("energy.unavailable") : formatValue(Math.abs(power), "W");
+  const packs = `${formatNumber(batteryCount)} ${t(batteryCount === 1 ? "energy.pack" : "energy.packs")}`;
+
+  let titleKey = "energy.stale";
+  let directionKey = "energy.unavailable";
+  let descriptionKey = "energy.staleDescription";
+  if (mode === "charging") {
+    titleKey = "energy.charging";
+    directionKey = "energy.toBattery";
+    descriptionKey = "energy.chargingDescription";
+  } else if (mode === "discharging") {
+    titleKey = "energy.discharging";
+    directionKey = "energy.fromBattery";
+    descriptionKey = "energy.dischargingDescription";
+  } else if (mode === "idle") {
+    titleKey = "energy.idle";
+    directionKey = "energy.noTransfer";
+    descriptionKey = "energy.idleDescription";
+  }
+
+  section.dataset.mode = mode;
+  section.dataset.current = String(current ?? 0);
+  section.dataset.power = String(power ?? 0);
+  section.dataset.soc = String(soc ?? 0);
+  section.dataset.batteryCount = String(batteryCount);
+  $("energyFlowTitle").textContent = t(titleKey);
+  $("energyFlowDirection").textContent = t(directionKey);
+  $("energyFlowRate").textContent = mode === "stale" ? t("energy.unavailable") : rate;
+  $("energyFlowDescription").textContent = t(descriptionKey, { rate, packs });
+
+  window.dispatchEvent(new CustomEvent("battery-energy-flow", {
+    detail: { mode, current, power, soc, batteryCount },
+  }));
 }
 
 function rackPowerDetail(mode) {

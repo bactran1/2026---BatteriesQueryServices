@@ -17,6 +17,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn(BUILD_TOKEN, html)
         self.assertIn("/static/app.js?v=abc123", html)
         self.assertIn("/static/styles.css?v=abc123", html)
+        self.assertIn("/static/energy-flow.js?v=abc123", html)
+        self.assertIn("/static/vendor/three.module.min.js?v=abc123", html)
         self.assertEqual(cache_control_for("/", None, "abc123"), "no-store")
         self.assertEqual(
             cache_control_for("/static/app.js", "abc123", "abc123"),
@@ -114,6 +116,37 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".language-toggle__track", css)
         self.assertIn(".preference-controls", css)
 
+    def test_three_dimensional_energy_flow_is_live_and_resilient(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        scene = (STATIC / "energy-flow.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="energyFlowCanvas"', html)
+        self.assertIn('type="importmap"', html)
+        self.assertIn('type="module" src="/static/energy-flow.js', html)
+        self.assertIn('CustomEvent("battery-energy-flow"', javascript)
+        self.assertIn("function renderEnergyFlow", javascript)
+        self.assertIn('"energy.title": "Dòng năng lượng"', javascript)
+        self.assertIn('import * as THREE from "three"', scene)
+        self.assertIn("THREE.WebGLRenderer", scene)
+        self.assertIn("THREE.CatmullRomCurve3", scene)
+        self.assertIn("IntersectionObserver", scene)
+        self.assertIn('matchMedia("(prefers-reduced-motion: reduce)")', scene)
+        self.assertIn('canvas.addEventListener("webglcontextlost"', scene)
+        self.assertIn("gl.readPixels", scene)
+        self.assertIn('.energy-flow[data-mode="charging"]', css)
+        self.assertIn('.energy-flow[data-mode="discharging"]', css)
+        self.assertIn(".energy-flow.is-fallback", css)
+
+        self.assertTrue((STATIC / "vendor" / "three.module.min.js").is_file())
+        self.assertTrue((STATIC / "vendor" / "three.core.min.js").is_file())
+        self.assertTrue((STATIC / "vendor" / "three-LICENSE.txt").is_file())
+        self.assertIn(
+            "Version: `0.185.1`",
+            (STATIC / "vendor" / "README.md").read_text(encoding="utf-8"),
+        )
+
     def test_default_configured_labels_are_localized_in_vietnamese(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
         html = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -123,7 +156,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function localizedBatteryModel", javascript)
         self.assertIn("function localizedCollectorName", javascript)
         self.assertIn("function localizedConnectionName", javascript)
-        self.assertIn('"battery.defaultRackName": "Pin tủ {number}"', javascript)
+        self.assertIn('"battery.defaultRackName": "Pin {number}"', javascript)
         self.assertIn('"inventory.defaultModel": "Pin tủ máy chủ Eco-worthy"', javascript)
         self.assertIn('"rack.defaultConnection": "Modbus RTU qua RS485"', javascript)
         self.assertIn("localizedBatteryName(profile?.name || battery.id)", javascript)
