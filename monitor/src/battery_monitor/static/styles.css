@@ -739,10 +739,8 @@ button {
 }
 
 .energy-flow[data-mode="charging"] .energy-flow__callout--inverter::after,
-.energy-flow[data-mode="charging"] .energy-flow__callout--grid::after,
 .energy-flow[data-mode="charging"] .energy-flow__callout--battery::after,
 .energy-flow[data-mode="discharging"] .energy-flow__callout--inverter::after,
-.energy-flow[data-mode="discharging"] .energy-flow__callout--load::after,
 .energy-flow[data-mode="discharging"] .energy-flow__callout--battery::after {
   animation: energy-flow-leader-pulse 1.7s ease-in-out infinite;
 }

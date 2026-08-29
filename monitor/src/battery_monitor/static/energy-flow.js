@@ -119,15 +119,15 @@ function startEnergyFlowScene() {
     const charging = flowState.mode === "charging";
     const discharging = flowState.mode === "discharging";
 
-    configureRoute(network.grid, flowState.mode, rackMagnitude, charging, 1, live);
+    configureRoute(network.grid, "stale", 0, false, 1, false);
     configureRoute(network.battery, flowState.mode, rackMagnitude, charging || discharging, charging ? 1 : -1, live);
-    configureRoute(network.load, flowState.mode, rackMagnitude, discharging, 1, live);
+    configureRoute(network.load, "stale", 0, false, 1, false);
     configureRoute(network.solar, "stale", 0, false, 1, false);
 
-    setSignal(energySystem.gridSignalMaterial, charging ? flowColor : NODE_COLORS.grid, charging);
+    setSignal(energySystem.gridSignalMaterial, NODE_COLORS.grid, false);
     setSignal(energySystem.inverterSignalMaterial, isActiveMode() ? flowColor : NODE_COLORS.inverter, isActiveMode());
     setSignal(energySystem.batterySignalMaterial, isActiveMode() ? flowColor : FLOW_COLORS.stale, isActiveMode());
-    setSignal(energySystem.loadSignalMaterial, discharging ? flowColor : NODE_COLORS.load, discharging);
+    setSignal(energySystem.loadSignalMaterial, NODE_COLORS.load, false);
     setSignal(energySystem.solarSignalMaterial, 0x6f7047, false);
 
     energySystem.batteryModules.forEach((module, index) => {
@@ -146,12 +146,13 @@ function startEnergyFlowScene() {
     });
 
     canvas.dataset.energyDirection = charging
-      ? "grid-to-battery"
+      ? "inverter-to-battery"
       : discharging
-        ? "battery-to-load"
+        ? "battery-to-inverter"
         : "paused";
     canvas.dataset.energyMode = flowState.mode;
     canvas.dataset.activeRoutes = String(network.routes.filter(isRouteActive).length);
+    canvas.dataset.sourceTelemetry = "unmetered";
     canvas.dataset.topology = "home-grid-solar-inverter-battery-load";
     canvas.dataset.sceneStyle = "isometric-home-energy";
     if (disposed) return;
