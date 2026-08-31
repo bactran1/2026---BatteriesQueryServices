@@ -5,15 +5,19 @@ const state = {
   metric: "soc_percent",
   range: "24h",
   history: [],
+  energyView: "month",
+  energyHistory: [],
+  energyTotals: {},
   storage: {},
   rack: {},
   collectorState: "offline",
   collectorOnline: false,
   lastLiveReceivedAt: 0,
   lastHistoryRefreshAt: 0,
+  lastEnergyRefreshAt: 0,
   lastEventsRefreshAt: 0,
   refreshInProgress: false,
-  resourceErrors: { live: null, history: null, events: null },
+  resourceErrors: { live: null, history: null, energy: null, events: null },
   theme: "light",
   chartGeometry: null,
   chartHover: null,
@@ -160,6 +164,23 @@ const translations = {
     "inverter.healthNominal": "No active alarms or faults",
     "inverter.healthAlerts": "{alarms} alarms · {faults} faults",
     "inverter.lastError": "Last error: {message}",
+    "energyHistory.eyebrow": "Energy history",
+    "energyHistory.titleDate": "Energy by date",
+    "energyHistory.titleMonth": "Energy by month",
+    "energyHistory.titleYear": "Energy by year",
+    "energyHistory.description": "Consumption, solar generation, and grid draw over the last three years",
+    "energyHistory.view": "Energy history view",
+    "energyHistory.date": "Date",
+    "energyHistory.month": "Month",
+    "energyHistory.year": "Year",
+    "energyHistory.totalsAria": "Three-year energy totals",
+    "energyHistory.consumption": "Power consumption",
+    "energyHistory.solar": "Solar generation",
+    "energyHistory.grid": "Grid draw",
+    "energyHistory.kwhTotal": "kWh · three-year total",
+    "energyHistory.chartAria": "Energy history in kilowatt-hours",
+    "energyHistory.awaiting": "Awaiting inverter energy readings",
+    "energyHistory.unavailable": "Energy history temporarily unavailable",
     "inverter.state.bypass": "Bypass",
     "inverter.state.standby": "Standby",
     "inverter.state.initializing": "Initializing",
@@ -431,6 +452,23 @@ const translations = {
     "inverter.healthNominal": "Không có cảnh báo hoặc lỗi",
     "inverter.healthAlerts": "{alarms} cảnh báo · {faults} lỗi",
     "inverter.lastError": "Lỗi gần nhất: {message}",
+    "energyHistory.eyebrow": "Lịch sử năng lượng",
+    "energyHistory.titleDate": "Năng lượng theo ngày",
+    "energyHistory.titleMonth": "Năng lượng theo tháng",
+    "energyHistory.titleYear": "Năng lượng theo năm",
+    "energyHistory.description": "Điện năng tiêu thụ, sản lượng điện mặt trời và điện lấy từ lưới trong ba năm qua",
+    "energyHistory.view": "Chế độ xem lịch sử năng lượng",
+    "energyHistory.date": "Ngày",
+    "energyHistory.month": "Tháng",
+    "energyHistory.year": "Năm",
+    "energyHistory.totalsAria": "Tổng năng lượng trong ba năm",
+    "energyHistory.consumption": "Điện năng tiêu thụ",
+    "energyHistory.solar": "Sản lượng mặt trời",
+    "energyHistory.grid": "Điện lấy từ lưới",
+    "energyHistory.kwhTotal": "kWh · tổng ba năm",
+    "energyHistory.chartAria": "Biểu đồ lịch sử năng lượng theo kilowatt-giờ",
+    "energyHistory.awaiting": "Đang chờ số liệu năng lượng từ biến tần",
+    "energyHistory.unavailable": "Lịch sử năng lượng tạm thời không khả dụng",
     "inverter.state.bypass": "Điện lưới chuyển thẳng",
     "inverter.state.standby": "Đang chờ",
     "inverter.state.initializing": "Đang khởi tạo",
@@ -601,6 +639,11 @@ const metricDigits = {
 };
 
 const palette = ["#ff7a00", "#30d158", "#bf5af2", "#34c7d9", "#ff453a"];
+const energySeries = [
+  { field: "consumption_kwh", color: "#ff7a00" },
+  { field: "solar_generation_kwh", color: "#30b95f" },
+  { field: "grid_import_kwh", color: "#0a84ff" },
+];
 
 const $ = (id) => document.getElementById(id);
 const THEME_STORAGE_KEY = "battery-monitor-theme";
@@ -612,6 +655,7 @@ const UI_OFFLINE_AFTER_MS = 120000;
 const requestControllers = new Map();
 let schedulerTimer = null;
 let chartResizeFrame = null;
+let energyChartResizeFrame = null;
 let chartPointerFrame = null;
 let chartAnimationFrame = null;
 
@@ -655,6 +699,9 @@ async function refreshCycle(forceSecondary = false) {
     const jobs = [["live", refreshLive()]];
     if (forceSecondary || now - state.lastHistoryRefreshAt >= SECONDARY_REFRESH_MS) {
       jobs.push(["history", refreshHistory()]);
+    }
+    if (forceSecondary || now - state.lastEnergyRefreshAt >= SECONDARY_REFRESH_MS) {
+      jobs.push(["energy", refreshEnergyHistory()]);
     }
     if (forceSecondary || now - state.lastEventsRefreshAt >= SECONDARY_REFRESH_MS) {
       jobs.push(["events", refreshEvents()]);
@@ -730,6 +777,21 @@ async function refreshHistory() {
   state.chartHover = null;
   hideChartTooltip(false);
   animateChartIn();
+}
+
+async function refreshEnergyHistory() {
+  const requestedView = state.energyView;
+  const params = new URLSearchParams({ view: requestedView });
+  const payload = await getJson(`/api/energy?${params}`, "energy");
+  if (requestedView !== state.energyView) {
+    return refreshEnergyHistory();
+  }
+  state.energyHistory = payload.points || [];
+  state.energyTotals = payload.totals || {};
+  state.lastEnergyRefreshAt = Date.now();
+  state.resourceErrors.energy = null;
+  $("energyHistoryChart").removeAttribute("data-refresh-error");
+  renderEnergyHistory();
 }
 
 async function refreshEvents() {
@@ -822,6 +884,11 @@ function handleResourceFailure(resource, error) {
   if (resource === "history") {
     $("historyChart").dataset.refreshError = message;
     drawChart();
+    return;
+  }
+  if (resource === "energy") {
+    $("energyHistoryChart").dataset.refreshError = message;
+    renderEnergyHistory();
     return;
   }
   $("eventList").dataset.refreshError = message;
@@ -1638,6 +1705,188 @@ function renderStorage() {
     : "--";
 }
 
+function renderEnergyHistory() {
+  const totalIds = {
+    consumption_kwh: "energyConsumptionTotal",
+    solar_generation_kwh: "energySolarTotal",
+    grid_import_kwh: "energyGridTotal",
+  };
+  Object.entries(totalIds).forEach(([field, id]) => {
+    $(id).textContent = formatEnergyTotal(state.energyTotals[field]);
+  });
+
+  const titleKey = {
+    date: "energyHistory.titleDate",
+    month: "energyHistory.titleMonth",
+    year: "energyHistory.titleYear",
+  }[state.energyView];
+  $("energyHistoryTitle").textContent = t(titleKey || "energyHistory.titleMonth");
+
+  const hasPoints = state.energyHistory.some((point) =>
+    energySeries.some((series) => finiteNumber(point[series.field]) !== null),
+  );
+  const empty = $("energyHistoryEmpty");
+  empty.hidden = hasPoints;
+  empty.textContent = state.resourceErrors.energy
+    ? t("energyHistory.unavailable")
+    : t("energyHistory.awaiting");
+  window.requestAnimationFrame(drawEnergyHistoryChart);
+}
+
+function drawEnergyHistoryChart() {
+  const canvas = $("energyHistoryChart");
+  const ctx = canvas.getContext("2d");
+  const theme = getThemeColors();
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const pixelWidth = Math.max(1, Math.floor(rect.width * dpr));
+  const pixelHeight = Math.max(1, Math.floor(rect.height * dpr));
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  const pad = rect.width < 520
+    ? { top: 18, right: 12, bottom: 38, left: 50 }
+    : { top: 18, right: 18, bottom: 40, left: 62 };
+  const width = Math.max(1, rect.width - pad.left - pad.right);
+  const height = Math.max(1, rect.height - pad.top - pad.bottom);
+  const points = state.energyHistory
+    .filter((point) => Number.isFinite(point.unix))
+    .sort((left, right) => left.unix - right.unix);
+  const values = points.flatMap((point) =>
+    energySeries
+      .map((series) => finiteNumber(point[series.field]))
+      .filter((value) => value !== null),
+  );
+
+  drawEnergyGrid(ctx, theme, pad, width, height, Math.max(1, ...values));
+  if (!points.length || !values.length) return;
+
+  let minTime = Math.min(...points.map((point) => point.unix));
+  let maxTime = Math.max(...points.map((point) => point.unix));
+  if (minTime === maxTime) {
+    const spread = state.energyView === "date" ? 86400 : state.energyView === "month" ? 2678400 : 31536000;
+    minTime -= spread / 2;
+    maxTime += spread / 2;
+  }
+  const maxValue = Math.max(1, ...values) * 1.08;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pad.left, pad.top, width, height);
+  ctx.clip();
+  energySeries.forEach((series) => {
+    const seriesPoints = points
+      .map((point) => ({ point, value: finiteNumber(point[series.field]) }))
+      .filter((item) => item.value !== null)
+      .map((item) => ({
+        ...item,
+        x: pad.left + scale(item.point.unix, minTime, maxTime, 0, width),
+        y: pad.top + height - scale(item.value, 0, maxValue, 0, height),
+      }));
+    if (!seriesPoints.length) return;
+    ctx.beginPath();
+    seriesPoints.forEach((item, index) => {
+      if (index === 0) ctx.moveTo(item.x, item.y);
+      else ctx.lineTo(item.x, item.y);
+    });
+    ctx.strokeStyle = series.color;
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+
+    if (seriesPoints.length <= 40) {
+      seriesPoints.forEach((item) => {
+        ctx.beginPath();
+        ctx.arc(item.x, item.y, 3.2, 0, Math.PI * 2);
+        ctx.fillStyle = series.color;
+        ctx.fill();
+      });
+    }
+  });
+  ctx.restore();
+
+  drawEnergyTimeAxis(ctx, theme, pad, width, height, points, minTime, maxTime);
+}
+
+function drawEnergyGrid(ctx, theme, pad, width, height, rawMaxValue) {
+  const maxValue = Math.max(1, rawMaxValue * 1.08);
+  ctx.save();
+  ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  ctx.fillStyle = theme.chartMuted;
+  for (let index = 0; index <= 4; index += 1) {
+    const y = pad.top + (height * index) / 4;
+    ctx.strokeStyle = theme.chartGrid;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + width, y);
+    ctx.stroke();
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(formatEnergyAxis(maxValue - (maxValue * index) / 4), pad.left - 9, y);
+  }
+  ctx.restore();
+}
+
+function drawEnergyTimeAxis(ctx, theme, pad, width, height, points, minTime, maxTime) {
+  const tickCount = Math.min(points.length, width < 520 ? 3 : 5);
+  if (!tickCount) return;
+  ctx.save();
+  ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  ctx.fillStyle = theme.chartMuted;
+  for (let index = 0; index < tickCount; index += 1) {
+    const pointIndex = tickCount === 1
+      ? 0
+      : Math.round((index * (points.length - 1)) / (tickCount - 1));
+    const point = points[pointIndex];
+    const x = tickCount === 1
+      ? pad.left + width / 2
+      : pad.left + scale(point.unix, minTime, maxTime, 0, width);
+    ctx.textAlign = index === 0 ? "left" : index === tickCount - 1 ? "right" : "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(formatEnergyPeriod(point), x, pad.top + height + 11);
+  }
+  ctx.restore();
+}
+
+function formatEnergyTotal(value) {
+  const number = finiteNumber(value);
+  if (number === null) return "--";
+  return new Intl.NumberFormat(currentLocale(), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  }).format(number);
+}
+
+function formatEnergyAxis(value) {
+  if (Math.abs(value) >= 1000) {
+    return new Intl.NumberFormat(currentLocale(), {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(value);
+  }
+  return new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 1 }).format(value);
+}
+
+function formatEnergyPeriod(point) {
+  if (state.energyView === "year") return String(point.period || "");
+  const date = new Date(point.timestamp || point.unix * 1000);
+  if (state.energyView === "month") {
+    return new Intl.DateTimeFormat(currentLocale(), { month: "short", year: "2-digit" }).format(date);
+  }
+  return new Intl.DateTimeFormat(currentLocale(), {
+    month: "short",
+    day: "numeric",
+    year: "2-digit",
+  }).format(date);
+}
+
 function animateChartIn() {
   window.cancelAnimationFrame(chartAnimationFrame);
   if (prefersReducedMotion() || !state.history.length) {
@@ -2268,6 +2517,7 @@ function rerenderLocalizedUi() {
   $("chartTitle").textContent = metricLabel();
   $("chartLegend").dataset.signature = "";
   hideChartTooltip(false);
+  renderEnergyHistory();
 
   if (state.livePayload) {
     renderStatus(state.livePayload);
@@ -2335,6 +2585,7 @@ function applyTheme(theme, persist) {
       setStoredTheme(theme);
     }
     requestAnimationFrame(drawChart);
+    requestAnimationFrame(drawEnergyHistoryChart);
   };
 
   if (persist && document.startViewTransition && !prefersReducedMotion()) {
@@ -2375,13 +2626,27 @@ function bindControls() {
     refreshHistory().catch((error) => handleResourceFailure("history", error));
   });
 
-  document.querySelectorAll(".segmented button").forEach((button) => {
+  document.querySelectorAll(".segmented button[data-range]").forEach((button) => {
     button.addEventListener("click", () => {
       state.range = button.dataset.range;
-      document.querySelectorAll(".segmented button").forEach((item) => item.classList.remove("is-active"));
+      document.querySelectorAll(".segmented button[data-range]").forEach((item) => item.classList.remove("is-active"));
       button.classList.add("is-active");
       hideChartTooltip(false);
       refreshHistory().catch((error) => handleResourceFailure("history", error));
+    });
+  });
+
+  document.querySelectorAll("#energyViewControls button[data-energy-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.energyView = button.dataset.energyView;
+      document.querySelectorAll("#energyViewControls button").forEach((item) => {
+        item.classList.remove("is-active");
+        item.setAttribute("aria-pressed", "false");
+      });
+      button.classList.add("is-active");
+      button.setAttribute("aria-pressed", "true");
+      renderEnergyHistory();
+      refreshEnergyHistory().catch((error) => handleResourceFailure("energy", error));
     });
   });
 
@@ -2409,16 +2674,24 @@ function bindControls() {
   chart.addEventListener("blur", () => hideChartTooltip());
 
   const chartContainer = chart.parentElement;
+  const energyChartContainer = $("energyHistoryChart").parentElement;
   if ("ResizeObserver" in window) {
     const observer = new ResizeObserver(() => {
       window.cancelAnimationFrame(chartResizeFrame);
       chartResizeFrame = window.requestAnimationFrame(drawChart);
     });
     observer.observe(chartContainer);
+    const energyObserver = new ResizeObserver(() => {
+      window.cancelAnimationFrame(energyChartResizeFrame);
+      energyChartResizeFrame = window.requestAnimationFrame(drawEnergyHistoryChart);
+    });
+    energyObserver.observe(energyChartContainer);
   } else {
     window.addEventListener("resize", () => {
       window.cancelAnimationFrame(chartResizeFrame);
       chartResizeFrame = window.requestAnimationFrame(drawChart);
+      window.cancelAnimationFrame(energyChartResizeFrame);
+      energyChartResizeFrame = window.requestAnimationFrame(drawEnergyHistoryChart);
     });
   }
 

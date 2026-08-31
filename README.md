@@ -89,6 +89,7 @@ Defaults:
 - Retention: 1095 days, approximately 3 years
 - Storage path on the x86_64 host: `./data/monitor/battery-monitor.sqlite3`
 - CSV export: dashboard download button or `GET /api/export.csv`
+- Energy history: daily consumption, solar generation, and grid import in kWh, available through `GET /api/energy?view=date|month|year`
 
 The monitor owns one collector connection and serves a cached live snapshot to every browser. Opening more dashboard tabs does not create more requests to the Raspberry Pi. The dashboard refreshes live values every 5 seconds, pauses network work while its tab is hidden, and refreshes immediately when the tab becomes visible again.
 
@@ -134,7 +135,7 @@ The IP addresses are inventory labels. Telemetry still travels from the batterie
 
 For repeatable deployments, start with `.env.example`, put the real values in a root-level `.env` file on the x86_64 host, and run the deployment script normally. Docker Compose loads that file automatically, and `.env` is excluded from Git so host-specific addresses are not committed.
 
-At the default 60-second interval, three batteries produce roughly 4.7 million log rows across 3 years. The dashboard stores the raw reading payload for each row so cell voltages, temperatures, alarms, faults, limits, and pack metadata remain available.
+At the default 60-second interval, three batteries produce roughly 4.7 million log rows across 3 years. The dashboard stores the raw reading payload for each row so cell voltages, temperatures, alarms, faults, limits, and pack metadata remain available. Inverter day counters are stored separately as one updatable row per date and inverter, preventing repeated samples from overstating kWh totals while preserving date, month, and year views.
 
 The Pi collector stores one sequenced replay snapshot every 60 seconds for 24 hours at `./data/collector/collector-buffer.sqlite3`. When the monitor restarts or temporarily loses the Pi, it requests every missing sequence and inserts it idempotently. This repairs short archive gaps without changing the normal 60-second sampling rate or duplicating rows.
 

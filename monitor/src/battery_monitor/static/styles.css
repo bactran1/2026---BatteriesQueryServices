@@ -1125,6 +1125,155 @@ button {
   color: #b42318;
 }
 
+.energy-history-panel {
+  margin: 18px 0;
+}
+
+.energy-history-heading {
+  align-items: center;
+}
+
+.energy-history-description {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.energy-history-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.28fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.energy-history-totals {
+  display: grid;
+  gap: 10px;
+}
+
+.energy-total {
+  position: relative;
+  min-height: 86px;
+  overflow: hidden;
+  padding: 14px 15px 13px 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--tile-bg);
+}
+
+.energy-total::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--series-color);
+  content: "";
+}
+
+.energy-total--consumption {
+  --series-color: #ff7a00;
+}
+
+.energy-total--solar {
+  --series-color: #30b95f;
+}
+
+.energy-total--grid {
+  --series-color: #0a84ff;
+}
+
+.energy-total > span,
+.energy-total > small {
+  display: block;
+  color: var(--muted);
+}
+
+.energy-total > span {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.energy-total > strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 27px;
+  line-height: 1;
+  font-weight: 760;
+}
+
+.energy-total > small {
+  margin-top: 6px;
+  font-size: 10px;
+}
+
+.energy-history-chart-wrap {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--soft-bg);
+}
+
+#energyHistoryChart {
+  display: block;
+  width: 100%;
+  height: 310px;
+}
+
+.energy-history-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.energy-history-empty[hidden] {
+  display: none;
+}
+
+.energy-history-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.energy-history-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.energy-key {
+  width: 16px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--series-color);
+}
+
+.energy-key--consumption {
+  --series-color: #ff7a00;
+}
+
+.energy-key--solar {
+  --series-color: #30b95f;
+}
+
+.energy-key--grid {
+  --series-color: #0a84ff;
+}
+
 .fleet-band {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2118,6 +2267,14 @@ select {
     min-height: 0;
   }
 
+  .energy-history-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .energy-history-totals {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .battery-grid,
   .workbench,
   .lower-grid {
@@ -2305,6 +2462,20 @@ select {
 
   #historyChart {
     height: 280px;
+  }
+
+  #energyHistoryChart {
+    height: 270px;
+  }
+
+  .energy-history-totals {
+    grid-template-columns: 1fr;
+  }
+
+  .energy-history-legend {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .chart-legend {

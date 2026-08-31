@@ -20,6 +20,8 @@ HistoryMetric = Literal[
     "ambient_temperature_c",
 ]
 
+EnergyView = Literal["date", "month", "year"]
+
 
 HISTORY_COLUMNS: dict[str, str] = {
     "voltage_v": "voltage_v",
@@ -104,12 +106,24 @@ class RetentionStore:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS daily_energy (
+                    energy_date TEXT NOT NULL,
+                    inverter_id TEXT NOT NULL,
+                    captured_at TEXT NOT NULL,
+                    captured_at_unix INTEGER NOT NULL,
+                    consumption_kwh REAL,
+                    solar_generation_kwh REAL,
+                    grid_import_kwh REAL,
+                    PRIMARY KEY (energy_date, inverter_id)
+                );
                 CREATE INDEX IF NOT EXISTS idx_readings_time
                     ON readings (captured_at_unix);
                 CREATE INDEX IF NOT EXISTS idx_readings_battery_time
                     ON readings (battery_id, captured_at_unix);
                 CREATE INDEX IF NOT EXISTS idx_readings_events
                     ON readings (captured_at_unix, alarm_count, fault_count, status);
+                CREATE INDEX IF NOT EXISTS idx_daily_energy_date
+                    ON daily_energy (energy_date);
                 """
             )
             self._ensure_column("collector_stream_id", "TEXT")
@@ -145,27 +159,33 @@ class RetentionStore:
     def insert_snapshot(self, snapshot: dict[str, Any]) -> int:
         with self._lock:
             inserted = self._insert_snapshot_locked(snapshot)
+            self._upsert_daily_energy_locked(snapshot)
             self.connection.commit()
             return inserted
 
     def insert_snapshots(self, snapshots: list[dict[str, Any]]) -> int:
         with self._lock:
-            inserted = sum(
-                self._insert_snapshot_locked(snapshot)
-                for snapshot in snapshots
-                if isinstance(snapshot, dict)
-            )
+            inserted = 0
+            for snapshot in snapshots:
+                if not isinstance(snapshot, dict):
+                    continue
+                inserted += self._insert_snapshot_locked(snapshot)
+                self._upsert_daily_energy_locked(snapshot)
             self.connection.commit()
             return inserted
 
     def prune_older_than_days(self, days: int) -> int:
         cutoff = int(time.time()) - days * 24 * 60 * 60
+        cutoff_date = datetime.fromtimestamp(cutoff, timezone.utc).date().isoformat()
         with self._lock:
             cursor = self.connection.execute(
                 "DELETE FROM readings WHERE captured_at_unix < ?", (cutoff,)
             )
+            energy_cursor = self.connection.execute(
+                "DELETE FROM daily_energy WHERE energy_date < ?", (cutoff_date,)
+            )
             self.connection.commit()
-            return int(cursor.rowcount or 0)
+            return int(cursor.rowcount or 0) + int(energy_cursor.rowcount or 0)
 
     def latest_states(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -225,6 +245,57 @@ class RetentionStore:
             for row in rows
             if row["value"] is not None
         ]
+
+    def energy_history(self, view: EnergyView) -> dict[str, Any]:
+        period_expression = {
+            "date": "energy_date",
+            "month": "substr(energy_date, 1, 7)",
+            "year": "substr(energy_date, 1, 4)",
+        }[str(view)]
+        with self._lock:
+            rows = self.connection.execute(
+                f"""
+                SELECT
+                    {period_expression} AS period,
+                    SUM(consumption_kwh) AS consumption_kwh,
+                    SUM(solar_generation_kwh) AS solar_generation_kwh,
+                    SUM(grid_import_kwh) AS grid_import_kwh
+                FROM daily_energy
+                WHERE energy_date >= date('now', '-3 years')
+                GROUP BY period
+                ORDER BY period ASC
+                """
+            ).fetchall()
+
+        points = []
+        for row in rows:
+            timestamp, unix = _energy_period_time(str(row["period"]), view)
+            points.append(
+                {
+                    "period": row["period"],
+                    "timestamp": timestamp,
+                    "unix": unix,
+                    "consumption_kwh": _rounded_number(row["consumption_kwh"]),
+                    "solar_generation_kwh": _rounded_number(
+                        row["solar_generation_kwh"]
+                    ),
+                    "grid_import_kwh": _rounded_number(row["grid_import_kwh"]),
+                }
+            )
+
+        return {
+            "view": view,
+            "retention_years": 3,
+            "points": points,
+            "totals": {
+                field: _sum_energy_points(points, field)
+                for field in (
+                    "consumption_kwh",
+                    "solar_generation_kwh",
+                    "grid_import_kwh",
+                )
+            },
+        }
 
     def events(self, seconds: int, limit: int) -> list[dict[str, Any]]:
         since = int(time.time()) - seconds
@@ -293,6 +364,14 @@ class RetentionStore:
                 FROM readings
                 """
             ).fetchone()
+            energy_row = self.connection.execute(
+                """
+                SELECT COUNT(*) AS point_count,
+                       MIN(energy_date) AS oldest_energy_date,
+                       MAX(energy_date) AS newest_energy_date
+                FROM daily_energy
+                """
+            ).fetchone()
         return {
             "database_path": str(self.database_path),
             "database_size_bytes": self._database_size_bytes(),
@@ -300,6 +379,9 @@ class RetentionStore:
             "battery_count": int(row["battery_count"] or 0),
             "oldest_reading_at": row["oldest_reading_at"],
             "newest_reading_at": row["newest_reading_at"],
+            "energy_point_count": int(energy_row["point_count"] or 0),
+            "oldest_energy_date": energy_row["oldest_energy_date"],
+            "newest_energy_date": energy_row["newest_energy_date"],
             "retention_days": retention_days,
         }
 
@@ -426,6 +508,67 @@ class RetentionStore:
             inserted += max(0, int(cursor.rowcount or 0))
         return inserted
 
+    def _upsert_daily_energy_locked(self, snapshot: dict[str, Any]) -> None:
+        row = _daily_energy_row(snapshot)
+        if row is None:
+            return
+        self.connection.execute(
+            """
+            INSERT INTO daily_energy (
+                energy_date,
+                inverter_id,
+                captured_at,
+                captured_at_unix,
+                consumption_kwh,
+                solar_generation_kwh,
+                grid_import_kwh
+            ) VALUES (
+                :energy_date,
+                :inverter_id,
+                :captured_at,
+                :captured_at_unix,
+                :consumption_kwh,
+                :solar_generation_kwh,
+                :grid_import_kwh
+            )
+            ON CONFLICT(energy_date, inverter_id) DO UPDATE SET
+                captured_at = CASE
+                    WHEN excluded.captured_at_unix >= daily_energy.captured_at_unix
+                    THEN excluded.captured_at
+                    ELSE daily_energy.captured_at
+                END,
+                captured_at_unix = MAX(
+                    daily_energy.captured_at_unix,
+                    excluded.captured_at_unix
+                ),
+                consumption_kwh = CASE
+                    WHEN excluded.consumption_kwh IS NULL
+                    THEN daily_energy.consumption_kwh
+                    WHEN daily_energy.consumption_kwh IS NULL
+                    THEN excluded.consumption_kwh
+                    ELSE MAX(daily_energy.consumption_kwh, excluded.consumption_kwh)
+                END,
+                solar_generation_kwh = CASE
+                    WHEN excluded.solar_generation_kwh IS NULL
+                    THEN daily_energy.solar_generation_kwh
+                    WHEN daily_energy.solar_generation_kwh IS NULL
+                    THEN excluded.solar_generation_kwh
+                    ELSE MAX(
+                        daily_energy.solar_generation_kwh,
+                        excluded.solar_generation_kwh
+                    )
+                END,
+                grid_import_kwh = CASE
+                    WHEN excluded.grid_import_kwh IS NULL
+                    THEN daily_energy.grid_import_kwh
+                    WHEN daily_energy.grid_import_kwh IS NULL
+                    THEN excluded.grid_import_kwh
+                    ELSE MAX(daily_energy.grid_import_kwh, excluded.grid_import_kwh)
+                END
+            """,
+            row,
+        )
+
     def _database_size_bytes(self) -> int:
         paths = [
             self.database_path,
@@ -461,12 +604,92 @@ def _snapshot_time(snapshot: dict[str, Any]) -> tuple[str, int]:
     return _iso_from_unix(now_unix), now_unix
 
 
+def _daily_energy_row(snapshot: dict[str, Any]) -> dict[str, Any] | None:
+    inverter = snapshot.get("inverter")
+    if not isinstance(inverter, dict):
+        return None
+    reading = inverter.get("last_reading")
+    if not isinstance(reading, dict):
+        return None
+
+    energy = {
+        "consumption_kwh": _nonnegative_number(
+            reading.get("load_energy_today_kwh")
+        ),
+        "solar_generation_kwh": _nonnegative_number(
+            reading.get("pv_energy_today_kwh")
+        ),
+        "grid_import_kwh": _nonnegative_number(
+            reading.get("grid_import_energy_today_kwh")
+        ),
+    }
+    if all(value is None for value in energy.values()):
+        return None
+
+    captured_at, captured_at_unix = _energy_sample_time(snapshot, reading)
+    parsed = datetime.fromtimestamp(captured_at_unix, timezone.utc)
+    return {
+        "energy_date": parsed.date().isoformat(),
+        "inverter_id": str(inverter.get("id") or reading.get("id") or "inverter"),
+        "captured_at": captured_at,
+        "captured_at_unix": captured_at_unix,
+        **energy,
+    }
+
+
+def _energy_sample_time(
+    snapshot: dict[str, Any], reading: dict[str, Any]
+) -> tuple[str, int]:
+    service = snapshot.get("service")
+    service = service if isinstance(service, dict) else {}
+    for candidate in (reading.get("timestamp"), service.get("captured_at")):
+        if not isinstance(candidate, str) or not candidate:
+            continue
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.astimezone(timezone.utc)
+            return _iso_from_unix(int(parsed.timestamp())), int(parsed.timestamp())
+        except ValueError:
+            continue
+    return _snapshot_time(snapshot)
+
+
+def _energy_period_time(period: str, view: EnergyView) -> tuple[str, int]:
+    if view == "date":
+        value = f"{period}T12:00:00Z"
+    elif view == "month":
+        value = f"{period}-15T12:00:00Z"
+    else:
+        value = f"{period}-07-01T12:00:00Z"
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return value, int(parsed.timestamp())
+
+
 def _number(value: object) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
     return None
+
+
+def _nonnegative_number(value: object) -> float | None:
+    number = _number(value)
+    return number if number is not None and number >= 0 else None
+
+
+def _rounded_number(value: object) -> float | None:
+    number = _number(value)
+    return round(number, 3) if number is not None else None
+
+
+def _sum_energy_points(points: list[dict[str, Any]], field: str) -> float | None:
+    values = [
+        float(point[field]) for point in points if point.get(field) is not None
+    ]
+    return round(sum(values), 3) if values else None
 
 
 def _int(value: object) -> int | None:

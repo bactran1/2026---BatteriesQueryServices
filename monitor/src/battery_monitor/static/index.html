@@ -244,6 +244,61 @@
           </div>
         </section>
 
+        <section class="panel energy-history-panel" aria-labelledby="energyHistoryTitle">
+          <div class="panel-heading energy-history-heading">
+            <div>
+              <p class="eyebrow" data-i18n="energyHistory.eyebrow">Energy history</p>
+              <h2 id="energyHistoryTitle" data-i18n="energyHistory.titleMonth">Energy by month</h2>
+              <p class="energy-history-description" data-i18n="energyHistory.description">Consumption, solar generation, and grid draw over the last three years</p>
+            </div>
+            <div
+              id="energyViewControls"
+              class="segmented"
+              role="group"
+              aria-label="Energy history view"
+              data-i18n-aria-label="energyHistory.view"
+            >
+              <button type="button" data-energy-view="date" data-i18n="energyHistory.date" aria-pressed="false">Date</button>
+              <button type="button" data-energy-view="month" data-i18n="energyHistory.month" class="is-active" aria-pressed="true">Month</button>
+              <button type="button" data-energy-view="year" data-i18n="energyHistory.year" aria-pressed="false">Year</button>
+            </div>
+          </div>
+          <div class="energy-history-layout">
+            <div class="energy-history-totals" aria-label="Three-year energy totals" data-i18n-aria-label="energyHistory.totalsAria">
+              <div class="energy-total energy-total--consumption">
+                <span data-i18n="energyHistory.consumption">Power consumption</span>
+                <strong id="energyConsumptionTotal">--</strong>
+                <small data-i18n="energyHistory.kwhTotal">kWh · three-year total</small>
+              </div>
+              <div class="energy-total energy-total--solar">
+                <span data-i18n="energyHistory.solar">Solar generation</span>
+                <strong id="energySolarTotal">--</strong>
+                <small data-i18n="energyHistory.kwhTotal">kWh · three-year total</small>
+              </div>
+              <div class="energy-total energy-total--grid">
+                <span data-i18n="energyHistory.grid">Grid draw</span>
+                <strong id="energyGridTotal">--</strong>
+                <small data-i18n="energyHistory.kwhTotal">kWh · three-year total</small>
+              </div>
+            </div>
+            <div class="energy-history-chart-wrap">
+              <canvas
+                id="energyHistoryChart"
+                height="310"
+                role="img"
+                aria-label="Energy history in kilowatt-hours"
+                data-i18n-aria-label="energyHistory.chartAria"
+              ></canvas>
+              <div id="energyHistoryEmpty" class="energy-history-empty" data-i18n="energyHistory.awaiting">Awaiting inverter energy readings</div>
+            </div>
+          </div>
+          <div id="energyHistoryLegend" class="energy-history-legend" aria-hidden="true">
+            <span><i class="energy-key energy-key--consumption"></i><span data-i18n="energyHistory.consumption">Power consumption</span></span>
+            <span><i class="energy-key energy-key--solar"></i><span data-i18n="energyHistory.solar">Solar generation</span></span>
+            <span><i class="energy-key energy-key--grid"></i><span data-i18n="energyHistory.grid">Grid draw</span></span>
+          </div>
+        </section>
+
         <section class="fleet-band" aria-label="Fleet summary" data-i18n-aria-label="fleet.summary">
           <div class="fleet-metric fleet-metric--soc">
             <div class="fleet-metric__heading">

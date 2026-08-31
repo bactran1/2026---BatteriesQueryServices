@@ -216,6 +216,27 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("NODE_COLORS.load", scene)
         self.assertIn('"inverter.state.bypass": "Điện lưới chuyển thẳng"', javascript)
 
+    def test_three_year_energy_history_has_date_month_and_year_views(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="energyHistoryChart"', html)
+        self.assertIn('id="energyConsumptionTotal"', html)
+        self.assertIn('id="energySolarTotal"', html)
+        self.assertIn('id="energyGridTotal"', html)
+        self.assertIn('data-energy-view="date"', html)
+        self.assertIn('data-energy-view="month"', html)
+        self.assertIn('data-energy-view="year"', html)
+        self.assertIn('getJson(`/api/energy?${params}`, "energy")', javascript)
+        self.assertIn("function drawEnergyHistoryChart", javascript)
+        self.assertIn('field: "consumption_kwh"', javascript)
+        self.assertIn('field: "solar_generation_kwh"', javascript)
+        self.assertIn('field: "grid_import_kwh"', javascript)
+        self.assertIn('"energyHistory.titleMonth": "Năng lượng theo tháng"', javascript)
+        self.assertIn(".energy-history-layout", css)
+        self.assertIn("#energyHistoryChart", css)
+
     def test_default_configured_labels_are_localized_in_vietnamese(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
         html = (STATIC / "index.html").read_text(encoding="utf-8")

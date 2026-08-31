@@ -16,7 +16,7 @@ from .assets import asset_version, cache_control_for, render_index
 from .collector import CollectorClient
 from .config import Settings, load_settings, rack_details
 from .service import MonitorService
-from .storage import HistoryMetric, RetentionStore
+from .storage import EnergyView, HistoryMetric, RetentionStore
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +151,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 bucket_seconds,
             ),
         }
+
+    @app.get("/api/energy")
+    async def energy(view: EnergyView = Query(default="month")):
+        return await asyncio.to_thread(store.energy_history, view)
 
     @app.get("/api/events")
     async def events(range: str = Query(default="7d"), limit: int = Query(default=80, ge=1, le=300)):
