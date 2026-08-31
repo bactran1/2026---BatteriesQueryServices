@@ -235,11 +235,9 @@ function startEnergyFlowScene() {
     const tangent = new THREE.Vector3();
     const position = new THREE.Vector3();
 
-    network.routes.forEach((route, routeIndex) => {
+    network.routes.forEach((route) => {
       const active = isRouteActive(route);
-      const activeCount = active
-        ? Math.round(clamp(3 + route.magnitude * 0.58, 3, route.particles.length))
-        : 0;
+      const activeCount = active ? 1 : 0;
       const speed = clamp(0.1 + route.magnitude * 0.009, 0.1, 0.34);
 
       route.particles.forEach((particle, index) => {
@@ -251,18 +249,12 @@ function startEnergyFlowScene() {
         route.curve.getTangentAt(progress, tangent).multiplyScalar(route.direction).normalize();
         particle.position.copy(position);
         particle.quaternion.setFromUnitVectors(route.forwardAxis, tangent);
-        const pulse = 0.88 + Math.sin(time * 0.006 + index * 0.8 + routeIndex) * 0.12;
         const endpointFade = clamp(Math.sin(Math.PI * progress) * 1.6, 0.35, 1);
-        const scale = pulse * endpointFade;
-        particle.scale.set(scale, scale, scale * 1.8);
+        particle.scale.setScalar(endpointFade);
       });
 
-      route.particleMaterial.opacity = active
-        ? 0.86 + Math.sin(time * 0.005 + routeIndex) * 0.12
-        : 0;
-      route.particleGlowMaterial.opacity = active
-        ? 0.2 + Math.sin(time * 0.004 + routeIndex) * 0.06
-        : 0;
+      route.particleMaterial.opacity = active ? 0.9 : 0;
+      route.particleGlowMaterial.opacity = active ? 0.08 : 0;
     });
 
     pulseSignal(energySystem.gridSignalMaterial, network.grid.active, time, 0);
@@ -506,7 +498,6 @@ function createMaterials() {
       color: FLOW_COLORS.stale,
       transparent: true,
       opacity: 0,
-      blending: THREE.AdditiveBlending,
       depthWrite: false,
     }),
     particleGlow: new THREE.MeshBasicMaterial({
@@ -719,25 +710,25 @@ function createFlowNetwork(materials) {
     new THREE.Vector3(2.55, 0.12, 1.88),
     new THREE.Vector3(1.5, -0.02, 2.05),
     inverterHub,
-  ]), materials, 13, 0);
+  ]), materials, 1, 0);
   const battery = createFlowRoute(new THREE.CatmullRomCurve3([
     inverterHub,
     new THREE.Vector3(1.03, -0.08, 2.1),
     new THREE.Vector3(1.38, -0.18, 2.1),
     new THREE.Vector3(1.63, -0.22, 2.08),
-  ]), materials, 6, 0.17);
+  ]), materials, 1, 0.17);
   const load = createFlowRoute(new THREE.CatmullRomCurve3([
     inverterHub,
     new THREE.Vector3(0.15, -0.08, 2.1),
     new THREE.Vector3(-0.55, -0.12, 2.02),
     new THREE.Vector3(-1.15, -0.18, 1.88),
-  ]), materials, 9, 0.31);
+  ]), materials, 1, 0.31);
   const solar = createFlowRoute(new THREE.CatmullRomCurve3([
     new THREE.Vector3(-0.05, 1.5, 0.92),
     new THREE.Vector3(0.15, 1.14, 1.55),
     new THREE.Vector3(0.44, 0.52, 1.92),
     inverterHub,
-  ]), materials, 9, 0.43);
+  ]), materials, 1, 0.43);
   group.add(grid.group, battery.group, load.group, solar.group);
   return { group, grid, battery, load, solar, routes: [grid, battery, load, solar] };
 }
@@ -752,8 +743,8 @@ function createFlowRoute(curve, materials, particleCount, phaseOffset) {
   const glow = mesh(new THREE.TubeGeometry(curve, 64, 0.055, 8, false), glowMaterial);
   group.add(glow, line);
 
-  const coreGeometry = new THREE.SphereGeometry(0.065, 14, 10);
-  const glowGeometry = new THREE.SphereGeometry(0.13, 14, 10);
+  const coreGeometry = new THREE.SphereGeometry(0.072, 16, 12);
+  const glowGeometry = new THREE.SphereGeometry(0.1, 16, 12);
   const particles = Array.from({ length: particleCount }, () => {
     const particle = new THREE.Group();
     const halo = mesh(glowGeometry, particleGlowMaterial);
@@ -791,10 +782,10 @@ function configureRoute(route, mode, magnitude, active, direction, reporting, ac
   const color = route.active ? activeColor ?? FLOW_COLORS[route.mode] : FLOW_COLORS.stale;
   route.lineMaterial.color.setHex(color);
   route.lineMaterial.emissive.setHex(color);
-  route.lineMaterial.emissiveIntensity = route.active ? 0.9 : 0.04;
+  route.lineMaterial.emissiveIntensity = route.active ? 0.55 : 0.04;
   route.lineMaterial.opacity = route.active ? 0.82 : route.reporting ? 0.16 : 0.1;
   route.glowMaterial.color.setHex(color);
-  route.glowMaterial.opacity = route.active ? 0.16 : 0.015;
+  route.glowMaterial.opacity = route.active ? 0.07 : 0.01;
   route.particleMaterial.color.setHex(color);
   route.particleGlowMaterial.color.setHex(color);
 }

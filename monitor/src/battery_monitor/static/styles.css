@@ -889,21 +889,22 @@ button {
 
 .energy-flow__fallback-link::after {
   position: absolute;
-  top: -3px;
-  left: -14px;
-  width: 14px;
-  height: 8px;
+  top: -4px;
+  left: -10px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   background: var(--flow-color);
   content: "";
-  box-shadow: 0 0 12px color-mix(in srgb, var(--flow-color) 70%, transparent);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--flow-color) 35%, transparent);
   animation: energy-flow-fallback-horizontal 1.2s linear infinite;
 }
 
 .energy-flow__fallback-link--battery::after {
-  top: -12px;
-  left: -3px;
-  width: 8px;
-  height: 12px;
+  top: -10px;
+  left: -4px;
+  width: 10px;
+  height: 10px;
   animation-name: energy-flow-fallback-vertical;
 }
 
