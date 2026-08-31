@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable, Iterator
+from typing import Callable, Iterable, Iterator, Protocol
 
 from .ecoworthy import append_crc, crc16_modbus
 
@@ -22,6 +22,32 @@ class RenogyXSerialSettings:
     baudrate: int = 9600
     timeout_seconds: float = 2.0
     parity: str = "N"
+
+
+class ModbusRegisterClient(Protocol):
+    @property
+    def connection_description(self) -> str: ...
+
+    @property
+    def troubleshooting_hint(self) -> str: ...
+
+    def read_holding_registers(
+        self, address: int, start: int, count: int
+    ) -> list[int]: ...
+
+    def read_ranges(
+        self,
+        address: int,
+        ranges: Iterable[tuple[int, int]],
+        *,
+        chunk_size: int = 60,
+        continue_on_error: bool = False,
+        retries: int = 0,
+        retry_delay_seconds: float = 0.15,
+        inter_request_delay_seconds: float = 0.02,
+    ) -> tuple[dict[int, int], list[dict[str, object]]]: ...
+
+    def close(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -77,6 +103,25 @@ class RenogyXModbusClient:
     def __init__(self, settings: RenogyXSerialSettings):
         self.settings = settings
 
+    @property
+    def connection_description(self) -> str:
+        return (
+            f"serial {self.settings.port} at {self.settings.baudrate} "
+            f"8{self.settings.parity.upper()}1"
+        )
+
+    @property
+    def troubleshooting_hint(self) -> str:
+        return (
+            "Verify the external COM/logger RS485 pair is connected, the Wi-Fi "
+            "logger is disconnected, and the meter/BMS ports are not being used "
+            "for telemetry"
+        )
+
+    def close(self) -> None:
+        # Serial connections are scoped to individual read operations.
+        return None
+
     def read_holding_registers(
         self, address: int, start: int, count: int
     ) -> list[int]:
@@ -94,51 +139,16 @@ class RenogyXModbusClient:
         retry_delay_seconds: float = 0.15,
         inter_request_delay_seconds: float = 0.02,
     ) -> tuple[dict[int, int], list[dict[str, object]]]:
-        if not 1 <= chunk_size <= MAX_READ_REGISTERS:
-            raise ValueError(
-                f"Chunk size must be between 1 and {MAX_READ_REGISTERS}"
-            )
-        if retries < 0:
-            raise ValueError("Retries cannot be negative")
-        if retry_delay_seconds < 0 or inter_request_delay_seconds < 0:
-            raise ValueError("Modbus delays cannot be negative")
-
-        registers: dict[int, int] = {}
-        errors: list[dict[str, object]] = []
         with self._open_serial() as connection:
-            for range_start, range_count in ranges:
-                for start, count in chunk_register_range(
-                    range_start, range_count, chunk_size
-                ):
-                    values: list[int] | None = None
-                    last_error: Exception | None = None
-                    for attempt in range(retries + 1):
-                        try:
-                            values = self._read(connection, address, start, count)
-                            last_error = None
-                            break
-                        except Exception as exc:
-                            last_error = exc
-                            if attempt < retries and retry_delay_seconds:
-                                time.sleep(retry_delay_seconds)
-                    if values is None:
-                        if not continue_on_error and last_error is not None:
-                            raise last_error
-                        errors.append(
-                            {
-                                "start": start,
-                                "count": count,
-                                "attempts": retries + 1,
-                                "error": str(last_error),
-                            }
-                        )
-                        continue
-                    registers.update(
-                        {start + index: value for index, value in enumerate(values)}
-                    )
-                    if inter_request_delay_seconds:
-                        time.sleep(inter_request_delay_seconds)
-        return registers, errors
+            return collect_register_ranges(
+                lambda start, count: self._read(connection, address, start, count),
+                ranges,
+                chunk_size=chunk_size,
+                continue_on_error=continue_on_error,
+                retries=retries,
+                retry_delay_seconds=retry_delay_seconds,
+                inter_request_delay_seconds=inter_request_delay_seconds,
+            )
 
     def read_common_profile(self, address: int) -> dict[str, object]:
         registers, errors = self.read_ranges(
@@ -304,6 +314,64 @@ def chunk_register_range(
         yield current, size
         current += size
         remaining -= size
+
+
+def collect_register_ranges(
+    read: Callable[[int, int], list[int]],
+    ranges: Iterable[tuple[int, int]],
+    *,
+    chunk_size: int = 60,
+    continue_on_error: bool = False,
+    retries: int = 0,
+    retry_delay_seconds: float = 0.15,
+    inter_request_delay_seconds: float = 0.02,
+) -> tuple[dict[int, int], list[dict[str, object]]]:
+    if not 1 <= chunk_size <= MAX_READ_REGISTERS:
+        raise ValueError(f"Chunk size must be between 1 and {MAX_READ_REGISTERS}")
+    if retries < 0:
+        raise ValueError("Retries cannot be negative")
+    if retry_delay_seconds < 0 or inter_request_delay_seconds < 0:
+        raise ValueError("Modbus delays cannot be negative")
+
+    registers: dict[int, int] = {}
+    errors: list[dict[str, object]] = []
+    for range_start, range_count in ranges:
+        for start, count in chunk_register_range(
+            range_start, range_count, chunk_size
+        ):
+            values: list[int] | None = None
+            last_error: Exception | None = None
+            for attempt in range(retries + 1):
+                try:
+                    values = read(start, count)
+                    last_error = None
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    if attempt < retries and retry_delay_seconds:
+                        time.sleep(retry_delay_seconds)
+            if values is None:
+                if not continue_on_error and last_error is not None:
+                    raise last_error
+                errors.append(
+                    {
+                        "start": start,
+                        "count": count,
+                        "attempts": retries + 1,
+                        "error": str(last_error),
+                    }
+                )
+                continue
+            if len(values) != count:
+                raise RenogyXProtocolError(
+                    f"Read {start}+{count} returned {len(values)} registers"
+                )
+            registers.update(
+                {start + index: value for index, value in enumerate(values)}
+            )
+            if inter_request_delay_seconds:
+                time.sleep(inter_request_delay_seconds)
+    return registers, errors
 
 
 def decode_registers(

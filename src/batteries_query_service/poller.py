@@ -13,6 +13,7 @@ from .ecoworthy import EcoWorthyModbusClient, SerialConnectionSettings
 from .megarevo import MegarevoR8KLNAClient, R8KLNA_PROFILE
 from .metrics import MetricsPublisher
 from .renogy_x import RenogyXSerialSettings
+from .solarman_v5 import SolarmanV5ModbusClient, SolarmanV5Settings
 
 logger = logging.getLogger(__name__)
 
@@ -194,17 +195,10 @@ class BatteryPoller:
             await self._set_inverter_state(self._disabled_inverter_state(inverter))
             return
 
-        client = MegarevoR8KLNAClient(
-            RenogyXSerialSettings(
-                port=inverter.serial_port,
-                baudrate=inverter.baudrate,
-                timeout_seconds=inverter.timeout_seconds,
-                parity=inverter.parity,
-            ),
-            retries=inverter.retries,
-        )
         polled_at = _utc_now()
+        client: MegarevoR8KLNAClient | None = None
         try:
+            client = self._inverter_client(inverter)
             reading = await asyncio.to_thread(
                 client.read_status,
                 inverter.address,
@@ -216,7 +210,7 @@ class BatteryPoller:
                 "inverter poll failed for %s address %s on %s: %s",
                 inverter.id,
                 inverter.address,
-                inverter.serial_port,
+                self._inverter_connection_label(inverter),
                 exc,
             )
             self.metrics.record_inverter_error(inverter.id, inverter.address)
@@ -229,7 +223,7 @@ class BatteryPoller:
                     "model": inverter.model,
                     "profile": R8KLNA_PROFILE,
                     "address": inverter.address,
-                    "serial_port": inverter.serial_port,
+                    **self._inverter_connection_fields(inverter),
                     "status": "error",
                     "last_polled_at": polled_at,
                     "last_success_at": previous_success,
@@ -239,6 +233,9 @@ class BatteryPoller:
                 }
             )
             return
+        finally:
+            if client is not None:
+                await asyncio.to_thread(client.close)
 
         self.metrics.record_inverter_reading(reading)
         status = "degraded" if reading.read_errors else "ok"
@@ -248,7 +245,7 @@ class BatteryPoller:
                 "model": inverter.model,
                 "profile": reading.profile,
                 "address": inverter.address,
-                "serial_port": inverter.serial_port,
+                **self._inverter_connection_fields(inverter),
                 "status": status,
                 "last_polled_at": polled_at,
                 "last_success_at": reading.timestamp,
@@ -294,7 +291,7 @@ class BatteryPoller:
             "model": inverter.model,
             "profile": R8KLNA_PROFILE,
             "address": inverter.address,
-            "serial_port": inverter.serial_port,
+            **self._inverter_connection_fields(inverter),
             "status": "pending" if inverter.enabled else "disabled",
             "last_polled_at": None,
             "last_success_at": None,
@@ -307,6 +304,63 @@ class BatteryPoller:
         state = self._pending_inverter_state(inverter)
         state["last_polled_at"] = _utc_now()
         return state
+
+    def _inverter_client(
+        self, inverter: InverterSettings
+    ) -> MegarevoR8KLNAClient:
+        if inverter.transport == "serial":
+            return MegarevoR8KLNAClient(
+                RenogyXSerialSettings(
+                    port=inverter.serial_port,
+                    baudrate=inverter.baudrate,
+                    timeout_seconds=inverter.timeout_seconds,
+                    parity=inverter.parity,
+                ),
+                retries=inverter.retries,
+            )
+        if inverter.transport == "solarman_v5":
+            if inverter.logger_serial is None:
+                raise ValueError("SOLARMAN logger serial is required")
+            return MegarevoR8KLNAClient(
+                retries=inverter.retries,
+                modbus_client=SolarmanV5ModbusClient(
+                    SolarmanV5Settings(
+                        host=inverter.host,
+                        port=inverter.tcp_port,
+                        logger_serial=inverter.logger_serial,
+                        timeout_seconds=inverter.timeout_seconds,
+                        error_correction=inverter.v5_error_correction,
+                    )
+                ),
+            )
+        raise ValueError(f"Unsupported inverter transport {inverter.transport!r}")
+
+    @staticmethod
+    def _inverter_connection_label(inverter: InverterSettings) -> str:
+        if inverter.transport == "solarman_v5":
+            return f"{inverter.host}:{inverter.tcp_port} via SOLARMAN V5"
+        return inverter.serial_port
+
+    @classmethod
+    def _inverter_connection_fields(
+        cls, inverter: InverterSettings
+    ) -> dict[str, Any]:
+        return {
+            "transport": inverter.transport,
+            "connection": cls._inverter_connection_label(inverter),
+            "serial_port": (
+                inverter.serial_port if inverter.transport == "serial" else None
+            ),
+            "host": inverter.host if inverter.transport == "solarman_v5" else None,
+            "tcp_port": (
+                inverter.tcp_port if inverter.transport == "solarman_v5" else None
+            ),
+            "logger_serial": (
+                inverter.logger_serial
+                if inverter.transport == "solarman_v5"
+                else None
+            ),
+        }
 
 
 def _utc_now() -> str:

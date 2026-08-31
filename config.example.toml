@@ -20,7 +20,13 @@ sample_interval_seconds = 60
 enabled = true
 id = "renogy-x-8k"
 model = "Renogy X 8K (Megarevo R8KLNA-compatible)"
+transport = "serial"
 serial_port = "/dev/ttyUSB1"
+# To use the installed LSW-5 instead of a second USB adapter, change transport
+# to "solarman_v5" and set the logger's LAN address and printed serial number:
+# host = "192.168.10.50"
+# tcp_port = 8899
+# logger_serial = 1234567890
 address = 1
 baudrate = 9600
 timeout_seconds = 2.0

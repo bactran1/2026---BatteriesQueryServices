@@ -82,6 +82,49 @@ class CollectorPollerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual((await poller.snapshot())["inverter"]["status"], "degraded")
 
+    async def test_uses_solarman_logger_transport_and_exposes_connection(self) -> None:
+        settings = Settings(
+            inverter=InverterSettings(
+                enabled=True,
+                transport="solarman_v5",
+                host="192.168.10.50",
+                tcp_port=8899,
+                logger_serial=2345678901,
+            ),
+            batteries=[],
+        )
+        reading = InverterReading(
+            id="renogy-x-8k",
+            address=1,
+            timestamp="2026-08-29T12:00:00Z",
+            model="Renogy X 8K",
+            profile="megarevo-r8klna-v2.12-read-only",
+            grid_total_power_w=-1200.0,
+        )
+        poller = BatteryPoller(settings, MetricsPublisher())
+
+        with patch(
+            "batteries_query_service.poller.SolarmanV5ModbusClient"
+        ) as transport_type, patch(
+            "batteries_query_service.poller.MegarevoR8KLNAClient"
+        ) as client_type:
+            client_type.return_value.read_status.return_value = reading
+            await poller.poll_once()
+
+        transport_settings = transport_type.call_args.args[0]
+        self.assertEqual(transport_settings.host, "192.168.10.50")
+        self.assertEqual(transport_settings.logger_serial, 2345678901)
+        self.assertIs(
+            client_type.call_args.kwargs["modbus_client"],
+            transport_type.return_value,
+        )
+        client_type.return_value.close.assert_called_once_with()
+        inverter = (await poller.snapshot())["inverter"]
+        self.assertEqual(inverter["transport"], "solarman_v5")
+        self.assertEqual(inverter["connection"], "192.168.10.50:8899 via SOLARMAN V5")
+        self.assertIsNone(inverter["serial_port"])
+        self.assertEqual(inverter["logger_serial"], 2345678901)
+
 
 if __name__ == "__main__":
     unittest.main()

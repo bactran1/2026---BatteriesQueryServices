@@ -28,6 +28,13 @@ usage() {
 "  --serial-device PATH  Host USB serial device for the battery bus" \
 "  --inverter-serial-device PATH" \
 "                        Host USB serial device for the Renogy X inverter" \
+"  --inverter-transport MODE" \
+"                        Inverter connection: serial or solarman_v5" \
+"  --inverter-host HOST  LSW-5 LAN address; selects solarman_v5 transport" \
+"  --inverter-tcp-port PORT" \
+"                        LSW-5 TCP port, default 8899" \
+"  --inverter-logger-serial SERIAL" \
+"                        Serial number printed on the LSW-5 logger" \
 "  --config PATH         Collector TOML file, default ./config.toml" \
 "  --follow-logs         Follow container logs after deployment" \
 "  --no-health-check     Skip the post-restart health check" \
@@ -39,12 +46,18 @@ usage() {
 "  COLLECTOR_SERIAL_DEVICE  Same as --serial-device" \
 "  COLLECTOR_INVERTER_SERIAL_DEVICE" \
 "                           Same as --inverter-serial-device" \
+"  BQS_INVERTER_TRANSPORT  Same as --inverter-transport" \
+"  BQS_INVERTER_HOST       Same as --inverter-host" \
+"  BQS_INVERTER_TCP_PORT   Same as --inverter-tcp-port" \
+"  BQS_INVERTER_LOGGER_SERIAL" \
+"                           Same as --inverter-logger-serial" \
 "  COLLECTOR_CONFIG_FILE    Same as --config" \
 "  COLLECTOR_IMAGE_NAME     Image name, default batteries-query-service" \
 "  COLLECTOR_IMAGE_TAG      Image tag; default is the current Git commit SHA" \
 "" \
 "Examples:" \
 "  bash deploy-collector.sh" \
+"  bash deploy-collector.sh --inverter-host 192.168.10.50 --inverter-logger-serial 1234567890" \
 "  bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Battery_Adapter --inverter-serial-device /dev/serial/by-id/usb-Inverter_Adapter" \
 "  bash deploy-collector.sh --skip-git-update --use-cache"
 }
@@ -164,6 +177,46 @@ resolve_config_file() {
   fi
 }
 
+resolve_inverter_transport() {
+  local configured="${BQS_INVERTER_TRANSPORT:-}"
+
+  if [[ -z "${configured}" && ( -n "${BQS_INVERTER_HOST:-}" || -n "${BQS_INVERTER_LOGGER_SERIAL:-}" ) ]]; then
+    configured="solarman_v5"
+  fi
+
+  if [[ -z "${configured}" ]] && command -v python3 >/dev/null 2>&1; then
+    configured="$(
+      python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb")).get("inverter", {}).get("transport", "serial"))' \
+        "${COLLECTOR_CONFIG_FILE}" 2>/dev/null || true
+    )"
+  fi
+
+  if [[ -z "${configured}" ]]; then
+    configured="$(
+      awk '
+        /^\[inverter\][[:space:]]*$/ { in_inverter = 1; next }
+        /^\[/ { in_inverter = 0 }
+        in_inverter && /^[[:space:]]*transport[[:space:]]*=/ {
+          value = $0
+          sub(/^[^=]*=[[:space:]]*/, "", value)
+          sub(/[[:space:]]*#.*/, "", value)
+          gsub(/["[:space:]]/, "", value)
+          print value
+          exit
+        }
+      ' "${COLLECTOR_CONFIG_FILE}"
+    )"
+  fi
+
+  configured="${configured,,}"
+  configured="${configured//-/_}"
+  case "${configured:-serial}" in
+    serial) printf '%s\n' "serial" ;;
+    solarman|solarman_v5|lsw5|lsw_5) printf '%s\n' "solarman_v5" ;;
+    *) fail "Unsupported inverter transport: ${configured}" ;;
+  esac
+}
+
 container_exists() {
   docker container inspect "${SERVICE_NAME}" >/dev/null 2>&1
 }
@@ -173,6 +226,9 @@ explain_container_start_failure() {
 
   if [[ "${output}" == *"error gathering device information"* || "${output}" == *"no such file or directory"* ]]; then
     printf '%s\n' "${output}" >&2
+    if [[ "${INVERTER_TRANSPORT:-serial}" == "solarman_v5" ]]; then
+      fail "Docker could not attach the battery serial device. Confirm it is connected and verify --serial-device."
+    fi
     fail "Docker could not attach a configured serial device. Confirm both USB adapters are connected and verify --serial-device and --inverter-serial-device."
   fi
 
@@ -231,6 +287,28 @@ while [[ $# -gt 0 ]]; do
       export COLLECTOR_INVERTER_SERIAL_DEVICE="$2"
       shift 2
       ;;
+    --inverter-transport)
+      [[ $# -ge 2 ]] || fail "--inverter-transport requires a mode"
+      export BQS_INVERTER_TRANSPORT="$2"
+      shift 2
+      ;;
+    --inverter-host)
+      [[ $# -ge 2 ]] || fail "--inverter-host requires a host"
+      export BQS_INVERTER_HOST="$2"
+      export BQS_INVERTER_TRANSPORT="solarman_v5"
+      shift 2
+      ;;
+    --inverter-tcp-port)
+      [[ $# -ge 2 ]] || fail "--inverter-tcp-port requires a port"
+      export BQS_INVERTER_TCP_PORT="$2"
+      shift 2
+      ;;
+    --inverter-logger-serial)
+      [[ $# -ge 2 ]] || fail "--inverter-logger-serial requires a serial number"
+      export BQS_INVERTER_LOGGER_SERIAL="$2"
+      export BQS_INVERTER_TRANSPORT="solarman_v5"
+      shift 2
+      ;;
     --config)
       [[ $# -ge 2 ]] || fail "--config requires a path"
       export COLLECTOR_CONFIG_FILE="$2"
@@ -275,26 +353,33 @@ cd "${REPO_ROOT}"
 update_git_checkout
 resolve_config_file
 set_image_identity
+INVERTER_TRANSPORT="$(resolve_inverter_transport)"
 
 if [[ ! -e "${COLLECTOR_SERIAL_DEVICE}" ]]; then
   log "WARNING: Serial device is not currently present: ${COLLECTOR_SERIAL_DEVICE}"
 fi
 
-if [[ -e "${COLLECTOR_SERIAL_DEVICE}" && -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
+if [[ "${INVERTER_TRANSPORT}" == "serial" && -e "${COLLECTOR_SERIAL_DEVICE}" && -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
   if [[ "$(readlink -f "${COLLECTOR_SERIAL_DEVICE}")" == "$(readlink -f "${COLLECTOR_INVERTER_SERIAL_DEVICE}")" ]]; then
     fail "Battery and inverter serial devices resolve to the same adapter. Configure two different USB-to-RS485 devices."
   fi
 fi
 
 INVERTER_SERIAL_DEVICE_DISPLAY="${COLLECTOR_INVERTER_SERIAL_DEVICE}"
-if [[ ! -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
+if [[ "${INVERTER_TRANSPORT}" == "solarman_v5" ]]; then
+  export COLLECTOR_INVERTER_SERIAL_DEVICE="/dev/null"
+elif [[ ! -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
   log "WARNING: Inverter serial device is not present: ${COLLECTOR_INVERTER_SERIAL_DEVICE}"
   log "The collector will keep running with inverter telemetry in an error state."
   export COLLECTOR_INVERTER_SERIAL_DEVICE="/dev/null"
 fi
 
 log "Battery serial device: ${COLLECTOR_SERIAL_DEVICE} -> /dev/ttyUSB0"
-log "Inverter serial device: ${INVERTER_SERIAL_DEVICE_DISPLAY} -> /dev/ttyUSB1"
+if [[ "${INVERTER_TRANSPORT}" == "solarman_v5" ]]; then
+  log "Inverter transport: SOLARMAN V5 over TCP (LSW-5 logger)"
+else
+  log "Inverter serial device: ${INVERTER_SERIAL_DEVICE_DISPLAY} -> /dev/ttyUSB1"
+fi
 log "Config file: ${COLLECTOR_CONFIG_FILE}"
 log "Image: ${COLLECTOR_IMAGE_NAME}:${COLLECTOR_IMAGE_TAG}"
 log "Build commit: ${COLLECTOR_COMMIT}"

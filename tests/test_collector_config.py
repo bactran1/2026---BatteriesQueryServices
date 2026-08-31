@@ -59,7 +59,59 @@ retries = 1
         self.assertEqual(
             settings.inverter.serial_port, "/dev/serial/by-id/inverter"
         )
+        self.assertEqual(settings.inverter.transport, "serial")
         self.assertEqual(settings.inverter.retries, 3)
+
+    def test_solarman_v5_settings_load_from_toml_with_blank_env_fallbacks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "collector.toml"
+            config_path.write_text(
+                """
+[inverter]
+enabled = true
+transport = "solarman_v5"
+host = "192.168.10.50"
+tcp_port = 8899
+logger_serial = 2345678901
+address = 1
+v5_error_correction = true
+""",
+                encoding="utf-8",
+            )
+            environment = {
+                "BQS_CONFIG": str(config_path),
+                "BQS_INVERTER_TRANSPORT": "",
+                "BQS_INVERTER_HOST": "",
+                "BQS_INVERTER_TCP_PORT": "",
+                "BQS_INVERTER_LOGGER_SERIAL": "",
+                "BQS_INVERTER_V5_ERROR_CORRECTION": "",
+            }
+            with patch.dict(os.environ, environment, clear=True):
+                settings = load_settings()
+
+        self.assertEqual(settings.inverter.transport, "solarman_v5")
+        self.assertEqual(settings.inverter.host, "192.168.10.50")
+        self.assertEqual(settings.inverter.tcp_port, 8899)
+        self.assertEqual(settings.inverter.logger_serial, 2345678901)
+        self.assertTrue(settings.inverter.v5_error_correction)
+
+    def test_enabled_solarman_transport_requires_logger_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "collector.toml"
+            config_path.write_text(
+                """
+[inverter]
+enabled = true
+transport = "solarman_v5"
+host = "192.168.10.50"
+""",
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ, {"BQS_CONFIG": str(config_path)}, clear=True
+            ):
+                with self.assertRaisesRegex(ValueError, "logger serial is required"):
+                    load_settings()
 
 
 if __name__ == "__main__":

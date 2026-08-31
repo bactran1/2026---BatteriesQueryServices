@@ -4,6 +4,7 @@ from collections.abc import Iterable, Mapping
 
 from .models import InverterReading, PvInputReading
 from .renogy_x import (
+    ModbusRegisterClient,
     UNDEFINED_REGISTER,
     RenogyXModbusClient,
     RenogyXProtocolError,
@@ -142,12 +143,40 @@ CORE_TELEMETRY_ADDRESSES = (
 
 
 class MegarevoR8KLNAClient:
-    def __init__(self, settings: RenogyXSerialSettings, *, retries: int = 2):
+    def __init__(
+        self,
+        settings: RenogyXSerialSettings | None = None,
+        *,
+        retries: int = 2,
+        modbus_client: ModbusRegisterClient | None = None,
+    ):
         if retries < 0:
             raise ValueError("Retries cannot be negative")
+        if settings is None and modbus_client is None:
+            raise ValueError("A serial configuration or Modbus client is required")
+        if settings is not None and modbus_client is not None:
+            raise ValueError("Specify either serial settings or a Modbus client")
         self.settings = settings
         self.retries = retries
-        self._modbus = RenogyXModbusClient(settings)
+        if settings is not None:
+            self._modbus: ModbusRegisterClient = RenogyXModbusClient(settings)
+            self.connection_description = (
+                f"serial {settings.port} at {settings.baudrate} "
+                f"8{settings.parity.upper()}1"
+            )
+            self.troubleshooting_hint = (
+                "Verify the external COM/logger RS485 pair is connected, the "
+                "Wi-Fi logger is disconnected, and the meter/BMS ports are not "
+                "being used for telemetry"
+            )
+        else:
+            assert modbus_client is not None
+            self._modbus = modbus_client
+            self.connection_description = modbus_client.connection_description
+            self.troubleshooting_hint = modbus_client.troubleshooting_hint
+
+    def close(self) -> None:
+        self._modbus.close()
 
     def read_status(
         self,
@@ -155,9 +184,16 @@ class MegarevoR8KLNAClient:
         inverter_id: str,
         model: str,
     ) -> InverterReading:
-        # A one-register probe limits an unplugged adapter to one serial timeout.
-        # Without it, every optional range would consume all configured retries.
-        probe = self._modbus.read_holding_registers(address, 0x3110, 1)
+        # V2.12 requires 0x3100-0x3104 to be read as one five-register block.
+        # Using it as the probe also limits an unplugged adapter to one timeout.
+        try:
+            probe = self._modbus.read_holding_registers(address, 0x3100, 5)
+        except Exception as exc:
+            raise RenogyXProtocolError(
+                "No Modbus response from inverter "
+                f"address {address} through {self.connection_description} while "
+                f"reading 0x3100-0x3104: {exc}. {self.troubleshooting_hint}"
+            ) from exc
         registers, errors = self._modbus.read_ranges(
             address,
             R8KLNA_READ_BLOCKS,
@@ -165,7 +201,8 @@ class MegarevoR8KLNAClient:
             continue_on_error=True,
             retries=self.retries,
         )
-        registers.setdefault(0x3110, probe[0])
+        for offset, value in enumerate(probe):
+            registers.setdefault(0x3100 + offset, value)
         return parse_r8klna_registers(
             registers,
             inverter_id=inverter_id,

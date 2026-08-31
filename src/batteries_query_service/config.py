@@ -49,7 +49,12 @@ class InverterSettings:
     enabled: bool = False
     id: str = "renogy-x-8k"
     model: str = "Renogy X 8K (Megarevo R8KLNA-compatible)"
+    transport: str = "serial"
     serial_port: str = "/dev/ttyUSB1"
+    host: str = ""
+    tcp_port: int = 8899
+    logger_serial: int | None = None
+    v5_error_correction: bool = False
     address: int = 1
     baudrate: int = 9600
     timeout_seconds: float = 2.0
@@ -138,7 +143,21 @@ def _load_inverter(raw_inverter: Any) -> InverterSettings:
     if raw_inverter and not isinstance(raw_inverter, dict):
         raise ValueError("[inverter] must be a table")
     raw = raw_inverter or {}
-    parity = os.getenv("BQS_INVERTER_PARITY", str(raw.get("parity", "N"))).upper()
+    enabled = _env_bool("BQS_INVERTER_ENABLED", raw.get("enabled", False))
+    transport = _env_text(
+        "BQS_INVERTER_TRANSPORT", raw.get("transport", "serial")
+    ).lower().replace("-", "_")
+    transport = {
+        "lsw5": "solarman_v5",
+        "lsw_5": "solarman_v5",
+        "solarman": "solarman_v5",
+    }.get(transport, transport)
+    if transport not in {"serial", "solarman_v5"}:
+        raise ValueError("Inverter transport must be serial or solarman_v5")
+
+    parity = _env_text(
+        "BQS_INVERTER_PARITY", raw.get("parity", "N")
+    ).upper()
     if parity not in {"N", "E", "O"}:
         raise ValueError("Inverter parity must be N, E, or O")
 
@@ -150,8 +169,33 @@ def _load_inverter(raw_inverter: Any) -> InverterSettings:
     if baudrate <= 0:
         raise ValueError("Inverter baudrate must be greater than zero")
 
+    host = _env_text("BQS_INVERTER_HOST", raw.get("host", "")).strip()
+    if "://" in host:
+        raise ValueError("Inverter logger host must not include a URL scheme")
+    tcp_port = _env_int_allow_blank(
+        "BQS_INVERTER_TCP_PORT", raw.get("tcp_port", 8899)
+    )
+    if not 1 <= tcp_port <= 65535:
+        raise ValueError("Inverter logger TCP port must be between 1 and 65535")
+    logger_serial = _env_optional_int(
+        "BQS_INVERTER_LOGGER_SERIAL", raw.get("logger_serial")
+    )
+    if logger_serial is not None and not 1 <= logger_serial <= 0xFFFFFFFF:
+        raise ValueError(
+            "Inverter logger serial must be between 1 and 4294967295"
+        )
+    if enabled and transport == "solarman_v5":
+        if not host:
+            raise ValueError(
+                "Inverter logger host is required for solarman_v5 transport"
+            )
+        if logger_serial is None:
+            raise ValueError(
+                "Inverter logger serial is required for solarman_v5 transport"
+            )
+
     return InverterSettings(
-        enabled=_env_bool("BQS_INVERTER_ENABLED", raw.get("enabled", False)),
+        enabled=enabled,
         id=os.getenv("BQS_INVERTER_ID", str(raw.get("id", "renogy-x-8k"))),
         model=os.getenv(
             "BQS_INVERTER_MODEL",
@@ -162,9 +206,17 @@ def _load_inverter(raw_inverter: Any) -> InverterSettings:
                 )
             ),
         ),
+        transport=transport,
         serial_port=os.getenv(
             "BQS_INVERTER_SERIAL_PORT",
             str(raw.get("serial_port", "/dev/ttyUSB1")),
+        ),
+        host=host,
+        tcp_port=tcp_port,
+        logger_serial=logger_serial,
+        v5_error_correction=_env_bool(
+            "BQS_INVERTER_V5_ERROR_CORRECTION",
+            raw.get("v5_error_correction", False),
         ),
         address=address,
         baudrate=baudrate,
@@ -234,12 +286,30 @@ def _env_int(name: str, default: Any) -> int:
     return int(os.getenv(name, default))
 
 
+def _env_int_allow_blank(name: str, default: Any) -> int:
+    value = os.getenv(name)
+    return int(default if value is None or not value.strip() else value)
+
+
+def _env_optional_int(name: str, default: Any) -> int | None:
+    value = os.getenv(name)
+    selected = default if value is None or not value.strip() else value
+    if selected is None or str(selected).strip() == "":
+        return None
+    return int(selected)
+
+
+def _env_text(name: str, default: Any) -> str:
+    value = os.getenv(name)
+    return str(default if value is None or not value.strip() else value)
+
+
 def _env_float(name: str, default: Any) -> float:
     return float(os.getenv(name, default))
 
 
 def _env_bool(name: str, default: Any) -> bool:
     value = os.getenv(name)
-    if value is None:
+    if value is None or not value.strip():
         return bool(default)
     return value.strip().lower() in {"1", "true", "yes", "on"}

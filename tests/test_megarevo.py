@@ -1,12 +1,53 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
-from batteries_query_service.megarevo import parse_r8klna_registers
-from batteries_query_service.renogy_x import RenogyXProtocolError
+from batteries_query_service.megarevo import (
+    MegarevoR8KLNAClient,
+    parse_r8klna_registers,
+)
+from batteries_query_service.renogy_x import (
+    RenogyXProtocolError,
+    RenogyXSerialSettings,
+)
 
 
 class MegarevoR8KLNATests(unittest.TestCase):
+    def test_client_probes_the_documented_five_register_state_block(self) -> None:
+        with patch(
+            "batteries_query_service.megarevo.RenogyXModbusClient"
+        ) as modbus_type:
+            modbus = modbus_type.return_value
+            modbus.read_holding_registers.return_value = [0, 0, 0, 0, 3]
+            modbus.read_ranges.return_value = ({0x3110: 1200}, [])
+            client = MegarevoR8KLNAClient(
+                RenogyXSerialSettings(port="/dev/ttyUSB1")
+            )
+
+            reading = client.read_status(1, "renogy-x-8k", "Renogy X 8K")
+
+        modbus.read_holding_registers.assert_called_once_with(1, 0x3100, 5)
+        self.assertEqual(reading.system_state, "battery_grid")
+
+    def test_client_reports_the_serial_probe_that_timed_out(self) -> None:
+        with patch(
+            "batteries_query_service.megarevo.RenogyXModbusClient"
+        ) as modbus_type:
+            modbus_type.return_value.read_holding_registers.side_effect = (
+                TimeoutError("no bytes")
+            )
+            client = MegarevoR8KLNAClient(
+                RenogyXSerialSettings(port="/dev/ttyUSB1", baudrate=19200)
+            )
+
+            with self.assertRaisesRegex(
+                RenogyXProtocolError,
+                "address 1 through serial /dev/ttyUSB1 at 19200 "
+                "8N1.*0x3100-0x3104.*no bytes.*COM/logger",
+            ):
+                client.read_status(1, "renogy-x-8k", "Renogy X 8K")
+
     def test_decodes_split_phase_power_flow_and_energy(self) -> None:
         registers = _sample_registers()
 

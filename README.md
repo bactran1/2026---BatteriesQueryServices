@@ -3,11 +3,13 @@
 A containerized polling service for Eco-worthy 48 V / 51.2 V server rack
 batteries and a Renogy X 8K hybrid inverter.
 
-The collector uses two independent USB-to-RS485 adapters: one for the battery
-bus and one for the inverter host/EMS port. It exposes the latest telemetry as
-JSON and Prometheus metrics and keeps a rolling replay buffer on the Raspberry
-Pi. A companion monitor app runs on a separate x86_64 Docker host, stores the
-battery telemetry for three years, and serves a local dashboard.
+The collector uses one USB-to-RS485 adapter for the battery bus and reads the
+inverter through its installed SOLARMAN LSW-5 Wi-Fi logger on local TCP port
+8899. A second USB-to-RS485 adapter remains supported as a fallback. The
+collector exposes the latest telemetry as JSON and Prometheus metrics and keeps
+a rolling replay buffer on the Raspberry Pi. A companion monitor app runs on a
+separate x86_64 Docker host, stores the battery telemetry for three years, and
+serves a local dashboard.
 
 The inverter driver is read-only and implements the Megarevo R8KLNA Modbus
 V2.12 telemetry profile that matches the Renogy X hardware and manuals. Because
@@ -34,16 +36,23 @@ For three rack batteries and the inverter, the usual deployment is:
 
 1. Set the battery DIP switches so the packs have addresses 1, 2, and 3.
 2. Connect the Raspberry Pi to the battery communication port through the first USB RS485 or RS232 adapter.
-3. Connect the inverter's dedicated host/EMS RS-485 port through a second, preferably isolated, USB-to-RS485 adapter. Do not use the inverter BMS port.
-4. Map both stable `/dev/serial/by-id/...` host paths into the Pi collector container.
-5. Point the x86_64 monitor container at the Pi collector URL.
+3. Leave the SOLARMAN LSW-5 installed, give it a stable DHCP reservation, and
+   confirm the Raspberry Pi can reach its LAN address on TCP port 8899.
+4. Record the serial number printed on the logger. This is not the inverter
+   serial number and is required by the SOLARMAN V5 protocol.
+5. Map the battery adapter's stable `/dev/serial/by-id/...` host path into the
+   Pi collector container.
+6. Point the x86_64 monitor container at the Pi collector URL.
 
 ## Quick start
 
-On the Raspberry Pi collector host:
+On the Raspberry Pi collector host, supply the LSW-5 address and printed logger
+serial while deploying (or put the same values in `config.toml`):
 
 ```bash
-bash deploy-collector.sh
+bash deploy-collector.sh \
+  --inverter-host 192.168.10.50 \
+  --inverter-logger-serial 1234567890
 ```
 
 Then check:
@@ -131,22 +140,21 @@ The Pi collector stores one sequenced replay snapshot every 60 seconds for 24 ho
 
 ## Raspberry Pi 4B deployment
 
-A Raspberry Pi 4B with 8 GB RAM is more than enough for the collector. Use Raspberry Pi OS Lite 64-bit if possible, install Docker Engine with the Compose plugin, and plug the USB-to-RS485 adapter into the Pi. The monitor/dashboard does not run on the Pi.
+A Raspberry Pi 4B with 8 GB RAM is more than enough for the collector. Use Raspberry Pi OS Lite 64-bit if possible, install Docker Engine with the Compose plugin, and plug the battery USB-to-RS485 adapter into the Pi. The monitor/dashboard does not run on the Pi.
 
-On the Pi, identify both adapters:
+On the Pi, identify the battery adapter:
 
 ```bash
 ls -l /dev/serial/by-id/
 ```
 
-Prefer the stable paths over `/dev/ttyUSB0` and `/dev/ttyUSB1`. Pass both host
-paths to the deployment script; it always maps them to `/dev/ttyUSB0` for the
-batteries and `/dev/ttyUSB1` for the inverter inside the container:
+Prefer its stable path over `/dev/ttyUSB0`. Configure the LSW-5 LAN address and
+printed logger serial in `config.toml`, then pass the battery adapter path to
+the deployment script:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
-  --inverter-serial-device /dev/serial/by-id/usb-Inverter_RS485_Adapter
+  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter
 ```
 
 Allow your Pi user to run Docker and access serial devices:
@@ -160,18 +168,18 @@ After reboot:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
-  --inverter-serial-device /dev/serial/by-id/usb-Inverter_RS485_Adapter
+  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter
 ```
 
 The script fetches and fast-forwards to the latest Git commit, tags the image
 with that commit SHA, pulls the latest base image, and performs a no-cache build
 by default. If `batteries-query-service` does not exist, it creates it. If it
 already exists, it replaces and restarts it with the newly built image. The
-script then waits for the collector health check. If the inverter adapter is
-temporarily absent, battery collection still starts and the inverter is exposed
-with `status: "error"` until its adapter is restored and the container is
-redeployed.
+script then waits for the collector health check. The LSW-5 connection is made
+from inside the container over the normal Docker bridge network; no host network
+mode or second inverter USB device is required. A logger outage leaves battery
+collection running and exposes the inverter with `status: "error"`; polling
+automatically retries on the next interval.
 
 Use the current checkout without fetching Git when developing locally:
 
@@ -274,11 +282,12 @@ interval_seconds = 10
 enabled = true
 id = "renogy-x-8k"
 model = "Renogy X 8K (Megarevo R8KLNA-compatible)"
-serial_port = "/dev/ttyUSB1"
+transport = "solarman_v5"
+host = "192.168.10.50"       # LSW-5 LAN address or reserved hostname
+tcp_port = 8899
+logger_serial = 1234567890    # number printed on the LSW-5, not the inverter
 address = 1
-baudrate = 9600
 timeout_seconds = 2.0
-parity = "N"
 retries = 2
 
 [[batteries]]
@@ -301,6 +310,11 @@ Environment overrides are also supported:
 - `BQS_INVERTER_ENABLED`
 - `BQS_INVERTER_ID`
 - `BQS_INVERTER_MODEL`
+- `BQS_INVERTER_TRANSPORT`, `serial` or `solarman_v5`
+- `BQS_INVERTER_HOST`
+- `BQS_INVERTER_TCP_PORT`
+- `BQS_INVERTER_LOGGER_SERIAL`
+- `BQS_INVERTER_V5_ERROR_CORRECTION`
 - `BQS_INVERTER_SERIAL_PORT`
 - `BQS_INVERTER_ADDRESS`
 - `BQS_INVERTER_BAUDRATE`
@@ -319,24 +333,30 @@ Environment overrides are also supported:
 - `BQS_LOG_LEVEL`
 - `BQS_BUILD_COMMIT`, set automatically by `deploy-collector.sh`
 
+For the optional direct RS-485 fallback, use `transport = "serial"` and set
+`serial_port`, `baudrate`, and `parity` as shown in `config.example.toml`.
+
 ## Docker serial devices
 
-The included compose file maps both adapters into fixed container paths. Pass
-the actual host paths to the deployment script:
+In LSW-5 mode, only the battery adapter needs to be mapped:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/ttyUSB0 \
-  --inverter-serial-device /dev/ttyUSB1
+  --serial-device /dev/ttyUSB0
 ```
 
-For long-running systems, prefer a stable device path:
+For long-running systems, prefer a stable device path. Logger settings may be
+kept in `config.toml` or supplied directly during deployment:
 
 ```bash
 bash deploy-collector.sh \
   --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
-  --inverter-serial-device /dev/serial/by-id/usb-Inverter_RS485_Adapter
+  --inverter-host 192.168.10.50 \
+  --inverter-logger-serial 1234567890
 ```
+
+The serial fallback still accepts `--inverter-serial-device` and maps that
+adapter to `/dev/ttyUSB1` in the container.
 
 The same settings can be supplied as `COLLECTOR_SERIAL_DEVICE`,
 `COLLECTOR_INVERTER_SERIAL_DEVICE`, and `COLLECTOR_CONFIG_FILE`. The running

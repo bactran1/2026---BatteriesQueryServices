@@ -21,7 +21,7 @@ register table.
 
 ## Connection
 
-Use a second, preferably galvanically isolated, USB-to-RS485 adapter:
+The preferred path keeps the supplied Wi-Fi logger installed:
 
 ```text
 Eco-worthy battery RS-485 bus
@@ -29,23 +29,54 @@ Eco-worthy battery RS-485 bus
   -> Raspberry Pi host device /dev/serial/by-id/...
   -> collector container /dev/ttyUSB0
 
-Renogy X host/EMS RS-485 port
-  -> inverter USB-to-RS485 adapter
-  -> Raspberry Pi host device /dev/serial/by-id/...
-  -> collector container /dev/ttyUSB1
+Renogy X external COM port
+  -> installed SOLARMAN LSW-5 logger
+  -> local Wi-Fi/LAN, TCP 8899
+  -> Raspberry Pi collector container
 ```
 
-Use the inverter's dedicated host, meter, or EMS RS-485 connection. Do not
-connect the collector to `BMS-485/BMS-CAN`, parallel CAN, CT, or Ethernet ports.
-Confirm the actual A, B, and reference pins before making an RJ45 cable. An RJ45
-connector does not imply Ethernet, and a BMS connector's pinout is not evidence
-for the host RS-485 connector.
+Use the external `COM` connection normally occupied by the Wi-Fi logger. The
+included Renogy X manual confirms that this logger connection carries inverter
+monitoring and configuration data. The supplied logger is an IGEN
+Tech/SOLARMAN LSW-5, FCC ID `2A4FRLSW-5`. The logger's open TCP port 8899
+provides SOLARMAN V5 framing around read-only Modbus RTU requests. The collector
+uses the maintained
+[`pysolarmanv5`](https://github.com/jmccrohan/pysolarmanv5) implementation and
+requires both the logger's LAN address and the serial number printed on the
+logger. The logger serial is not the inverter serial number.
+
+Give the LSW-5 a DHCP reservation so its address remains stable. The Raspberry
+Pi container only needs normal routed access to the logger; no host networking
+or inbound port forwarding is required. Keep TCP 8899 limited to the trusted
+local network.
+
+Direct RS-485 remains available as a fallback. Disconnect the logger before
+connecting a second, preferably isolated, USB-to-RS485 adapter to the same COM
+pair. The LSW-5
+[datasheet](https://cdn1.idek.cz/argos_cz/document/1095388486-lsw-5-wifi-dongle-datasheet)
+defines the female aviation connector as pin 1 VCC, pin 2 GND, pin 3 RS485 A,
+and pin 4 RS485 B. Connect the USB adapter to pins 3 and 4, optionally connect
+signal ground to pin 2 if the adapter requires a reference, and never connect
+pin 1 VCC to the USB adapter.
+
+The physical connector appears to be the four-contact Exceedconn EC04681
+family commonly used by LSW-5 inverter loggers, not an M10 or M12 D-coded
+connector. A likely mating cable-end part is `EC04681-2023-BF`, but verify its
+key, contact gender, and pin numbering against the supplied logger before
+ordering or soldering it. Do not trust prewired cable colors without a
+continuity check because the same shell is used with different pin assignments.
+
+Do not connect the collector to the interior meter RS-485, `BMS-485/BMS-CAN`,
+parallel CAN, CT, or Ethernet ports. The meter connection is a separate bus on
+which the inverter communicates with its external utility meter; it is not the
+telemetry connection used by the Wi-Fi logger.
 
 Modbus RTU should have only one active master. If the Wi-Fi logger or another
-controller already polls the same RS-485 pair, use a separate host port or
-disconnect the other master before enabling this collector.
+controller already polls the COM RS-485 pair, do not attach a direct USB master
+at the same time. In SOLARMAN V5 mode the LSW-5 remains the only physical
+RS-485 master and relays the collector's requests.
 
-## Serial settings
+## Protocol settings
 
 The V2.12 protocol specifies:
 
@@ -61,25 +92,24 @@ The permanent driver has no register-write method and never sends function
 
 ## Raspberry Pi deployment
 
-List both adapters and identify which physical adapter is connected to each
-bus:
+List the battery adapter and identify its stable host path:
 
 ```bash
 ls -l /dev/serial/by-id/
 ```
 
-Deploy with both stable paths:
+Deploy with that stable path after configuring the logger:
 
 ```bash
 bash deploy-collector.sh \
   --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
-  --inverter-serial-device /dev/serial/by-id/usb-Inverter_RS485_Adapter
+  --inverter-host 192.168.10.50 \
+  --inverter-logger-serial 1234567890
 ```
 
-The script maps the host paths to stable names inside the container. This
-prevents the adapters from exchanging `/dev/ttyUSB0` and `/dev/ttyUSB1` after a
-reboot. It also rejects a configuration where both arguments resolve to the
-same device.
+Replace the sample host and serial with the LSW-5 values. The command-line
+values override TOML for that deployment and the script does not require an
+inverter USB device in this mode.
 
 The inverter is configured in `config.toml`:
 
@@ -88,16 +118,23 @@ The inverter is configured in `config.toml`:
 enabled = true
 id = "renogy-x-8k"
 model = "Renogy X 8K (Megarevo R8KLNA-compatible)"
-serial_port = "/dev/ttyUSB1"
+transport = "solarman_v5"
+host = "192.168.10.50"
+tcp_port = 8899
+logger_serial = 1234567890
 address = 1
-baudrate = 9600
 timeout_seconds = 2.0
-parity = "N"
 retries = 2
 ```
 
 The environment equivalents use the `BQS_INVERTER_` prefix. For example,
-`BQS_INVERTER_ADDRESS=2` overrides the TOML address.
+`BQS_INVERTER_HOST=192.168.10.50` overrides the TOML host. Set
+`BQS_INVERTER_V5_ERROR_CORRECTION=true` only when the logger produces known
+spurious V5 keep-alive frames.
+
+For direct RS-485 fallback, set `transport = "serial"`, restore
+`serial_port = "/dev/ttyUSB1"`, `baudrate = 9600`, and `parity = "N"`, then pass
+the second adapter with `--inverter-serial-device`.
 
 ## Telemetry
 
@@ -142,8 +179,8 @@ The inverter object has one of four states:
 
 - `ok`: all requested ranges were read
 - `degraded`: core telemetry is valid but an optional range failed
-- `error`: the adapter, wiring, address, baud rate, or register profile did not
-  produce usable telemetry
+- `error`: the logger/network or serial connection, address, or register profile
+  did not produce usable telemetry
 - `disabled`: inverter collection is disabled
 
 The last good inverter reading is preserved during a later error and is paired
@@ -168,7 +205,9 @@ Compare all of the following with the LCD while values are changing:
 4. Battery voltage, SOC, and charge/discharge direction.
 5. Inverter and DC-DC temperatures.
 
-If the values are absent or implausible, verify A/B polarity, port pinout, slave
-address, and baud rate before assuming a register problem. The optional
-`renogy-x-probe` command remains available for read-only raw register diagnosis;
-do not write settings while identifying an unknown firmware variant.
+If the values are absent in SOLARMAN V5 mode, verify the logger IP, TCP port
+8899, printed logger serial, and inverter slave address before assuming a
+register problem. For direct RS-485, verify A/B polarity, port pinout, address,
+and baud rate. The optional `renogy-x-probe` command remains available for
+read-only serial diagnosis; do not write settings while identifying an unknown
+firmware variant.
