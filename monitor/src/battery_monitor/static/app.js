@@ -1,5 +1,6 @@
 const state = {
   batteries: [],
+  inverter: null,
   selectedBatteryId: null,
   metric: "soc_percent",
   range: "24h",
@@ -95,7 +96,7 @@ const translations = {
     "rack.reporting": "{count} reporting",
     "energy.eyebrow": "Live home energy",
     "energy.title": "Home power flow",
-    "energy.waiting": "Waiting for battery telemetry",
+    "energy.waiting": "Waiting for live energy telemetry",
     "energy.waitingShort": "Waiting",
     "energy.sceneAria": "Three-dimensional power flow between the grid, inverter, battery rack, and home load",
     "energy.grid": "Grid",
@@ -116,12 +117,67 @@ const translations = {
     "energy.unmetered": "Not metered",
     "energy.routing": "Routing power",
     "energy.standby": "Standby",
+    "energy.gridSupplying": "Grid is supplying the home",
+    "energy.solarSupplying": "Solar is supplying the home",
+    "energy.batterySupplying": "Battery is supplying the home",
+    "energy.mixedSupply": "Multiple sources are supplying the home",
+    "energy.noActiveSource": "No active power source",
+    "energy.sourceGrid": "{value} from grid",
+    "energy.sourceSolar": "{value} from solar",
+    "energy.sourceBattery": "{value} from battery",
+    "energy.gridExport": "{value} to grid",
+    "energy.loadPhrase": "{value} home load",
+    "energy.batteryChargingPhrase": "{value} charging battery",
+    "energy.batteryDischargingPhrase": "{value} from battery",
+    "energy.batteryIdlePhrase": "Battery idle",
+    "energy.liveDescription": "{sources} · {load} · {battery}",
+    "energy.importing": "{value} import",
+    "energy.exporting": "{value} export",
+    "energy.chargingValue": "{value} charging",
+    "energy.dischargingValue": "{value} discharging",
     "energy.pack": "battery pack",
     "energy.packs": "battery packs",
     "energy.chargingDescription": "{rate} is measured entering {packs} through the inverter. Solar, grid, and home paths remain paused until inverter telemetry is connected.",
     "energy.dischargingDescription": "{rate} is measured leaving {packs} through the inverter. Its destination remains unknown until inverter telemetry is connected.",
     "energy.idleDescription": "Battery telemetry shows no significant transfer. Solar, grid, and home meters are not connected yet.",
     "energy.staleDescription": "Live home flow is paused until fresh collector data arrives.",
+    "inverter.summary": "Inverter summary",
+    "inverter.eyebrow": "Live inverter",
+    "inverter.title": "Renogy X 8K",
+    "inverter.waiting": "Waiting for inverter telemetry",
+    "inverter.identity": "{serial} · Protocol {protocol}",
+    "inverter.solar": "Solar array",
+    "inverter.solarToday": "{count} MPPT · {energy} today",
+    "inverter.grid": "Grid",
+    "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
+    "inverter.load": "Backup load",
+    "inverter.loadDetail": "{energy} today · External CT {external}",
+    "inverter.battery": "Inverter battery",
+    "inverter.batteryElectrical": "{voltage} · {current} · {soc} · {temperature}",
+    "inverter.thermal": "Inverter thermal",
+    "inverter.internalTemperature": "{value} internal",
+    "inverter.thermalDetail": "Inverter {inverter} · DC/DC {dcdc}",
+    "inverter.healthNominal": "No active alarms or faults",
+    "inverter.healthAlerts": "{alarms} alarms · {faults} faults",
+    "inverter.lastError": "Last error: {message}",
+    "inverter.state.bypass": "Bypass",
+    "inverter.state.standby": "Standby",
+    "inverter.state.initializing": "Initializing",
+    "inverter.state.hybridPower": "Hybrid power",
+    "inverter.state.pvGrid": "Solar + grid",
+    "inverter.state.batteryGrid": "Battery + grid",
+    "inverter.state.acBatteryCharging": "Grid charging",
+    "inverter.state.pvBatteryCharging": "Solar charging",
+    "inverter.state.fault": "Fault",
+    "inverter.state.selfCheck": "Self-check",
+    "inverter.state.firmwareUpdate": "Firmware update",
+    "inverter.state.service": "Service mode",
+    "inverter.state.inverterTest": "Inverter test",
+    "inverter.state.pvTest": "Solar test",
+    "inverter.state.dcdcTest": "DC/DC test",
+    "inverter.state.testMode": "Test mode",
+    "inverter.state.undefined": "Undefined",
+    "inverter.state.unknown": "Unknown state",
     "fleet.summary": "Fleet summary",
     "fleet.rackSoc": "Rack SOC",
     "fleet.socAria": "Overall rack state of charge",
@@ -311,7 +367,7 @@ const translations = {
     "rack.reporting": "{count} đang báo dữ liệu",
     "energy.eyebrow": "Năng lượng trong nhà",
     "energy.title": "Dòng điện trong nhà",
-    "energy.waiting": "Đang chờ dữ liệu pin",
+    "energy.waiting": "Đang chờ dữ liệu năng lượng trực tiếp",
     "energy.waitingShort": "Đang chờ",
     "energy.sceneAria": "Mô phỏng ba chiều dòng điện giữa điện lưới, biến tần, tủ pin và phụ tải trong nhà",
     "energy.grid": "Điện lưới",
@@ -332,12 +388,67 @@ const translations = {
     "energy.unmetered": "Chưa đo",
     "energy.routing": "Đang truyền điện",
     "energy.standby": "Đang chờ",
+    "energy.gridSupplying": "Điện lưới đang cấp điện cho nhà",
+    "energy.solarSupplying": "Điện mặt trời đang cấp điện cho nhà",
+    "energy.batterySupplying": "Pin đang cấp điện cho nhà",
+    "energy.mixedSupply": "Nhiều nguồn đang cấp điện cho nhà",
+    "energy.noActiveSource": "Không có nguồn điện đang hoạt động",
+    "energy.sourceGrid": "{value} từ điện lưới",
+    "energy.sourceSolar": "{value} từ điện mặt trời",
+    "energy.sourceBattery": "{value} từ pin",
+    "energy.gridExport": "{value} lên điện lưới",
+    "energy.loadPhrase": "phụ tải nhà {value}",
+    "energy.batteryChargingPhrase": "{value} đang nạp pin",
+    "energy.batteryDischargingPhrase": "{value} từ pin",
+    "energy.batteryIdlePhrase": "Pin đang nghỉ",
+    "energy.liveDescription": "{sources} · {load} · {battery}",
+    "energy.importing": "nhập {value}",
+    "energy.exporting": "xuất {value}",
+    "energy.chargingValue": "đang nạp {value}",
+    "energy.dischargingValue": "đang xả {value}",
     "energy.pack": "bộ pin",
     "energy.packs": "bộ pin",
     "energy.chargingDescription": "Đo được {rate} đang đi vào {packs} qua biến tần. Các đường điện mặt trời, điện lưới và phụ tải sẽ tạm dừng cho đến khi có dữ liệu từ biến tần.",
     "energy.dischargingDescription": "Đo được {rate} đang rời {packs} qua biến tần. Chưa thể xác định nơi nhận điện cho đến khi có dữ liệu từ biến tần.",
     "energy.idleDescription": "Dữ liệu pin không ghi nhận truyền tải đáng kể. Chưa kết nối đồng hồ điện mặt trời, điện lưới và phụ tải.",
     "energy.staleDescription": "Dòng điện trong nhà tạm dừng cho đến khi có dữ liệu mới từ bộ thu thập.",
+    "inverter.summary": "Tóm tắt biến tần",
+    "inverter.eyebrow": "Biến tần trực tiếp",
+    "inverter.title": "Renogy X 8K",
+    "inverter.waiting": "Đang chờ dữ liệu biến tần",
+    "inverter.identity": "{serial} · Giao thức {protocol}",
+    "inverter.solar": "Hệ thống điện mặt trời",
+    "inverter.solarToday": "{count} MPPT · hôm nay {energy}",
+    "inverter.grid": "Điện lưới",
+    "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
+    "inverter.load": "Phụ tải dự phòng",
+    "inverter.loadDetail": "hôm nay {energy} · CT ngoài {external}",
+    "inverter.battery": "Pin qua biến tần",
+    "inverter.batteryElectrical": "{voltage} · {current} · {soc} · {temperature}",
+    "inverter.thermal": "Nhiệt độ biến tần",
+    "inverter.internalTemperature": "bên trong {value}",
+    "inverter.thermalDetail": "Biến tần {inverter} · DC/DC {dcdc}",
+    "inverter.healthNominal": "Không có cảnh báo hoặc lỗi",
+    "inverter.healthAlerts": "{alarms} cảnh báo · {faults} lỗi",
+    "inverter.lastError": "Lỗi gần nhất: {message}",
+    "inverter.state.bypass": "Điện lưới chuyển thẳng",
+    "inverter.state.standby": "Đang chờ",
+    "inverter.state.initializing": "Đang khởi tạo",
+    "inverter.state.hybridPower": "Nguồn điện hỗn hợp",
+    "inverter.state.pvGrid": "Mặt trời + điện lưới",
+    "inverter.state.batteryGrid": "Pin + điện lưới",
+    "inverter.state.acBatteryCharging": "Điện lưới nạp pin",
+    "inverter.state.pvBatteryCharging": "Điện mặt trời nạp pin",
+    "inverter.state.fault": "Có lỗi",
+    "inverter.state.selfCheck": "Đang tự kiểm tra",
+    "inverter.state.firmwareUpdate": "Đang cập nhật phần mềm",
+    "inverter.state.service": "Chế độ bảo trì",
+    "inverter.state.inverterTest": "Kiểm tra biến tần",
+    "inverter.state.pvTest": "Kiểm tra điện mặt trời",
+    "inverter.state.dcdcTest": "Kiểm tra DC/DC",
+    "inverter.state.testMode": "Chế độ kiểm tra",
+    "inverter.state.undefined": "Chưa xác định",
+    "inverter.state.unknown": "Trạng thái không xác định",
     "fleet.summary": "Tóm tắt tủ pin",
     "fleet.rackSoc": "SOC tủ pin",
     "fleet.socAria": "Mức sạc tổng thể của tủ pin",
@@ -565,6 +676,7 @@ async function refreshLive() {
   const payload = await getJson("/api/live", "live");
   state.livePayload = payload;
   state.batteries = payload.snapshot?.batteries || [];
+  state.inverter = payload.snapshot?.inverter || null;
   state.storage = payload.storage || {};
   state.rack = payload.rack || {};
   state.summary = payload.summary || {};
@@ -580,6 +692,7 @@ async function refreshLive() {
   renderStatus(payload);
   renderRackOverview();
   renderSummary(state.summary);
+  renderInverterTelemetry();
   renderBatteryCards();
   renderBatteryInventory();
   renderSelectedBattery();
@@ -737,6 +850,7 @@ function renderLiveFailure(message) {
   renderBatteryInventory();
   renderSelectedBattery();
   renderEnergyFlow(state.summary, { mode: "stale", label: t("flow.lastKnownRack") });
+  renderInverterTelemetry();
 }
 
 function scheduleNextRefresh(delay = LIVE_REFRESH_MS) {
@@ -785,12 +899,21 @@ function renderEnergyFlow(summary, flow) {
   const section = $("energyFlowSection");
   if (!section) return;
 
-  const mode = ["charging", "discharging", "idle", "stale"].includes(flow?.mode)
+  const rackMode = ["charging", "discharging", "idle", "stale"].includes(flow?.mode)
     ? flow.mode
     : "stale";
-  const current = finiteNumber(summary?.total_current_a);
-  const power = finiteNumber(summary?.total_power_w);
-  const soc = finiteNumber(summary?.average_soc_percent);
+  const inverter = inverterTelemetry();
+  const directMode = batteryPowerMode(inverter.batteryPower, rackMode);
+  const mode = inverter.available ? directMode : rackMode;
+  const current = inverter.available
+    ? inverter.batteryCurrent ?? finiteNumber(summary?.total_current_a)
+    : finiteNumber(summary?.total_current_a);
+  const power = inverter.available
+    ? inverter.batteryPower ?? finiteNumber(summary?.total_power_w)
+    : finiteNumber(summary?.total_power_w);
+  const soc = inverter.available
+    ? inverter.batterySoc ?? finiteNumber(summary?.average_soc_percent)
+    : finiteNumber(summary?.average_soc_percent);
   const batteryCount = state.batteries.filter(
     (battery) => battery.status === "ok" && battery.last_reading,
   ).length;
@@ -806,12 +929,46 @@ function renderEnergyFlow(summary, flow) {
       reporting,
     };
   });
-  const rate = power === null ? t("energy.unavailable") : formatValue(Math.abs(power), "W");
+  const rate = power === null ? t("energy.unavailable") : formatPower(Math.abs(power));
   const packs = `${formatNumber(batteryCount)} ${t(batteryCount === 1 ? "energy.pack" : "energy.packs")}`;
 
   let titleKey = "energy.stale";
   let descriptionKey = "energy.staleDescription";
-  if (mode === "charging") {
+  let descriptionValues = { rate, packs };
+  if (inverter.available) {
+    const activeSources = [];
+    if ((inverter.solarPower ?? 0) > 25) {
+      activeSources.push({ key: "solar", text: t("energy.sourceSolar", { value: formatPower(inverter.solarPower) }) });
+    }
+    if ((inverter.gridPower ?? 0) > 25) {
+      activeSources.push({ key: "grid", text: t("energy.sourceGrid", { value: formatPower(inverter.gridPower) }) });
+    }
+    if ((inverter.batteryPower ?? 0) < -25) {
+      activeSources.push({ key: "battery", text: t("energy.sourceBattery", { value: formatPower(Math.abs(inverter.batteryPower)) }) });
+    }
+
+    if (activeSources.length > 1) titleKey = "energy.mixedSupply";
+    else if (activeSources[0]?.key === "solar") titleKey = "energy.solarSupplying";
+    else if (activeSources[0]?.key === "grid") titleKey = "energy.gridSupplying";
+    else if (activeSources[0]?.key === "battery") titleKey = "energy.batterySupplying";
+    else titleKey = "energy.idle";
+
+    const sourceParts = activeSources.map((source) => source.text);
+    if ((inverter.gridPower ?? 0) < -25) {
+      sourceParts.push(t("energy.gridExport", { value: formatPower(Math.abs(inverter.gridPower)) }));
+    }
+    const batteryPhrase = (inverter.batteryPower ?? 0) > 25
+      ? t("energy.batteryChargingPhrase", { value: formatPower(inverter.batteryPower) })
+      : (inverter.batteryPower ?? 0) < -25
+        ? t("energy.batteryDischargingPhrase", { value: formatPower(Math.abs(inverter.batteryPower)) })
+        : t("energy.batteryIdlePhrase");
+    descriptionKey = "energy.liveDescription";
+    descriptionValues = {
+      sources: sourceParts.join(" + ") || t("energy.noActiveSource"),
+      load: t("energy.loadPhrase", { value: formatPower(inverter.loadPower) }),
+      battery: batteryPhrase,
+    };
+  } else if (mode === "charging") {
     titleKey = "energy.charging";
     descriptionKey = "energy.chargingDescription";
   } else if (mode === "discharging") {
@@ -828,25 +985,245 @@ function renderEnergyFlow(summary, flow) {
   section.dataset.soc = String(soc ?? 0);
   section.dataset.batteryCount = String(batteryCount);
   section.dataset.packTelemetry = JSON.stringify(packTelemetry);
+  section.dataset.inverterAvailable = String(inverter.available);
+  section.dataset.gridPower = String(inverter.gridPower ?? 0);
+  section.dataset.solarPower = String(inverter.solarPower ?? 0);
+  section.dataset.loadPower = String(inverter.loadPower ?? 0);
+  section.dataset.batteryPower = String(inverter.batteryPower ?? power ?? 0);
+  section.dataset.gridActive = String(inverter.available && Math.abs(inverter.gridPower ?? 0) > 25);
+  section.dataset.gridDirection = (inverter.gridPower ?? 0) < 0 ? "export" : "import";
+  section.dataset.solarActive = String(inverter.available && (inverter.solarPower ?? 0) > 25);
+  section.dataset.loadActive = String(inverter.available && (inverter.loadPower ?? 0) > 25);
+  section.dataset.batteryActive = String(
+    inverter.available
+      ? Math.abs(inverter.batteryPower ?? 0) > 25
+      : mode === "charging" || mode === "discharging",
+  );
   $("energyFlowTitle").textContent = t("energy.title");
   $("energyFlowState").textContent = t(titleKey);
-  $("energyFlowDescription").textContent = t(descriptionKey, { rate, packs });
-  $("energyGridValue").textContent = t("energy.unmetered");
-  $("energySolarValue").textContent = t("energy.unmetered");
-  $("energyLoadValue").textContent = t("energy.unmetered");
-  $("energyInverterValue").textContent = mode === "stale"
-    ? t("energy.unavailable")
-    : mode === "charging" || mode === "discharging"
-      ? t("energy.routing")
-      : t("energy.standby");
+  $("energyFlowDescription").textContent = t(descriptionKey, descriptionValues);
+  $("energyGridValue").textContent = inverter.available
+    ? formatGridPower(inverter.gridPower)
+    : t("energy.unmetered");
+  $("energySolarValue").textContent = inverter.available
+    ? formatPower(inverter.solarPower)
+    : t("energy.unmetered");
+  $("energyLoadValue").textContent = inverter.available
+    ? formatPower(inverter.loadPower)
+    : t("energy.unmetered");
+  $("energyInverterValue").textContent = inverter.available
+    ? inverterStateLabel(inverter.reading.system_state || inverter.reading.inverter_state)
+    : mode === "stale"
+      ? t("energy.unavailable")
+      : mode === "charging" || mode === "discharging"
+        ? t("energy.routing")
+        : t("energy.standby");
   const socLabel = soc === null ? null : formatValue(soc, "%");
   $("energyBatteryValue").textContent = mode === "stale"
     ? t("energy.unavailable")
-    : [socLabel, rate].filter(Boolean).join(" · ");
+    : [socLabel, inverter.available ? formatBatteryPower(inverter.batteryPower) : rate]
+        .filter(Boolean)
+        .join(" · ");
 
   window.dispatchEvent(new CustomEvent("battery-energy-flow", {
-    detail: { mode, current, power, soc, batteryCount, packs: packTelemetry },
+    detail: {
+      mode,
+      current,
+      power,
+      soc,
+      batteryCount,
+      packs: packTelemetry,
+      inverterAvailable: inverter.available,
+      gridPower: inverter.gridPower,
+      solarPower: inverter.solarPower,
+      loadPower: inverter.loadPower,
+      batteryPower: inverter.batteryPower,
+    },
   }));
+}
+
+function renderInverterTelemetry() {
+  const band = $("inverterBand");
+  if (!band) return;
+
+  const telemetry = inverterTelemetry();
+  const inverter = telemetry.inverter;
+  const reading = telemetry.reading;
+  const hasReading = telemetry.hasReading;
+  const effectiveStatus = !state.collectorOnline && hasReading
+    ? "stale"
+    : telemetry.available
+      ? inverter?.status || "ok"
+      : inverter?.status || "pending";
+  const statusForPresentation = effectiveStatus === "degraded" ? "error" : effectiveStatus;
+  const presentation = statusPresentation(statusForPresentation);
+  const status = $("inverterStatus");
+  status.textContent = presentation.label;
+  status.className = `status-pill ${presentation.className}`;
+  band.dataset.status = effectiveStatus;
+
+  $("inverterName").textContent = inverter?.model || reading.model || t("inverter.title");
+  $("inverterState").textContent = hasReading
+    ? inverterStateLabel(reading.system_state || reading.inverter_state)
+    : t("inverter.waiting");
+  $("inverterIdentity").textContent = hasReading
+    ? t("inverter.identity", {
+        serial: reading.serial_number || "--",
+        protocol: reading.protocol_version || "--",
+      })
+    : t("inverter.waiting");
+  $("inverterConnection").textContent = inverter?.connection || t("common.notConfigured");
+
+  const alarmCount = Array.isArray(reading.active_alarms) ? reading.active_alarms.length : 0;
+  const faultCount = Array.isArray(reading.active_faults) ? reading.active_faults.length : 0;
+  $("inverterHealth").textContent = inverter?.last_error
+    ? t("inverter.lastError", { message: inverter.last_error })
+    : alarmCount || faultCount
+      ? t("inverter.healthAlerts", {
+          alarms: formatNumber(alarmCount),
+          faults: formatNumber(faultCount),
+        })
+      : hasReading
+        ? t("inverter.healthNominal")
+        : t("inverter.waiting");
+  $("inverterIdentityCell").classList.toggle("has-alerts", alarmCount + faultCount > 0 || Boolean(inverter?.last_error));
+
+  $("inverterSolarPower").textContent = formatPower(telemetry.solarPower);
+  $("inverterSolarDetail").textContent = hasReading
+    ? t("inverter.solarToday", {
+        count: formatNumber(Array.isArray(reading.pv_inputs) ? reading.pv_inputs.length : 0),
+        energy: formatEnergy(reading.pv_energy_today_kwh),
+      })
+    : t("inverter.waiting");
+  $("inverterGridPower").textContent = formatGridPower(telemetry.gridPower);
+  $("inverterGridDetail").textContent = hasReading
+    ? t("inverter.gridElectrical", {
+        l1: formatValue(reading.grid_l1_voltage_v, "V"),
+        l2: formatValue(reading.grid_l2_voltage_v, "V"),
+        frequency: formatValue(reading.grid_frequency_hz, "Hz", 2),
+      })
+    : t("inverter.waiting");
+  $("inverterLoadPower").textContent = formatPower(telemetry.loadPower);
+  $("inverterLoadDetail").textContent = hasReading
+    ? t("inverter.loadDetail", {
+        energy: formatEnergy(reading.load_energy_today_kwh),
+        external: formatPower(telemetry.externalLoadPower),
+      })
+    : t("inverter.waiting");
+  $("inverterBatteryPower").textContent = formatBatteryPower(telemetry.batteryPower);
+  $("inverterBatteryDetail").textContent = hasReading
+    ? t("inverter.batteryElectrical", {
+        voltage: formatValue(reading.battery_voltage_v, "V"),
+        current: formatValue(reading.battery_current_a, "A"),
+        soc: formatValue(reading.battery_soc_percent, "%"),
+        temperature: formatValue(reading.battery_temperature_c, "°C"),
+      })
+    : t("inverter.waiting");
+  $("inverterThermalValue").textContent = hasReading
+    ? t("inverter.internalTemperature", {
+        value: formatValue(reading.internal_temperature_c, "°C"),
+      })
+    : "--";
+  $("inverterThermalDetail").textContent = hasReading
+    ? t("inverter.thermalDetail", {
+        inverter: formatValue(reading.inverter_temperature_c, "°C"),
+        dcdc: formatValue(reading.dcdc_temperature_c, "°C"),
+      })
+    : t("inverter.waiting");
+}
+
+function inverterTelemetry(inverter = state.inverter) {
+  const reading = inverter?.last_reading && typeof inverter.last_reading === "object"
+    ? inverter.last_reading
+    : {};
+  const hasReading = Boolean(reading.timestamp);
+  const available = Boolean(
+    state.collectorOnline
+      && inverter
+      && ["ok", "degraded"].includes(inverter.status)
+      && hasReading,
+  );
+  const gridImport = finiteNumber(reading.grid_import_power_w);
+  const gridExport = finiteNumber(reading.grid_export_power_w);
+  const gridTotal = finiteNumber(reading.grid_total_power_w);
+  const gridPower = gridImport !== null || gridExport !== null
+    ? (gridImport ?? 0) - (gridExport ?? 0)
+    : gridTotal === null
+      ? null
+      : -gridTotal;
+
+  return {
+    available,
+    hasReading,
+    inverter,
+    reading,
+    gridPower,
+    solarPower: finiteNumber(reading.pv_total_power_w),
+    loadPower: finiteNumber(reading.load_total_power_w),
+    externalLoadPower: finiteNumber(reading.home_load_total_power_w),
+    batteryPower: finiteNumber(reading.battery_power_w),
+    batteryCurrent: finiteNumber(reading.battery_current_a),
+    batterySoc: finiteNumber(reading.battery_soc_percent),
+  };
+}
+
+function batteryPowerMode(power, fallback = "idle") {
+  if (power === null) return fallback;
+  if (power > 25) return "charging";
+  if (power < -25) return "discharging";
+  return "idle";
+}
+
+function inverterStateLabel(value) {
+  const stateKeys = {
+    bypass: "inverter.state.bypass",
+    standby: "inverter.state.standby",
+    initializing: "inverter.state.initializing",
+    hybrid_power: "inverter.state.hybridPower",
+    pv_grid: "inverter.state.pvGrid",
+    battery_grid: "inverter.state.batteryGrid",
+    ac_battery_charging: "inverter.state.acBatteryCharging",
+    pv_battery_charging: "inverter.state.pvBatteryCharging",
+    fault: "inverter.state.fault",
+    self_check: "inverter.state.selfCheck",
+    dsp_firmware_update: "inverter.state.firmwareUpdate",
+    arm_firmware_update: "inverter.state.firmwareUpdate",
+    service: "inverter.state.service",
+    inverter_test: "inverter.state.inverterTest",
+    pv_test: "inverter.state.pvTest",
+    dcdc_test: "inverter.state.dcdcTest",
+    test_mode: "inverter.state.testMode",
+    undefined: "inverter.state.undefined",
+  };
+  return t(stateKeys[String(value || "").trim().toLowerCase()] || "inverter.state.unknown");
+}
+
+function formatPower(value) {
+  const power = finiteNumber(value);
+  if (power === null) return "--";
+  if (Math.abs(power) >= 1000) return formatValue(power / 1000, " kW", 2);
+  return formatValue(power, " W", 0);
+}
+
+function formatEnergy(value) {
+  const energy = finiteNumber(value);
+  return energy === null ? "--" : formatValue(energy, " kWh", 2);
+}
+
+function formatGridPower(value) {
+  const power = finiteNumber(value);
+  if (power === null) return "--";
+  if (power > 25) return t("energy.importing", { value: formatPower(power) });
+  if (power < -25) return t("energy.exporting", { value: formatPower(Math.abs(power)) });
+  return formatPower(0);
+}
+
+function formatBatteryPower(value) {
+  const power = finiteNumber(value);
+  if (power === null) return "--";
+  if (power > 25) return t("energy.chargingValue", { value: formatPower(power) });
+  if (power < -25) return t("energy.dischargingValue", { value: formatPower(Math.abs(power)) });
+  return t("energy.standby");
 }
 
 function rackPowerDetail(mode) {
@@ -1896,6 +2273,7 @@ function rerenderLocalizedUi() {
     renderStatus(state.livePayload);
     renderRackOverview();
     renderSummary(state.summary);
+    renderInverterTelemetry();
     renderBatteryCards();
     renderBatteryInventory();
     renderSelectedBattery();

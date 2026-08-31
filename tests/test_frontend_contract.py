@@ -149,7 +149,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('canvas.dataset.topology = "home-grid-solar-inverter-battery-load"', scene)
         self.assertIn('canvas.dataset.sceneStyle = "isometric-home-energy"', scene)
         self.assertIn('canvas.dataset.camera = "orthographic"', scene)
-        self.assertIn('canvas.dataset.sourceTelemetry = "unmetered"', scene)
+        self.assertIn('canvas.dataset.sourceTelemetry = direct ? "inverter" : "battery-only"', scene)
         self.assertIn('? "inverter-to-battery"', scene)
         self.assertIn('? "battery-to-inverter"', scene)
         self.assertIn("canvas.dataset.activeRoutes", scene)
@@ -182,6 +182,39 @@ class FrontendContractTests(unittest.TestCase):
             "Version: `0.185.1`",
             (STATIC / "vendor" / "README.md").read_text(encoding="utf-8"),
         )
+
+    def test_inverter_telemetry_drives_live_metrics_and_power_routes(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        scene = (STATIC / "energy-flow.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("state.inverter = payload.snapshot?.inverter || null", javascript)
+        self.assertIn("function renderInverterTelemetry", javascript)
+        self.assertIn("function inverterTelemetry", javascript)
+        self.assertIn("grid_import_power_w", javascript)
+        self.assertIn("grid_export_power_w", javascript)
+        self.assertIn("pv_total_power_w", javascript)
+        self.assertIn("load_total_power_w", javascript)
+        self.assertIn("home_load_total_power_w", javascript)
+        self.assertIn("battery_power_w", javascript)
+        self.assertIn('id="inverterBand"', html)
+        self.assertIn('id="inverterGridPower"', html)
+        self.assertIn('id="inverterSolarPower"', html)
+        self.assertIn('id="inverterLoadPower"', html)
+        self.assertIn('id="inverterBatteryPower"', html)
+        self.assertIn('data-inverter-available="false"', html)
+        self.assertIn(".inverter-band", css)
+        self.assertIn('.energy-flow[data-inverter-available="false"]', css)
+        self.assertIn("flowState.inverterAvailable", scene)
+        self.assertIn("routeMagnitude(flowState.gridPower)", scene)
+        self.assertIn("routeMagnitude(flowState.solarPower)", scene)
+        self.assertIn("routeMagnitude(flowState.loadPower)", scene)
+        self.assertIn("routeMagnitude(flowState.batteryPower)", scene)
+        self.assertIn("NODE_COLORS.grid", scene)
+        self.assertIn("NODE_COLORS.solar", scene)
+        self.assertIn("NODE_COLORS.load", scene)
+        self.assertIn('"inverter.state.bypass": "Điện lưới chuyển thẳng"', javascript)
 
     def test_default_configured_labels_are_localized_in_vietnamese(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")

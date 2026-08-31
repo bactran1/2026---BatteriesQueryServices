@@ -132,6 +132,16 @@
           data-soc="0"
           data-battery-count="0"
           data-pack-telemetry="[]"
+          data-inverter-available="false"
+          data-grid-power="0"
+          data-solar-power="0"
+          data-load-power="0"
+          data-battery-power="0"
+          data-grid-active="false"
+          data-solar-active="false"
+          data-load-active="false"
+          data-battery-active="false"
+          data-grid-direction="import"
           aria-labelledby="energyFlowTitle"
         >
           <div class="energy-flow__copy">
@@ -185,6 +195,52 @@
               <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
               <span data-i18n="energy.storage">Battery rack</span>
             </div>
+          </div>
+        </section>
+
+        <section
+          id="inverterBand"
+          class="inverter-band"
+          data-status="pending"
+          aria-label="Inverter summary"
+          data-i18n-aria-label="inverter.summary"
+          aria-live="polite"
+        >
+          <div id="inverterIdentityCell" class="inverter-band__identity">
+            <div class="inverter-band__heading">
+              <p class="eyebrow" data-i18n="inverter.eyebrow">Live inverter</p>
+              <span id="inverterStatus" class="status-pill status-pill--pending" data-i18n="status.waiting">Waiting</span>
+            </div>
+            <h2 id="inverterName" data-i18n="inverter.title">Renogy X 8K</h2>
+            <strong id="inverterState" data-i18n="inverter.waiting">Waiting for inverter telemetry</strong>
+            <small id="inverterIdentity" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
+            <small id="inverterConnection" data-i18n="common.notConfigured">Not configured</small>
+            <small id="inverterHealth" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
+          </div>
+          <div class="inverter-metric inverter-metric--solar">
+            <span data-i18n="inverter.solar">Solar array</span>
+            <strong id="inverterSolarPower">--</strong>
+            <small id="inverterSolarDetail" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
+          </div>
+          <div class="inverter-metric inverter-metric--grid">
+            <span data-i18n="inverter.grid">Grid</span>
+            <strong id="inverterGridPower">--</strong>
+            <small id="inverterGridDetail" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
+          </div>
+          <div class="inverter-metric inverter-metric--load">
+            <span data-i18n="inverter.load">Backup load</span>
+            <strong id="inverterLoadPower">--</strong>
+            <small id="inverterLoadDetail" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
+          </div>
+          <div class="inverter-metric inverter-metric--battery">
+            <span data-i18n="inverter.battery">Inverter battery</span>
+            <strong id="inverterBatteryPower">--</strong>
+            <small id="inverterBatteryDetail" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
+          </div>
+          <div class="inverter-metric inverter-metric--thermal">
+            <span data-i18n="inverter.thermal">Inverter thermal</span>
+            <strong id="inverterThermalValue">--</strong>
+            <small id="inverterThermalDetail" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
           </div>
         </section>
 

@@ -42,7 +42,7 @@ function startEnergyFlowScene() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-5, 5, 3, -3, 0.1, 50);
@@ -88,6 +88,11 @@ function startEnergyFlowScene() {
     soc: 0,
     batteryCount: 0,
     packs: [],
+    inverterAvailable: false,
+    gridPower: 0,
+    solarPower: 0,
+    loadPower: 0,
+    batteryPower: 0,
   };
   const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   const finePointerQuery = window.matchMedia("(hover: hover) and (pointer: fine)");
@@ -108,6 +113,11 @@ function startEnergyFlowScene() {
       soc: clamp(finite(detail.soc ?? section.dataset.soc), 0, 100),
       batteryCount: Math.max(0, Math.round(finite(detail.batteryCount ?? section.dataset.batteryCount))),
       packs: normalizePackTelemetry(detail.packs ?? section.dataset.packTelemetry),
+      inverterAvailable: booleanValue(detail.inverterAvailable ?? section.dataset.inverterAvailable),
+      gridPower: finite(detail.gridPower ?? section.dataset.gridPower),
+      solarPower: finite(detail.solarPower ?? section.dataset.solarPower),
+      loadPower: finite(detail.loadPower ?? section.dataset.loadPower),
+      batteryPower: finite(detail.batteryPower ?? section.dataset.batteryPower),
     };
   }
 
@@ -118,17 +128,64 @@ function startEnergyFlowScene() {
     const live = flowState.mode !== "stale" && flowState.batteryCount > 0;
     const charging = flowState.mode === "charging";
     const discharging = flowState.mode === "discharging";
+    const direct = flowState.inverterAvailable;
+    const gridActive = direct && Math.abs(flowState.gridPower) > 25;
+    const solarActive = direct && flowState.solarPower > 25;
+    const loadActive = direct && flowState.loadPower > 25;
+    const batteryActive = direct
+      ? Math.abs(flowState.batteryPower) > 25
+      : charging || discharging;
 
-    configureRoute(network.grid, "stale", 0, false, 1, false);
-    configureRoute(network.battery, flowState.mode, rackMagnitude, charging || discharging, charging ? 1 : -1, live);
-    configureRoute(network.load, "stale", 0, false, 1, false);
-    configureRoute(network.solar, "stale", 0, false, 1, false);
+    if (direct) {
+      configureRoute(
+        network.grid,
+        flowState.gridPower >= 0 ? "charging" : "discharging",
+        routeMagnitude(flowState.gridPower),
+        gridActive,
+        flowState.gridPower >= 0 ? 1 : -1,
+        true,
+        NODE_COLORS.grid,
+      );
+      configureRoute(
+        network.solar,
+        "charging",
+        routeMagnitude(flowState.solarPower),
+        solarActive,
+        1,
+        true,
+        NODE_COLORS.solar,
+      );
+      configureRoute(
+        network.load,
+        "charging",
+        routeMagnitude(flowState.loadPower),
+        loadActive,
+        1,
+        true,
+        NODE_COLORS.load,
+      );
+      configureRoute(
+        network.battery,
+        flowState.batteryPower >= 0 ? "charging" : "discharging",
+        routeMagnitude(flowState.batteryPower),
+        batteryActive,
+        flowState.batteryPower >= 0 ? 1 : -1,
+        true,
+        flowState.batteryPower >= 0 ? FLOW_COLORS.charging : FLOW_COLORS.discharging,
+      );
+    } else {
+      configureRoute(network.grid, "stale", 0, false, 1, false);
+      configureRoute(network.battery, flowState.mode, rackMagnitude, batteryActive, charging ? 1 : -1, live);
+      configureRoute(network.load, "stale", 0, false, 1, false);
+      configureRoute(network.solar, "stale", 0, false, 1, false);
+    }
 
-    setSignal(energySystem.gridSignalMaterial, NODE_COLORS.grid, false);
-    setSignal(energySystem.inverterSignalMaterial, isActiveMode() ? flowColor : NODE_COLORS.inverter, isActiveMode());
-    setSignal(energySystem.batterySignalMaterial, isActiveMode() ? flowColor : FLOW_COLORS.stale, isActiveMode());
-    setSignal(energySystem.loadSignalMaterial, NODE_COLORS.load, false);
-    setSignal(energySystem.solarSignalMaterial, 0x6f7047, false);
+    const systemActive = network.routes.some(isRouteActive);
+    setSignal(energySystem.gridSignalMaterial, NODE_COLORS.grid, network.grid.active);
+    setSignal(energySystem.inverterSignalMaterial, systemActive ? flowColor : NODE_COLORS.inverter, systemActive);
+    setSignal(energySystem.batterySignalMaterial, network.battery.active ? flowColor : FLOW_COLORS.stale, network.battery.active);
+    setSignal(energySystem.loadSignalMaterial, NODE_COLORS.load, network.load.active);
+    setSignal(energySystem.solarSignalMaterial, NODE_COLORS.solar, network.solar.active);
 
     energySystem.batteryModules.forEach((module, index) => {
       const pack = flowState.packs[index];
@@ -145,14 +202,16 @@ function startEnergyFlowScene() {
       module.signalMaterial.emissiveIntensity = reporting && isActiveMode(packMode) ? 1.35 : 0.16;
     });
 
-    canvas.dataset.energyDirection = charging
-      ? "inverter-to-battery"
-      : discharging
-        ? "battery-to-inverter"
-        : "paused";
+    canvas.dataset.energyDirection = direct
+      ? "metered-routes"
+      : charging
+        ? "inverter-to-battery"
+        : discharging
+          ? "battery-to-inverter"
+          : "paused";
     canvas.dataset.energyMode = flowState.mode;
     canvas.dataset.activeRoutes = String(network.routes.filter(isRouteActive).length);
-    canvas.dataset.sourceTelemetry = "unmetered";
+    canvas.dataset.sourceTelemetry = direct ? "inverter" : "battery-only";
     canvas.dataset.topology = "home-grid-solar-inverter-battery-load";
     canvas.dataset.sceneStyle = "isometric-home-energy";
     if (disposed) return;
@@ -207,9 +266,10 @@ function startEnergyFlowScene() {
     });
 
     pulseSignal(energySystem.gridSignalMaterial, network.grid.active, time, 0);
-    pulseSignal(energySystem.inverterSignalMaterial, isActiveMode(), time, 0.7);
+    pulseSignal(energySystem.inverterSignalMaterial, network.routes.some(isRouteActive), time, 0.7);
     pulseSignal(energySystem.batterySignalMaterial, network.battery.active, time, 1.15);
     pulseSignal(energySystem.loadSignalMaterial, network.load.active, time, 1.7);
+    pulseSignal(energySystem.solarSignalMaterial, network.solar.active, time, 2.1);
     energySystem.windowMaterial.emissiveIntensity = network.load.active
       ? 1.2 + Math.sin(time * 0.0034) * 0.18
       : 0.62;
@@ -722,13 +782,13 @@ function createFlowRoute(curve, materials, particleCount, phaseOffset) {
   };
 }
 
-function configureRoute(route, mode, magnitude, active, direction, reporting) {
+function configureRoute(route, mode, magnitude, active, direction, reporting, activeColor = null) {
   route.mode = reporting ? validMode(mode) : "stale";
   route.magnitude = Math.max(0, finite(magnitude));
   route.reporting = Boolean(reporting);
   route.active = Boolean(active) && route.reporting && isActiveRouteMode(route.mode);
   route.direction = direction < 0 ? -1 : 1;
-  const color = route.active ? FLOW_COLORS[route.mode] : FLOW_COLORS.stale;
+  const color = route.active ? activeColor ?? FLOW_COLORS[route.mode] : FLOW_COLORS.stale;
   route.lineMaterial.color.setHex(color);
   route.lineMaterial.emissive.setHex(color);
   route.lineMaterial.emissiveIntensity = route.active ? 0.9 : 0.04;
@@ -818,6 +878,15 @@ function showFallback(section, canvas, error) {
 function finite(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function booleanValue(value) {
+  if (typeof value === "boolean") return value;
+  return String(value).trim().toLowerCase() === "true";
+}
+
+function routeMagnitude(power) {
+  return Math.abs(finite(power)) / 250;
 }
 
 function clamp(value, minimum, maximum) {

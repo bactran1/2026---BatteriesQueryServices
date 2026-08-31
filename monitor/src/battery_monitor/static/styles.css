@@ -741,7 +741,10 @@ button {
 .energy-flow[data-mode="charging"] .energy-flow__callout--inverter::after,
 .energy-flow[data-mode="charging"] .energy-flow__callout--battery::after,
 .energy-flow[data-mode="discharging"] .energy-flow__callout--inverter::after,
-.energy-flow[data-mode="discharging"] .energy-flow__callout--battery::after {
+.energy-flow[data-mode="discharging"] .energy-flow__callout--battery::after,
+.energy-flow[data-grid-active="true"] .energy-flow__callout--grid::after,
+.energy-flow[data-solar-active="true"] .energy-flow__callout--solar::after,
+.energy-flow[data-load-active="true"] .energy-flow__callout--load::after {
   animation: energy-flow-leader-pulse 1.7s ease-in-out infinite;
 }
 
@@ -915,6 +918,36 @@ button {
   animation-direction: reverse;
 }
 
+.energy-flow[data-inverter-available="false"] .energy-flow__fallback-link--grid::after,
+.energy-flow[data-inverter-available="false"] .energy-flow__fallback-link--load::after {
+  display: none;
+}
+
+.energy-flow[data-inverter-available="true"] .energy-flow__fallback-link::after {
+  display: none;
+}
+
+.energy-flow[data-inverter-available="true"][data-grid-active="true"] .energy-flow__fallback-link--grid::after,
+.energy-flow[data-inverter-available="true"][data-load-active="true"] .energy-flow__fallback-link--load::after,
+.energy-flow[data-inverter-available="true"][data-battery-active="true"] .energy-flow__fallback-link--battery::after {
+  display: block;
+}
+
+.energy-flow[data-inverter-available="true"] .energy-flow__fallback-link--grid::after {
+  background: #72d7ff;
+  box-shadow: 0 0 12px rgba(114, 215, 255, 0.7);
+}
+
+.energy-flow[data-inverter-available="true"] .energy-flow__fallback-link--load::after {
+  background: #ffdf87;
+  box-shadow: 0 0 12px rgba(255, 223, 135, 0.7);
+}
+
+.energy-flow[data-inverter-available="true"][data-grid-direction="export"] .energy-flow__fallback-link--grid::after,
+.energy-flow[data-inverter-available="true"][data-mode="discharging"] .energy-flow__fallback-link--battery::after {
+  animation-direction: reverse;
+}
+
 @keyframes energy-flow-fallback-horizontal {
   to {
     left: 100%;
@@ -925,6 +958,171 @@ button {
   to {
     top: 100%;
   }
+}
+
+.inverter-band {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.28fr) repeat(5, minmax(0, 1fr));
+  margin-bottom: 14px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line);
+  box-shadow: var(--shadow);
+}
+
+.inverter-band__identity,
+.inverter-metric {
+  min-width: 0;
+  min-height: 124px;
+  padding: 16px 17px;
+  background: var(--panel-strong);
+  transition:
+    background-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.inverter-band__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 10px;
+}
+
+.inverter-band__heading .eyebrow {
+  margin: 0;
+}
+
+.inverter-band__heading .status-pill {
+  min-height: 23px;
+  padding: 4px 8px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.inverter-band__identity h2 {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 740;
+  line-height: 1.16;
+  overflow-wrap: anywhere;
+}
+
+.inverter-band__identity > strong {
+  display: block;
+  margin-top: 7px;
+  color: #a54500;
+  font-size: 13px;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
+.inverter-band__identity > small,
+.inverter-metric small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 570;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+#inverterHealth {
+  color: #167a35;
+  font-weight: 680;
+}
+
+.inverter-band__identity.has-alerts #inverterHealth {
+  color: #b42318;
+}
+
+.inverter-metric {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.inverter-metric > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
+.inverter-metric > strong {
+  display: block;
+  margin-top: 12px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.inverter-metric--solar > strong {
+  color: #8a7200;
+}
+
+.inverter-metric--grid > strong {
+  color: #0071e3;
+}
+
+.inverter-metric--load > strong {
+  color: #a75400;
+}
+
+.inverter-metric--battery > strong {
+  color: #167a35;
+}
+
+.inverter-metric--thermal > strong {
+  color: #ad4b00;
+}
+
+:root[data-theme="dark"] .inverter-band__identity > strong {
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] #inverterHealth,
+:root[data-theme="dark"] .inverter-metric--battery > strong {
+  color: var(--green);
+}
+
+:root[data-theme="dark"] .inverter-band__identity.has-alerts #inverterHealth,
+:root[data-theme="dark"] .inverter-band[data-status="error"] .inverter-band__identity > strong,
+:root[data-theme="dark"] .inverter-band[data-status="error"] .inverter-metric > strong {
+  color: var(--red);
+}
+
+:root[data-theme="dark"] .inverter-metric--thermal > strong {
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] .inverter-metric--solar > strong {
+  color: #f2ef50;
+}
+
+:root[data-theme="dark"] .inverter-metric--grid > strong {
+  color: #72d7ff;
+}
+
+:root[data-theme="dark"] .inverter-metric--load > strong {
+  color: #ffdf87;
+}
+
+.inverter-band[data-status="stale"] .inverter-metric > strong,
+.inverter-band[data-status="pending"] .inverter-metric > strong {
+  color: var(--muted);
+}
+
+.inverter-band[data-status="error"] .inverter-band__identity > strong,
+.inverter-band[data-status="error"] .inverter-metric > strong {
+  color: #b42318;
 }
 
 .fleet-band {
@@ -1911,6 +2109,15 @@ select {
 }
 
 @media (max-width: 1120px) {
+  .inverter-band {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .inverter-band__identity {
+    grid-column: 1 / -1;
+    min-height: 0;
+  }
+
   .battery-grid,
   .workbench,
   .lower-grid {
@@ -2023,6 +2230,14 @@ select {
     inset: 150px 8% 130px;
   }
 
+  .inverter-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inverter-band__identity {
+    grid-column: 1 / -1;
+  }
+
   .fleet-band,
   .storage-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2124,6 +2339,29 @@ select {
   .fleet-metric {
     min-height: 104px;
     padding: 16px 14px;
+  }
+
+  .inverter-band__identity,
+  .inverter-metric {
+    min-height: 102px;
+    padding: 14px 13px;
+  }
+
+  .inverter-band__identity h2 {
+    font-size: 17px;
+  }
+
+  .inverter-metric > span {
+    font-size: 10px;
+  }
+
+  .inverter-metric > strong {
+    margin-top: 10px;
+    font-size: 19px;
+  }
+
+  .inverter-metric small {
+    font-size: 9px;
   }
 
   .fleet-metric strong {
