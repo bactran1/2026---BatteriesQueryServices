@@ -20,7 +20,7 @@ HistoryMetric = Literal[
     "ambient_temperature_c",
 ]
 
-EnergyView = Literal["date", "month", "year"]
+EnergyView = Literal["hour", "date", "month", "year"]
 
 
 HISTORY_COLUMNS: dict[str, str] = {
@@ -116,6 +116,22 @@ class RetentionStore:
                     grid_import_kwh REAL,
                     PRIMARY KEY (energy_date, inverter_id)
                 );
+                CREATE TABLE IF NOT EXISTS inverter_readings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    captured_at TEXT NOT NULL,
+                    captured_at_unix INTEGER NOT NULL,
+                    collector_stream_id TEXT,
+                    collector_sequence INTEGER,
+                    inverter_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    grid_power_w REAL,
+                    battery_power_w REAL,
+                    solar_power_w REAL,
+                    load_power_w REAL,
+                    consumption_meter_kwh REAL,
+                    solar_generation_meter_kwh REAL,
+                    grid_import_meter_kwh REAL
+                );
                 CREATE INDEX IF NOT EXISTS idx_readings_time
                     ON readings (captured_at_unix);
                 CREATE INDEX IF NOT EXISTS idx_readings_battery_time
@@ -124,6 +140,10 @@ class RetentionStore:
                     ON readings (captured_at_unix, alarm_count, fault_count, status);
                 CREATE INDEX IF NOT EXISTS idx_daily_energy_date
                     ON daily_energy (energy_date);
+                CREATE INDEX IF NOT EXISTS idx_inverter_readings_time
+                    ON inverter_readings (captured_at_unix);
+                CREATE INDEX IF NOT EXISTS idx_inverter_readings_inverter_time
+                    ON inverter_readings (inverter_id, captured_at_unix);
                 """
             )
             self._ensure_column("collector_stream_id", "TEXT")
@@ -132,6 +152,18 @@ class RetentionStore:
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_collector_sample
                 ON readings (battery_id, collector_stream_id, collector_sequence)
+                WHERE collector_sequence IS NOT NULL
+                  AND collector_stream_id IS NOT NULL
+                """
+            )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_inverter_collector_sample
+                ON inverter_readings (
+                    inverter_id,
+                    collector_stream_id,
+                    collector_sequence
+                )
                 WHERE collector_sequence IS NOT NULL
                   AND collector_stream_id IS NOT NULL
                 """
@@ -159,6 +191,7 @@ class RetentionStore:
     def insert_snapshot(self, snapshot: dict[str, Any]) -> int:
         with self._lock:
             inserted = self._insert_snapshot_locked(snapshot)
+            self._insert_inverter_reading_locked(snapshot)
             self._upsert_daily_energy_locked(snapshot)
             self.connection.commit()
             return inserted
@@ -170,6 +203,7 @@ class RetentionStore:
                 if not isinstance(snapshot, dict):
                     continue
                 inserted += self._insert_snapshot_locked(snapshot)
+                self._insert_inverter_reading_locked(snapshot)
                 self._upsert_daily_energy_locked(snapshot)
             self.connection.commit()
             return inserted
@@ -184,8 +218,15 @@ class RetentionStore:
             energy_cursor = self.connection.execute(
                 "DELETE FROM daily_energy WHERE energy_date < ?", (cutoff_date,)
             )
+            inverter_cursor = self.connection.execute(
+                "DELETE FROM inverter_readings WHERE captured_at_unix < ?", (cutoff,)
+            )
             self.connection.commit()
-            return int(cursor.rowcount or 0) + int(energy_cursor.rowcount or 0)
+            return (
+                int(cursor.rowcount or 0)
+                + int(energy_cursor.rowcount or 0)
+                + int(inverter_cursor.rowcount or 0)
+            )
 
     def latest_states(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -247,6 +288,9 @@ class RetentionStore:
         ]
 
     def energy_history(self, view: EnergyView) -> dict[str, Any]:
+        if view == "hour":
+            return self._hourly_energy_history()
+
         period_expression = {
             "date": "energy_date",
             "month": "substr(energy_date, 1, 7)",
@@ -266,6 +310,7 @@ class RetentionStore:
                 ORDER BY period ASC
                 """
             ).fetchall()
+            totals = self._energy_totals_locked()
 
         points = []
         for row in rows:
@@ -287,14 +332,172 @@ class RetentionStore:
             "view": view,
             "retention_years": 3,
             "points": points,
-            "totals": {
-                field: _sum_energy_points(points, field)
-                for field in (
-                    "consumption_kwh",
-                    "solar_generation_kwh",
-                    "grid_import_kwh",
+            "totals": totals,
+        }
+
+    def power_history(
+        self, seconds: int, bucket_seconds: int
+    ) -> list[dict[str, Any]]:
+        since = int(time.time()) - seconds
+        with self._lock:
+            rows = self.connection.execute(
+                """
+                SELECT
+                    bucket_unix,
+                    SUM(grid_power_w) AS grid_power_w,
+                    SUM(battery_power_w) AS battery_power_w,
+                    SUM(solar_power_w) AS solar_power_w,
+                    SUM(load_power_w) AS load_power_w
+                FROM (
+                    SELECT
+                        CAST(captured_at_unix / ? AS INTEGER) * ? AS bucket_unix,
+                        inverter_id,
+                        AVG(grid_power_w) AS grid_power_w,
+                        AVG(battery_power_w) AS battery_power_w,
+                        AVG(solar_power_w) AS solar_power_w,
+                        AVG(load_power_w) AS load_power_w
+                    FROM inverter_readings
+                    WHERE captured_at_unix >= ?
+                      AND (
+                          grid_power_w IS NOT NULL
+                          OR battery_power_w IS NOT NULL
+                          OR solar_power_w IS NOT NULL
+                          OR load_power_w IS NOT NULL
+                      )
+                    GROUP BY bucket_unix, inverter_id
                 )
-            },
+                GROUP BY bucket_unix
+                ORDER BY bucket_unix ASC
+                """,
+                (bucket_seconds, bucket_seconds, since),
+            ).fetchall()
+
+        return [
+            {
+                "timestamp": _iso_from_unix(int(row["bucket_unix"])),
+                "unix": int(row["bucket_unix"]),
+                "grid_power_w": _rounded_power(row["grid_power_w"]),
+                "battery_power_w": _rounded_power(row["battery_power_w"]),
+                "solar_power_w": _rounded_power(row["solar_power_w"]),
+                "load_power_w": _rounded_power(row["load_power_w"]),
+            }
+            for row in rows
+        ]
+
+    def _hourly_energy_history(self) -> dict[str, Any]:
+        with self._lock:
+            rows = self.connection.execute(
+                """
+                WITH hourly AS (
+                    SELECT
+                        CAST(captured_at_unix / 3600 AS INTEGER) * 3600
+                            AS bucket_unix,
+                        inverter_id,
+                        MAX(consumption_meter_kwh) AS consumption_meter_kwh,
+                        MAX(solar_generation_meter_kwh)
+                            AS solar_generation_meter_kwh,
+                        MAX(grid_import_meter_kwh) AS grid_import_meter_kwh
+                    FROM inverter_readings
+                    WHERE captured_at_unix >= strftime('%s', 'now', '-7 days')
+                    GROUP BY bucket_unix, inverter_id
+                ),
+                deltas AS (
+                    SELECT
+                        *,
+                        LAG(bucket_unix) OVER day_window AS previous_bucket_unix,
+                        LAG(consumption_meter_kwh) OVER day_window
+                            AS previous_consumption_kwh,
+                        LAG(solar_generation_meter_kwh) OVER day_window
+                            AS previous_solar_kwh,
+                        LAG(grid_import_meter_kwh) OVER day_window
+                            AS previous_grid_kwh
+                    FROM hourly
+                    WINDOW day_window AS (
+                        PARTITION BY
+                            inverter_id,
+                            date(bucket_unix, 'unixepoch')
+                        ORDER BY bucket_unix
+                    )
+                )
+                SELECT
+                    bucket_unix,
+                    SUM(
+                        CASE
+                            WHEN previous_bucket_unix IS NULL
+                                 AND strftime('%H', bucket_unix, 'unixepoch') = '00'
+                            THEN consumption_meter_kwh
+                            WHEN bucket_unix - previous_bucket_unix = 3600
+                                 AND consumption_meter_kwh >= previous_consumption_kwh
+                            THEN consumption_meter_kwh - previous_consumption_kwh
+                        END
+                    ) AS consumption_kwh,
+                    SUM(
+                        CASE
+                            WHEN previous_bucket_unix IS NULL
+                                 AND strftime('%H', bucket_unix, 'unixepoch') = '00'
+                            THEN solar_generation_meter_kwh
+                            WHEN bucket_unix - previous_bucket_unix = 3600
+                                 AND solar_generation_meter_kwh >= previous_solar_kwh
+                            THEN solar_generation_meter_kwh - previous_solar_kwh
+                        END
+                    ) AS solar_generation_kwh,
+                    SUM(
+                        CASE
+                            WHEN previous_bucket_unix IS NULL
+                                 AND strftime('%H', bucket_unix, 'unixepoch') = '00'
+                            THEN grid_import_meter_kwh
+                            WHEN bucket_unix - previous_bucket_unix = 3600
+                                 AND grid_import_meter_kwh >= previous_grid_kwh
+                            THEN grid_import_meter_kwh - previous_grid_kwh
+                        END
+                    ) AS grid_import_kwh
+                FROM deltas
+                GROUP BY bucket_unix
+                HAVING consumption_kwh IS NOT NULL
+                    OR solar_generation_kwh IS NOT NULL
+                    OR grid_import_kwh IS NOT NULL
+                ORDER BY bucket_unix ASC
+                """
+            ).fetchall()
+            totals = self._energy_totals_locked()
+
+        return {
+            "view": "hour",
+            "retention_years": 3,
+            "window_days": 7,
+            "points": [
+                {
+                    "period": _iso_from_unix(int(row["bucket_unix"]))[:13],
+                    "timestamp": _iso_from_unix(int(row["bucket_unix"])),
+                    "unix": int(row["bucket_unix"]),
+                    "consumption_kwh": _rounded_number(row["consumption_kwh"]),
+                    "solar_generation_kwh": _rounded_number(
+                        row["solar_generation_kwh"]
+                    ),
+                    "grid_import_kwh": _rounded_number(row["grid_import_kwh"]),
+                }
+                for row in rows
+            ],
+            "totals": totals,
+        }
+
+    def _energy_totals_locked(self) -> dict[str, float | None]:
+        row = self.connection.execute(
+            """
+            SELECT
+                SUM(consumption_kwh) AS consumption_kwh,
+                SUM(solar_generation_kwh) AS solar_generation_kwh,
+                SUM(grid_import_kwh) AS grid_import_kwh
+            FROM daily_energy
+            WHERE energy_date >= date('now', '-3 years')
+            """
+        ).fetchone()
+        return {
+            "consumption_kwh": _rounded_number(row["consumption_kwh"]),
+            "solar_generation_kwh": _rounded_number(
+                row["solar_generation_kwh"]
+            ),
+            "grid_import_kwh": _rounded_number(row["grid_import_kwh"]),
         }
 
     def events(self, seconds: int, limit: int) -> list[dict[str, Any]]:
@@ -372,6 +575,14 @@ class RetentionStore:
                 FROM daily_energy
                 """
             ).fetchone()
+            inverter_row = self.connection.execute(
+                """
+                SELECT COUNT(*) AS point_count,
+                       MIN(captured_at) AS oldest_reading_at,
+                       MAX(captured_at) AS newest_reading_at
+                FROM inverter_readings
+                """
+            ).fetchone()
         return {
             "database_path": str(self.database_path),
             "database_size_bytes": self._database_size_bytes(),
@@ -382,6 +593,9 @@ class RetentionStore:
             "energy_point_count": int(energy_row["point_count"] or 0),
             "oldest_energy_date": energy_row["oldest_energy_date"],
             "newest_energy_date": energy_row["newest_energy_date"],
+            "inverter_point_count": int(inverter_row["point_count"] or 0),
+            "oldest_inverter_reading_at": inverter_row["oldest_reading_at"],
+            "newest_inverter_reading_at": inverter_row["newest_reading_at"],
             "retention_days": retention_days,
         }
 
@@ -507,6 +721,21 @@ class RetentionStore:
             )
             inserted += max(0, int(cursor.rowcount or 0))
         return inserted
+
+    def _insert_inverter_reading_locked(self, snapshot: dict[str, Any]) -> int:
+        row = _inverter_reading_row(snapshot)
+        if row is None:
+            return 0
+        columns = list(row.keys())
+        placeholders = ",".join(f":{column}" for column in columns)
+        cursor = self.connection.execute(
+            f"""
+            INSERT OR IGNORE INTO inverter_readings ({','.join(columns)})
+            VALUES ({placeholders})
+            """,
+            row,
+        )
+        return max(0, int(cursor.rowcount or 0))
 
     def _upsert_daily_energy_locked(self, snapshot: dict[str, Any]) -> None:
         row = _daily_energy_row(snapshot)
@@ -637,6 +866,54 @@ def _daily_energy_row(snapshot: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _inverter_reading_row(snapshot: dict[str, Any]) -> dict[str, Any] | None:
+    inverter = snapshot.get("inverter")
+    if not isinstance(inverter, dict):
+        return None
+    reading = inverter.get("last_reading")
+    if not isinstance(reading, dict):
+        return None
+
+    grid_import = _number(reading.get("grid_import_power_w"))
+    grid_export = _number(reading.get("grid_export_power_w"))
+    if grid_import is not None or grid_export is not None:
+        grid_power = (grid_import or 0.0) - (grid_export or 0.0)
+    else:
+        grid_total = _number(reading.get("grid_total_power_w"))
+        grid_power = -grid_total if grid_total is not None else None
+
+    values = {
+        "grid_power_w": grid_power,
+        "battery_power_w": _number(reading.get("battery_power_w")),
+        "solar_power_w": _number(reading.get("pv_total_power_w")),
+        "load_power_w": _number(reading.get("load_total_power_w")),
+        "consumption_meter_kwh": _nonnegative_number(
+            reading.get("load_energy_today_kwh")
+        ),
+        "solar_generation_meter_kwh": _nonnegative_number(
+            reading.get("pv_energy_today_kwh")
+        ),
+        "grid_import_meter_kwh": _nonnegative_number(
+            reading.get("grid_import_energy_today_kwh")
+        ),
+    }
+    if all(value is None for value in values.values()):
+        return None
+
+    service = snapshot.get("service")
+    service = service if isinstance(service, dict) else {}
+    captured_at, captured_at_unix = _energy_sample_time(snapshot, reading)
+    return {
+        "captured_at": captured_at,
+        "captured_at_unix": captured_at_unix,
+        "collector_stream_id": _optional_string(service.get("buffer_stream_id")),
+        "collector_sequence": _int(service.get("sequence")),
+        "inverter_id": str(inverter.get("id") or reading.get("id") or "inverter"),
+        "status": str(inverter.get("status") or "unknown"),
+        **values,
+    }
+
+
 def _energy_sample_time(
     snapshot: dict[str, Any], reading: dict[str, Any]
 ) -> tuple[str, int]:
@@ -685,11 +962,9 @@ def _rounded_number(value: object) -> float | None:
     return round(number, 3) if number is not None else None
 
 
-def _sum_energy_points(points: list[dict[str, Any]], field: str) -> float | None:
-    values = [
-        float(point[field]) for point in points if point.get(field) is not None
-    ]
-    return round(sum(values), 3) if values else None
+def _rounded_power(value: object) -> float | None:
+    number = _number(value)
+    return round(number, 1) if number is not None else None
 
 
 def _int(value: object) -> int | None:

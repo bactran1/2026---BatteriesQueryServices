@@ -61,13 +61,21 @@ class RetentionStoreTests(unittest.TestCase):
                 """,
                 (old_date, old_cutoff, "2026-01-01T00:00:00Z"),
             )
+            store.connection.execute(
+                """
+                UPDATE inverter_readings
+                SET captured_at_unix = ?, captured_at = ?
+                """,
+                (old_cutoff, "2026-01-01T00:00:00Z"),
+            )
             store.connection.commit()
 
             deleted = store.prune_older_than_days(90)
 
-            self.assertEqual(deleted, 3)
+            self.assertEqual(deleted, 4)
             self.assertEqual(store.stats(retention_days=90)["row_count"], 0)
             self.assertEqual(store.stats(retention_days=90)["energy_point_count"], 0)
+            self.assertEqual(store.stats(retention_days=90)["inverter_point_count"], 0)
             store.close()
 
     def test_collector_sequence_is_idempotent_and_health_is_independent(self) -> None:
@@ -144,7 +152,54 @@ class RetentionStoreTests(unittest.TestCase):
 
             stats = store.stats(retention_days=1095)
             self.assertEqual(stats["energy_point_count"], 2)
+            self.assertEqual(stats["inverter_point_count"], 3)
             self.assertEqual(stats["newest_energy_date"], now.date().isoformat())
+            store.close()
+
+    def test_hourly_energy_and_signed_power_history_are_archived(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            day = datetime.now(timezone.utc).replace(
+                hour=0, minute=20, second=0, microsecond=0
+            )
+            samples = [
+                (day, 0.4, 0.1, 0.3, 1200, 250, 180, 1270),
+                (day + timedelta(hours=1), 1.2, 0.6, 0.7, -350, -900, 1250, 700),
+                (day + timedelta(hours=2), 2.0, 1.5, 0.9, 500, 700, 1800, 1600),
+            ]
+            for sequence, sample in enumerate(samples, start=1):
+                timestamp, consumption, solar, grid, grid_w, battery_w, solar_w, load_w = sample
+                snapshot = _energy_snapshot(
+                    timestamp.isoformat(),
+                    consumption_kwh=consumption,
+                    solar_generation_kwh=solar,
+                    grid_import_kwh=grid,
+                    grid_power_w=grid_w,
+                    battery_power_w=battery_w,
+                    solar_power_w=solar_w,
+                    load_power_w=load_w,
+                )
+                snapshot["service"].update(
+                    {"buffer_stream_id": "stream-a", "sequence": sequence}
+                )
+                store.insert_snapshot(snapshot)
+
+            hourly = store.energy_history("hour")
+            self.assertEqual(hourly["window_days"], 7)
+            self.assertEqual(len(hourly["points"]), 3)
+            self.assertEqual(hourly["points"][0]["consumption_kwh"], 0.4)
+            self.assertEqual(hourly["points"][1]["consumption_kwh"], 0.8)
+            self.assertEqual(hourly["points"][1]["solar_generation_kwh"], 0.5)
+            self.assertEqual(hourly["points"][1]["grid_import_kwh"], 0.4)
+
+            power = store.power_history(seconds=24 * 60 * 60, bucket_seconds=3600)
+            self.assertEqual(len(power), 3)
+            self.assertEqual(power[0]["grid_power_w"], 1200.0)
+            self.assertEqual(power[1]["grid_power_w"], -350.0)
+            self.assertEqual(power[1]["battery_power_w"], -900.0)
+            self.assertEqual(power[2]["solar_power_w"], 1800.0)
+            self.assertEqual(store.stats(retention_days=1095)["inverter_point_count"], 3)
             store.close()
 
 
@@ -193,6 +248,10 @@ def _energy_snapshot(
     consumption_kwh: float | None,
     solar_generation_kwh: float | None,
     grid_import_kwh: float | None,
+    grid_power_w: float | None = None,
+    battery_power_w: float | None = None,
+    solar_power_w: float | None = None,
+    load_power_w: float | None = None,
 ) -> dict:
     snapshot = _sample_snapshot()
     snapshot["service"]["captured_at"] = timestamp
@@ -205,6 +264,11 @@ def _energy_snapshot(
             "load_energy_today_kwh": consumption_kwh,
             "pv_energy_today_kwh": solar_generation_kwh,
             "grid_import_energy_today_kwh": grid_import_kwh,
+            "grid_import_power_w": max(grid_power_w, 0) if grid_power_w is not None else None,
+            "grid_export_power_w": max(-grid_power_w, 0) if grid_power_w is not None else None,
+            "battery_power_w": battery_power_w,
+            "pv_total_power_w": solar_power_w,
+            "load_total_power_w": load_power_w,
         },
     }
     return snapshot

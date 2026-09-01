@@ -249,7 +249,7 @@
             <div>
               <p class="eyebrow" data-i18n="energyHistory.eyebrow">Energy history</p>
               <h2 id="energyHistoryTitle" data-i18n="energyHistory.titleMonth">Energy by month</h2>
-              <p class="energy-history-description" data-i18n="energyHistory.description">Consumption, solar generation, and grid draw over the last three years</p>
+              <p id="energyHistoryDescription" class="energy-history-description" data-i18n="energyHistory.description">Consumption, solar generation, and grid draw over the last three years</p>
             </div>
             <div
               id="energyViewControls"
@@ -258,6 +258,7 @@
               aria-label="Energy history view"
               data-i18n-aria-label="energyHistory.view"
             >
+              <button type="button" data-energy-view="hour" data-i18n="energyHistory.hour" aria-pressed="false">Hour</button>
               <button type="button" data-energy-view="date" data-i18n="energyHistory.date" aria-pressed="false">Date</button>
               <button type="button" data-energy-view="month" data-i18n="energyHistory.month" class="is-active" aria-pressed="true">Month</button>
               <button type="button" data-energy-view="year" data-i18n="energyHistory.year" aria-pressed="false">Year</button>
@@ -383,18 +384,10 @@
             <div class="panel-heading">
               <div>
                 <p class="eyebrow" data-i18n="history.eyebrow">History</p>
-                <h2 id="chartTitle" data-i18n="metric.soc">State of charge</h2>
+                <h2 id="chartTitle" data-i18n="history.powerTitle">Power sources &amp; demand</h2>
+                <p class="history-description" data-i18n="history.powerDescription">Overlay grid, battery, solar, and load power on one timeline</p>
               </div>
               <div class="controls">
-                <select id="metricSelect" aria-label="Metric" data-i18n-aria-label="history.metric">
-                  <option value="soc_percent">SOC</option>
-                  <option value="voltage_v" data-i18n="metric.voltageShort">Voltage</option>
-                  <option value="current_a" data-i18n="metric.currentShort">Current</option>
-                  <option value="power_w" data-i18n="metric.powerShort">Power</option>
-                  <option value="cell_voltage_delta_v" data-i18n="metric.cellDelta">Cell delta</option>
-                  <option value="mosfet_temperature_c" data-i18n="metric.mosfetShort">MOSFET temp</option>
-                  <option value="ambient_temperature_c" data-i18n="metric.ambientShort">Ambient temp</option>
-                </select>
                 <div class="segmented" aria-label="Range" data-i18n-aria-label="history.range">
                   <button data-range="1h">1H</button>
                   <button data-range="24h" class="is-active">24H</button>
@@ -404,12 +397,35 @@
                 </div>
               </div>
             </div>
+            <div class="power-history-toolbar">
+              <div
+                id="powerSeriesControls"
+                class="power-series-controls"
+                role="group"
+                aria-label="Visible power data"
+                data-i18n-aria-label="history.seriesAria"
+              >
+                <button type="button" class="power-series-toggle is-active" data-power-series="grid_power_w" aria-pressed="true" style="--series-color: #0a84ff">
+                  <i></i><span data-i18n="history.grid">Grid</span>
+                </button>
+                <button type="button" class="power-series-toggle is-active" data-power-series="battery_power_w" aria-pressed="true" style="--series-color: #bf5af2">
+                  <i></i><span data-i18n="history.battery">Battery</span>
+                </button>
+                <button type="button" class="power-series-toggle is-active" data-power-series="solar_power_w" aria-pressed="true" style="--series-color: #30b95f">
+                  <i></i><span data-i18n="history.solar">Solar</span>
+                </button>
+                <button type="button" class="power-series-toggle is-active" data-power-series="load_power_w" aria-pressed="true" style="--series-color: #ff7a00">
+                  <i></i><span data-i18n="history.load">Load</span>
+                </button>
+              </div>
+              <p class="power-direction-note" data-i18n="history.directionNote">Above zero: grid import and battery charging. Below zero: grid export and battery discharge.</p>
+            </div>
             <div id="chartStage" class="chart-stage">
               <canvas
                 id="historyChart"
                 height="320"
                 tabindex="0"
-                aria-label="Battery history chart"
+                aria-label="Overlaid power history chart"
                 data-i18n-aria-label="history.chartAria"
                 aria-describedby="chartTooltip"
               ></canvas>

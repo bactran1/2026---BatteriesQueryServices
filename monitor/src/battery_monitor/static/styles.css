@@ -1746,6 +1746,68 @@ button {
   justify-content: flex-end;
 }
 
+.history-description {
+  max-width: 520px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.power-history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 18px;
+  margin: -2px 0 14px;
+  flex-wrap: wrap;
+}
+
+.power-series-controls {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.power-series-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.power-series-toggle i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--series-color);
+  opacity: 0.45;
+}
+
+.power-series-toggle.is-active {
+  border-color: color-mix(in srgb, var(--series-color) 48%, var(--line));
+  color: var(--ink);
+  background: color-mix(in srgb, var(--series-color) 9%, transparent);
+}
+
+.power-series-toggle.is-active i {
+  opacity: 1;
+}
+
+.power-direction-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 select,
 .segmented,
 .icon-button {
@@ -1885,6 +1947,40 @@ select {
 
 .chart-tooltip__value {
   font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chart-tooltip--power {
+  display: block;
+  min-width: 250px;
+}
+
+.power-tooltip__time {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.power-tooltip__row {
+  display: grid;
+  grid-template-columns: 8px minmax(70px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 23px;
+  font-size: 11px;
+}
+
+.power-tooltip__row i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--series-color);
+}
+
+.power-tooltip__row strong {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -2459,6 +2555,11 @@ select {
   .controls {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .power-history-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   #historyChart {

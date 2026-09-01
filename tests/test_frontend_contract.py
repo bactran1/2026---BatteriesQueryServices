@@ -220,7 +220,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("NODE_COLORS.load", scene)
         self.assertIn('"inverter.state.bypass": "Điện lưới chuyển thẳng"', javascript)
 
-    def test_three_year_energy_history_has_date_month_and_year_views(self) -> None:
+    def test_energy_history_has_hour_date_month_and_year_views(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")
         html = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -229,6 +229,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="energyConsumptionTotal"', html)
         self.assertIn('id="energySolarTotal"', html)
         self.assertIn('id="energyGridTotal"', html)
+        self.assertIn('data-energy-view="hour"', html)
         self.assertIn('data-energy-view="date"', html)
         self.assertIn('data-energy-view="month"', html)
         self.assertIn('data-energy-view="year"', html)
@@ -240,6 +241,24 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('"energyHistory.titleMonth": "Năng lượng theo tháng"', javascript)
         self.assertIn(".energy-history-layout", css)
         self.assertIn("#energyHistoryChart", css)
+
+    def test_power_history_overlays_inverter_sources_and_demand(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="powerSeriesControls"', html)
+        self.assertIn('data-power-series="grid_power_w"', html)
+        self.assertIn('data-power-series="battery_power_w"', html)
+        self.assertIn('data-power-series="solar_power_w"', html)
+        self.assertIn('data-power-series="load_power_w"', html)
+        self.assertNotIn('id="metricSelect"', html)
+        self.assertIn('getJson(`/api/power-history?${params}`, "history")', javascript)
+        self.assertIn("function formatPowerHistoryValue", javascript)
+        self.assertIn('"history.importing"', javascript)
+        self.assertIn('"history.discharging"', javascript)
+        self.assertIn(".power-series-toggle", css)
+        self.assertIn(".chart-tooltip--power", css)
 
     def test_default_configured_labels_are_localized_in_vietnamese(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")

@@ -2,9 +2,9 @@ const state = {
   batteries: [],
   inverter: null,
   selectedBatteryId: null,
-  metric: "soc_percent",
   range: "24h",
   history: [],
+  powerSeries: new Set(["grid_power_w", "battery_power_w", "solar_power_w", "load_power_w"]),
   energyView: "month",
   energyHistory: [],
   energyTotals: {},
@@ -27,16 +27,6 @@ const state = {
   livePayload: null,
   summary: {},
   events: [],
-};
-
-const metricLabelKeys = {
-  soc_percent: "metric.soc",
-  voltage_v: "metric.packVoltage",
-  current_a: "metric.packCurrent",
-  power_w: "metric.livePower",
-  cell_voltage_delta_v: "metric.cellDelta",
-  mosfet_temperature_c: "metric.mosfetTemperature",
-  ambient_temperature_c: "metric.ambientTemperature",
 };
 
 const translations = {
@@ -165,11 +155,14 @@ const translations = {
     "inverter.healthAlerts": "{alarms} alarms · {faults} faults",
     "inverter.lastError": "Last error: {message}",
     "energyHistory.eyebrow": "Energy history",
+    "energyHistory.titleHour": "Energy by hour",
     "energyHistory.titleDate": "Energy by date",
     "energyHistory.titleMonth": "Energy by month",
     "energyHistory.titleYear": "Energy by year",
     "energyHistory.description": "Consumption, solar generation, and grid draw over the last three years",
+    "energyHistory.descriptionHour": "Hourly meter detail for the last 7 days; readings remain archived for three years",
     "energyHistory.view": "Energy history view",
+    "energyHistory.hour": "Hour",
     "energyHistory.date": "Date",
     "energyHistory.month": "Month",
     "energyHistory.year": "Year",
@@ -268,13 +261,25 @@ const translations = {
     "inventory.notSeen": "Not seen yet",
     "workbench.aria": "Monitoring workbench",
     "history.eyebrow": "History",
-    "history.metric": "Metric",
+    "history.powerTitle": "Power sources & demand",
+    "history.powerDescription": "Overlay grid, battery, solar, and load power on one timeline",
     "history.range": "Range",
-    "history.chartAria": "Battery history chart",
-    "history.unavailable": "History temporarily unavailable",
-    "history.awaiting": "Awaiting history",
-    "history.pointAria": "{metric} for {battery}: {value}, {timestamp}",
-    "history.metricChartAria": "{metric} history chart",
+    "history.seriesAria": "Visible power data",
+    "history.grid": "Grid",
+    "history.battery": "Battery",
+    "history.solar": "Solar",
+    "history.load": "Load",
+    "history.directionNote": "Above zero: grid import and battery charging. Below zero: grid export and battery discharge.",
+    "history.chartAria": "Overlaid power history chart",
+    "history.unavailable": "Power history temporarily unavailable",
+    "history.awaiting": "Awaiting inverter power history",
+    "history.pointAria": "Power at {timestamp}: {values}",
+    "history.importing": "importing",
+    "history.exporting": "exporting",
+    "history.charging": "charging",
+    "history.discharging": "discharging",
+    "history.generating": "generating",
+    "history.consuming": "consuming",
     "metric.soc": "State of charge",
     "metric.packVoltage": "Pack voltage",
     "metric.packCurrent": "Pack current",
@@ -453,11 +458,14 @@ const translations = {
     "inverter.healthAlerts": "{alarms} cảnh báo · {faults} lỗi",
     "inverter.lastError": "Lỗi gần nhất: {message}",
     "energyHistory.eyebrow": "Lịch sử năng lượng",
+    "energyHistory.titleHour": "Năng lượng theo giờ",
     "energyHistory.titleDate": "Năng lượng theo ngày",
     "energyHistory.titleMonth": "Năng lượng theo tháng",
     "energyHistory.titleYear": "Năng lượng theo năm",
     "energyHistory.description": "Điện năng tiêu thụ, sản lượng điện mặt trời và điện lấy từ lưới trong ba năm qua",
+    "energyHistory.descriptionHour": "Chi tiết công tơ theo giờ trong 7 ngày qua; số liệu vẫn được lưu trữ trong ba năm",
     "energyHistory.view": "Chế độ xem lịch sử năng lượng",
+    "energyHistory.hour": "Giờ",
     "energyHistory.date": "Ngày",
     "energyHistory.month": "Tháng",
     "energyHistory.year": "Năm",
@@ -556,13 +564,25 @@ const translations = {
     "inventory.notSeen": "Chưa ghi nhận",
     "workbench.aria": "Bảng điều khiển giám sát",
     "history.eyebrow": "Lịch sử",
-    "history.metric": "Chỉ số",
+    "history.powerTitle": "Nguồn điện & nhu cầu",
+    "history.powerDescription": "Chồng dữ liệu lưới, pin, mặt trời và tải trên cùng một dòng thời gian",
     "history.range": "Khoảng thời gian",
-    "history.chartAria": "Biểu đồ lịch sử pin",
-    "history.unavailable": "Lịch sử tạm thời không khả dụng",
-    "history.awaiting": "Đang chờ dữ liệu lịch sử",
-    "history.pointAria": "{metric} của {battery}: {value}, {timestamp}",
-    "history.metricChartAria": "Biểu đồ lịch sử {metric}",
+    "history.seriesAria": "Dữ liệu công suất đang hiển thị",
+    "history.grid": "Lưới điện",
+    "history.battery": "Pin",
+    "history.solar": "Mặt trời",
+    "history.load": "Tải",
+    "history.directionNote": "Trên 0: lấy điện lưới và sạc pin. Dưới 0: phát điện lên lưới và xả pin.",
+    "history.chartAria": "Biểu đồ chồng lịch sử công suất",
+    "history.unavailable": "Lịch sử công suất tạm thời không khả dụng",
+    "history.awaiting": "Đang chờ lịch sử công suất biến tần",
+    "history.pointAria": "Công suất lúc {timestamp}: {values}",
+    "history.importing": "đang lấy điện",
+    "history.exporting": "đang phát điện",
+    "history.charging": "đang sạc",
+    "history.discharging": "đang xả",
+    "history.generating": "đang phát",
+    "history.consuming": "đang tiêu thụ",
     "metric.soc": "Mức sạc",
     "metric.packVoltage": "Điện áp bộ pin",
     "metric.packCurrent": "Dòng điện bộ pin",
@@ -618,27 +638,12 @@ const translations = {
   },
 };
 
-const metricUnits = {
-  soc_percent: "%",
-  voltage_v: "V",
-  current_a: "A",
-  power_w: "W",
-  cell_voltage_delta_v: "V",
-  mosfet_temperature_c: "°C",
-  ambient_temperature_c: "°C",
-};
-
-const metricDigits = {
-  soc_percent: 1,
-  voltage_v: 2,
-  current_a: 2,
-  power_w: 1,
-  cell_voltage_delta_v: 4,
-  mosfet_temperature_c: 1,
-  ambient_temperature_c: 1,
-};
-
-const palette = ["#ff7a00", "#30d158", "#bf5af2", "#34c7d9", "#ff453a"];
+const powerHistorySeries = [
+  { field: "grid_power_w", labelKey: "history.grid", color: "#0a84ff" },
+  { field: "battery_power_w", labelKey: "history.battery", color: "#bf5af2" },
+  { field: "solar_power_w", labelKey: "history.solar", color: "#30b95f" },
+  { field: "load_power_w", labelKey: "history.load", color: "#ff7a00" },
+];
 const energySeries = [
   { field: "consumption_kwh", color: "#ff7a00" },
   { field: "solar_generation_kwh", color: "#30b95f" },
@@ -669,10 +674,6 @@ function t(key, values = {}) {
 
 function currentLocale() {
   return state.language === "vi" ? "vi-VN" : "en-US";
-}
-
-function metricLabel(metric = state.metric) {
-  return t(metricLabelKeys[metric] || metric);
 }
 
 function applyStaticTranslations() {
@@ -731,10 +732,8 @@ async function refreshLive() {
   state.collectorOnline = ["online", "degraded"].includes(state.collectorState);
   state.lastLiveReceivedAt = Date.now();
   state.resourceErrors.live = null;
-  let initializedSelection = false;
   if (!state.selectedBatteryId && state.batteries.length) {
     state.selectedBatteryId = state.batteries[0].id;
-    initializedSelection = true;
   }
   renderStatus(payload);
   renderRackOverview();
@@ -744,36 +743,20 @@ async function refreshLive() {
   renderBatteryInventory();
   renderSelectedBattery();
   renderStorage();
-  if (
-    initializedSelection &&
-    state.history.some((point) => point.battery_id !== state.selectedBatteryId)
-  ) {
-    refreshHistory().catch((error) => handleResourceFailure("history", error));
-  }
 }
 
 async function refreshHistory() {
-  const requestedBatteryId = state.selectedBatteryId || "all";
-  const requestedMetric = state.metric;
   const requestedRange = state.range;
-  const params = new URLSearchParams({
-    battery_id: requestedBatteryId,
-    metric: requestedMetric,
-    range: requestedRange,
-  });
-  const payload = await getJson(`/api/history?${params}`, "history");
-  if (
-    requestedBatteryId !== (state.selectedBatteryId || "all") ||
-    requestedMetric !== state.metric ||
-    requestedRange !== state.range
-  ) {
+  const params = new URLSearchParams({ range: requestedRange });
+  const payload = await getJson(`/api/power-history?${params}`, "history");
+  if (requestedRange !== state.range) {
     return refreshHistory();
   }
   state.history = payload.points || [];
   state.lastHistoryRefreshAt = Date.now();
   state.resourceErrors.history = null;
   $("historyChart").removeAttribute("data-refresh-error");
-  $("chartTitle").textContent = metricLabel();
+  $("chartTitle").textContent = t("history.powerTitle");
   state.chartHover = null;
   hideChartTooltip(false);
   animateChartIn();
@@ -1445,7 +1428,6 @@ function renderBatteryCards() {
         renderBatteryCards();
         renderBatteryInventory();
         renderSelectedBattery();
-        refreshHistory().catch((error) => handleResourceFailure("history", error));
       });
     }
 
@@ -1575,7 +1557,6 @@ function renderBatteryInventory() {
       renderBatteryCards();
       renderBatteryInventory();
       renderSelectedBattery();
-      refreshHistory().catch((error) => handleResourceFailure("history", error));
     });
   });
 }
@@ -1716,11 +1697,15 @@ function renderEnergyHistory() {
   });
 
   const titleKey = {
+    hour: "energyHistory.titleHour",
     date: "energyHistory.titleDate",
     month: "energyHistory.titleMonth",
     year: "energyHistory.titleYear",
   }[state.energyView];
   $("energyHistoryTitle").textContent = t(titleKey || "energyHistory.titleMonth");
+  $("energyHistoryDescription").textContent = t(
+    state.energyView === "hour" ? "energyHistory.descriptionHour" : "energyHistory.description",
+  );
 
   const hasPoints = state.energyHistory.some((point) =>
     energySeries.some((series) => finiteNumber(point[series.field]) !== null),
@@ -1770,7 +1755,13 @@ function drawEnergyHistoryChart() {
   let minTime = Math.min(...points.map((point) => point.unix));
   let maxTime = Math.max(...points.map((point) => point.unix));
   if (minTime === maxTime) {
-    const spread = state.energyView === "date" ? 86400 : state.energyView === "month" ? 2678400 : 31536000;
+    const spread = state.energyView === "hour"
+      ? 3600
+      : state.energyView === "date"
+        ? 86400
+        : state.energyView === "month"
+          ? 2678400
+          : 31536000;
     minTime -= spread / 2;
     maxTime += spread / 2;
   }
@@ -1877,6 +1868,12 @@ function formatEnergyAxis(value) {
 function formatEnergyPeriod(point) {
   if (state.energyView === "year") return String(point.period || "");
   const date = new Date(point.timestamp || point.unix * 1000);
+  if (state.energyView === "hour") {
+    return new Intl.DateTimeFormat(currentLocale(), {
+      weekday: "short",
+      hour: "numeric",
+    }).format(date);
+  }
   if (state.energyView === "month") {
     return new Intl.DateTimeFormat(currentLocale(), { month: "short", year: "2-digit" }).format(date);
   }
@@ -1929,11 +1926,15 @@ function drawChart() {
     : { top: 18, right: 18, bottom: 36, left: 58 };
   const width = Math.max(1, rect.width - pad.left - pad.right);
   const height = Math.max(1, rect.height - pad.top - pad.bottom);
-  const history = state.history.filter(
-    (point) => Number.isFinite(point.unix) && Number.isFinite(point.value),
-  );
+  const visibleSeries = selectedPowerHistorySeries();
+  const history = state.history
+    .filter((point) =>
+      Number.isFinite(point.unix) &&
+      visibleSeries.some((series) => finiteNumber(point[series.field]) !== null),
+    )
+    .sort((left, right) => left.unix - right.unix);
 
-  if (!history.length) {
+  if (!history.length || !visibleSeries.length) {
     drawEmptyChart(ctx, theme, pad, width, height);
     state.chartGeometry = null;
     $("chartLegend").innerHTML = "";
@@ -1941,15 +1942,18 @@ function drawChart() {
     return;
   }
 
-  const groups = groupBy(history, "battery_id");
   const times = history.map((point) => point.unix);
-  const values = history.map((point) => point.value);
+  const values = history.flatMap((point) =>
+    visibleSeries
+      .map((series) => finiteNumber(point[series.field]))
+      .filter((value) => value !== null),
+  );
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
-  let minValue = Math.min(...values);
-  let maxValue = Math.max(...values);
+  let minValue = Math.min(0, ...values);
+  let maxValue = Math.max(0, ...values);
   if (minValue === maxValue) {
-    const spread = Math.max(Math.abs(minValue) * 0.02, 0.1);
+    const spread = Math.max(Math.abs(minValue) * 0.08, 100);
     minValue -= spread;
     maxValue += spread;
   }
@@ -1964,19 +1968,19 @@ function drawChart() {
   ctx.beginPath();
   ctx.rect(pad.left, pad.top, width * state.chartReveal, height);
   ctx.clip();
-  Array.from(groups.entries()).forEach(([batteryId, rawPoints], index) => {
-    const color = palette[index % palette.length];
-    const points = [...rawPoints]
-      .sort((a, b) => a.unix - b.unix)
-      .map((point) => ({
-        point,
-        batteryId,
-        color,
-        x: pad.left + scale(point.unix, minTime, maxTime, 0, width),
-        y: pad.top + height - scale(point.value, minValue, maxValue, 0, height),
+  visibleSeries.forEach((series) => {
+    const points = history
+      .map((point) => ({ point, value: finiteNumber(point[series.field]) }))
+      .filter((item) => item.value !== null)
+      .map((item) => ({
+        ...item,
+        series,
+        color: series.color,
+        x: pad.left + scale(item.point.unix, minTime, maxTime, 0, width),
+        y: pad.top + height - scale(item.value, minValue, maxValue, 0, height),
       }));
     plottedPoints.push(...points);
-    drawHistorySeries(ctx, points, color, pad.top + height);
+    drawHistorySeries(ctx, points, series.color);
   });
   ctx.restore();
 
@@ -1984,17 +1988,14 @@ function drawChart() {
     points: plottedPoints,
     plot: { left: pad.left, right: pad.left + width, top: pad.top, bottom: pad.top + height },
   };
-  renderChartLegend(groups);
+  renderChartLegend(history, visibleSeries);
 
-  const activePoint = state.chartHover
-    ? plottedPoints.find(
-        (item) =>
-          item.batteryId === state.chartHover.batteryId && item.point.unix === state.chartHover.unix,
-      )
-    : null;
-  if (activePoint) {
-    drawChartFocus(ctx, activePoint, theme, pad.top, pad.top + height);
-    renderChartTooltip(activePoint, rect);
+  const activePoints = state.chartHover
+    ? plottedPoints.filter((item) => item.point.unix === state.chartHover.unix)
+    : [];
+  if (activePoints.length) {
+    drawChartFocus(ctx, activePoints, theme, pad.top, pad.top + height);
+    renderChartTooltip(activePoints, rect);
   } else {
     hideChartTooltip(false);
   }
@@ -2024,19 +2025,32 @@ function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValu
   ctx.lineWidth = 1;
   ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   ctx.fillStyle = theme.chartMuted;
+  const zeroY = pad.top + height - scale(0, minValue, maxValue, 0, height);
 
   for (let index = 0; index <= 4; index += 1) {
     const y = pad.top + (height * index) / 4;
     const value = maxValue - ((maxValue - minValue) * index) / 4;
+    if (Math.abs(y - zeroY) < 14) continue;
     ctx.strokeStyle = theme.chartGrid;
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad.left, y);
     ctx.lineTo(pad.left + width, y);
     ctx.stroke();
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(formatHistoryValue(value), pad.left - 9, y);
+    ctx.fillText(formatPowerAxis(value), pad.left - 9, y);
   }
+
+  ctx.strokeStyle = theme.chartMuted;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, zeroY);
+  ctx.lineTo(pad.left + width, zeroY);
+  ctx.stroke();
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  ctx.fillText("0 W", pad.left - 9, zeroY);
 
   const tickCount = width < 460 ? 3 : 5;
   for (let index = 0; index < tickCount; index += 1) {
@@ -2055,23 +2069,8 @@ function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValu
   ctx.restore();
 }
 
-function drawHistorySeries(ctx, points, color, baseline) {
+function drawHistorySeries(ctx, points, color) {
   if (!points.length) return;
-  const gradient = ctx.createLinearGradient(0, Math.min(...points.map((item) => item.y)), 0, baseline);
-  gradient.addColorStop(0, hexToRgba(color, 0.18));
-  gradient.addColorStop(1, hexToRgba(color, 0));
-
-  ctx.beginPath();
-  points.forEach((item, index) => {
-    if (index === 0) ctx.moveTo(item.x, item.y);
-    else ctx.lineTo(item.x, item.y);
-  });
-  ctx.lineTo(points[points.length - 1].x, baseline);
-  ctx.lineTo(points[0].x, baseline);
-  ctx.closePath();
-  ctx.fillStyle = gradient;
-  ctx.fill();
-
   ctx.beginPath();
   points.forEach((item, index) => {
     if (index === 0) ctx.moveTo(item.x, item.y);
@@ -2084,37 +2083,41 @@ function drawHistorySeries(ctx, points, color, baseline) {
   ctx.stroke();
 }
 
-function drawChartFocus(ctx, activePoint, theme, top, bottom) {
+function drawChartFocus(ctx, activePoints, theme, top, bottom) {
+  const x = activePoints[0].x;
   ctx.save();
   ctx.strokeStyle = theme.chartMuted;
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 5]);
   ctx.beginPath();
-  ctx.moveTo(activePoint.x, top);
-  ctx.lineTo(activePoint.x, bottom);
+  ctx.moveTo(x, top);
+  ctx.lineTo(x, bottom);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  ctx.beginPath();
-  ctx.arc(activePoint.x, activePoint.y, 7, 0, Math.PI * 2);
-  ctx.fillStyle = theme.chartInk;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(activePoint.x, activePoint.y, 4, 0, Math.PI * 2);
-  ctx.fillStyle = activePoint.color;
-  ctx.fill();
+  activePoints.forEach((activePoint) => {
+    ctx.beginPath();
+    ctx.arc(activePoint.x, activePoint.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = theme.chartInk;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(activePoint.x, activePoint.y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = activePoint.color;
+    ctx.fill();
+  });
   ctx.restore();
 }
 
-function renderChartLegend(groups) {
+function renderChartLegend(history, visibleSeries) {
   const legend = $("chartLegend");
-  const items = Array.from(groups.entries()).map(([batteryId, points], index) => ({
-    batteryId,
-    color: palette[index % palette.length],
-    point: points[points.length - 1],
-  }));
-  const signature = `${state.language}:${state.metric}:${items
-    .map((item) => `${item.batteryId}:${item.point.unix}:${item.point.value}`)
+  const items = visibleSeries.map((series) => {
+    const point = [...history]
+      .reverse()
+      .find((candidate) => finiteNumber(candidate[series.field]) !== null);
+    return { series, point, value: point ? point[series.field] : null };
+  });
+  const signature = `${state.language}:${items
+    .map((item) => `${item.series.field}:${item.point?.unix}:${item.value}`)
     .join("|")}`;
   if (legend.dataset.signature === signature) return;
   legend.dataset.signature = signature;
@@ -2122,26 +2125,34 @@ function renderChartLegend(groups) {
     .map(
       (item) => `
         <span class="chart-legend__item">
-          <span class="chart-legend__swatch" style="--series-color: ${item.color}"></span>
-          <strong>${escapeHtml(item.batteryId)}</strong>
-          <span>${formatHistoryValue(item.point.value)}</span>
+          <span class="chart-legend__swatch" style="--series-color: ${item.series.color}"></span>
+          <strong>${escapeHtml(t(item.series.labelKey))}</strong>
+          <span>${formatPowerHistoryValue(item.value, item.series.field)}</span>
         </span>
       `,
     )
     .join("");
 }
 
-function renderChartTooltip(activePoint, canvasRect) {
+function renderChartTooltip(activePoints, canvasRect) {
   const tooltip = $("chartTooltip");
-  const value = formatHistoryValue(activePoint.point.value);
-  const timestamp = formatChartTimestamp(activePoint.point.timestamp || activePoint.point.unix * 1000);
+  const timestamp = formatChartTimestamp(
+    activePoints[0].point.timestamp || activePoints[0].point.unix * 1000,
+  );
+  const rows = activePoints
+    .sort((left, right) => powerHistorySeries.indexOf(left.series) - powerHistorySeries.indexOf(right.series))
+    .map((item) => `
+      <span class="power-tooltip__row">
+        <i style="--series-color: ${item.color}"></i>
+        <span>${escapeHtml(t(item.series.labelKey))}</span>
+        <strong>${escapeHtml(formatPowerHistoryValue(item.value, item.series.field))}</strong>
+      </span>
+    `)
+    .join("");
+  tooltip.classList.add("chart-tooltip--power");
   tooltip.innerHTML = `
-    <span class="chart-tooltip__swatch" style="--series-color: ${activePoint.color}"></span>
-    <span class="chart-tooltip__identity">
-      <strong>${escapeHtml(activePoint.batteryId)}</strong>
-      <time>${escapeHtml(timestamp)}</time>
-    </span>
-    <strong class="chart-tooltip__value">${escapeHtml(value)}</strong>
+    <time class="power-tooltip__time">${escapeHtml(timestamp)}</time>
+    ${rows}
   `;
   tooltip.hidden = false;
 
@@ -2151,17 +2162,20 @@ function renderChartTooltip(activePoint, canvasRect) {
     tooltip.style.top = "12px";
   } else {
     delete tooltip.dataset.mobile;
-    tooltip.style.left = `${clamp(activePoint.x, 116, canvasRect.width - 116)}px`;
-    tooltip.style.top = `${activePoint.y}px`;
-    tooltip.classList.toggle("is-below", activePoint.y < 96);
+    const anchorX = activePoints[0].x;
+    const anchorY = Math.min(...activePoints.map((item) => item.y));
+    tooltip.style.left = `${clamp(anchorX, 138, canvasRect.width - 138)}px`;
+    tooltip.style.top = `${anchorY}px`;
+    tooltip.classList.toggle("is-below", anchorY < 145);
   }
+  const values = activePoints
+    .map((item) => `${t(item.series.labelKey)} ${formatPowerHistoryValue(item.value, item.series.field)}`)
+    .join(", ");
   $("historyChart").setAttribute(
     "aria-label",
     t("history.pointAria", {
-      metric: metricLabel(),
-      battery: activePoint.batteryId,
-      value,
       timestamp,
+      values,
     }),
   );
 }
@@ -2171,11 +2185,9 @@ function hideChartTooltip(redraw = true) {
   const tooltip = $("chartTooltip");
   tooltip.hidden = true;
   tooltip.classList.remove("is-below");
+  tooltip.classList.remove("chart-tooltip--power");
   delete tooltip.dataset.mobile;
-  $("historyChart").setAttribute(
-    "aria-label",
-    t("history.metricChartAria", { metric: metricLabel() }),
-  );
+  $("historyChart").setAttribute("aria-label", t("history.chartAria"));
   if (redraw) window.requestAnimationFrame(drawChart);
 }
 
@@ -2196,7 +2208,7 @@ function updateChartHoverFromClient(clientX, clientY) {
     return !best || score < best.score ? { point, score } : best;
   }, null)?.point;
   if (!nearest) return;
-  state.chartHover = { batteryId: nearest.batteryId, unix: nearest.point.unix };
+  state.chartHover = { unix: nearest.point.unix };
   drawChart();
 }
 
@@ -2206,26 +2218,50 @@ function queueChartHover(clientX, clientY) {
 }
 
 function moveChartKeyboardSelection(key) {
-  const points = [...(state.chartGeometry?.points || [])].sort(
-    (a, b) => a.point.unix - b.point.unix || a.batteryId.localeCompare(b.batteryId),
-  );
-  if (!points.length) return;
-  const currentIndex = points.findIndex(
-    (item) => item.batteryId === state.chartHover?.batteryId && item.point.unix === state.chartHover?.unix,
-  );
+  const timestamps = Array.from(
+    new Set((state.chartGeometry?.points || []).map((item) => item.point.unix)),
+  ).sort((left, right) => left - right);
+  if (!timestamps.length) return;
+  const currentIndex = timestamps.indexOf(state.chartHover?.unix);
   let nextIndex = currentIndex;
   if (key === "Home") nextIndex = 0;
-  else if (key === "End") nextIndex = points.length - 1;
-  else if (key === "ArrowLeft") nextIndex = currentIndex < 0 ? points.length - 1 : currentIndex - 1;
+  else if (key === "End") nextIndex = timestamps.length - 1;
+  else if (key === "ArrowLeft") nextIndex = currentIndex < 0 ? timestamps.length - 1 : currentIndex - 1;
   else if (key === "ArrowRight") nextIndex = currentIndex < 0 ? 0 : currentIndex + 1;
-  nextIndex = clamp(nextIndex, 0, points.length - 1);
-  const next = points[nextIndex];
-  state.chartHover = { batteryId: next.batteryId, unix: next.point.unix };
+  nextIndex = clamp(nextIndex, 0, timestamps.length - 1);
+  state.chartHover = { unix: timestamps[nextIndex] };
   drawChart();
 }
 
-function formatHistoryValue(value) {
-  return formatValue(value, metricUnits[state.metric], metricDigits[state.metric] ?? 2);
+function selectedPowerHistorySeries() {
+  return powerHistorySeries.filter((series) => state.powerSeries.has(series.field));
+}
+
+function formatPowerAxis(value) {
+  const magnitude = Math.abs(value);
+  const scaled = magnitude >= 1000 ? magnitude / 1000 : magnitude;
+  const unit = magnitude >= 1000 ? "kW" : "W";
+  const prefix = value < 0 ? "−" : value > 0 ? "+" : "";
+  return `${prefix}${new Intl.NumberFormat(currentLocale(), {
+    maximumFractionDigits: magnitude >= 1000 ? 1 : 0,
+  }).format(scaled)} ${unit}`;
+}
+
+function formatPowerHistoryValue(value, field) {
+  const number = finiteNumber(value);
+  if (number === null) return "--";
+  const magnitude = Math.abs(number);
+  const power = magnitude >= 1000
+    ? `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 1 }).format(magnitude / 1000)} kW`
+    : `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 0 }).format(magnitude)} W`;
+  const directionKey = field === "grid_power_w"
+    ? number >= 0 ? "history.importing" : "history.exporting"
+    : field === "battery_power_w"
+      ? number >= 0 ? "history.charging" : "history.discharging"
+      : field === "solar_power_w"
+        ? "history.generating"
+        : "history.consuming";
+  return `${power} ${t(directionKey)}`;
 }
 
 function formatChartTick(unix) {
@@ -2248,14 +2284,6 @@ function formatChartTimestamp(value) {
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(value));
-}
-
-function hexToRgba(hex, alpha) {
-  const value = hex.replace("#", "");
-  const red = Number.parseInt(value.slice(0, 2), 16);
-  const green = Number.parseInt(value.slice(2, 4), 16);
-  const blue = Number.parseInt(value.slice(4, 6), 16);
-  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function selectedBattery() {
@@ -2356,16 +2384,6 @@ function batteryDotClass(status) {
   if (status === "ok") return "dot dot--ok";
   if (status === "error") return "dot dot--error";
   return "dot";
-}
-
-function groupBy(items, key) {
-  const map = new Map();
-  for (const item of items) {
-    const value = item[key];
-    if (!map.has(value)) map.set(value, []);
-    map.get(value).push(item);
-  }
-  return map;
 }
 
 function formatValue(value, unit = "", digits = 1) {
@@ -2514,7 +2532,7 @@ function applyLanguage(language, persist) {
 }
 
 function rerenderLocalizedUi() {
-  $("chartTitle").textContent = metricLabel();
+  $("chartTitle").textContent = t("history.powerTitle");
   $("chartLegend").dataset.signature = "";
   hideChartTooltip(false);
   renderEnergyHistory();
@@ -2620,10 +2638,18 @@ function bindControls() {
   initLanguage();
   initTheme();
 
-  $("metricSelect").addEventListener("change", (event) => {
-    state.metric = event.target.value;
-    hideChartTooltip(false);
-    refreshHistory().catch((error) => handleResourceFailure("history", error));
+  document.querySelectorAll("[data-power-series]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = button.dataset.powerSeries;
+      if (state.powerSeries.has(field) && state.powerSeries.size === 1) return;
+      if (state.powerSeries.has(field)) state.powerSeries.delete(field);
+      else state.powerSeries.add(field);
+      button.classList.toggle("is-active", state.powerSeries.has(field));
+      button.setAttribute("aria-pressed", String(state.powerSeries.has(field)));
+      $("chartLegend").dataset.signature = "";
+      hideChartTooltip(false);
+      window.requestAnimationFrame(drawChart);
+    });
   });
 
   document.querySelectorAll(".segmented button[data-range]").forEach((button) => {

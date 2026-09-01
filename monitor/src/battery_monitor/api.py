@@ -156,6 +156,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def energy(view: EnergyView = Query(default="month")):
         return await asyncio.to_thread(store.energy_history, view)
 
+    @app.get("/api/power-history")
+    async def power_history(range: str = Query(default="24h")):
+        seconds = _range_seconds(range)
+        bucket_seconds = _bucket_seconds(seconds)
+        return {
+            "range": range,
+            "bucket_seconds": bucket_seconds,
+            "points": await asyncio.to_thread(
+                store.power_history,
+                seconds,
+                bucket_seconds,
+            ),
+        }
+
     @app.get("/api/events")
     async def events(range: str = Query(default="7d"), limit: int = Query(default=80, ge=1, le=300)):
         return {
