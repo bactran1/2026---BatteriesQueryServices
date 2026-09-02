@@ -249,7 +249,7 @@
             <div>
               <p class="eyebrow" data-i18n="energyHistory.eyebrow">Energy history</p>
               <h2 id="energyHistoryTitle" data-i18n="energyHistory.titleMonth">Energy by month</h2>
-              <p id="energyHistoryDescription" class="energy-history-description" data-i18n="energyHistory.description">Consumption, solar generation, and grid draw over the last three years</p>
+              <p id="energyHistoryDescription" class="energy-history-description" data-i18n="energyHistory.description">Three-year history grouped by calendar period; totals show the latest recorded period</p>
             </div>
             <div
               id="energyViewControls"
@@ -265,21 +265,21 @@
             </div>
           </div>
           <div class="energy-history-layout">
-            <div class="energy-history-totals" aria-label="Three-year energy totals" data-i18n-aria-label="energyHistory.totalsAria">
+            <div id="energyHistoryTotals" class="energy-history-totals" aria-label="Energy totals for the latest selected period" data-i18n-aria-label="energyHistory.totalsAria">
               <div class="energy-total energy-total--consumption">
                 <span data-i18n="energyHistory.consumption">Power consumption</span>
                 <strong id="energyConsumptionTotal">--</strong>
-                <small data-i18n="energyHistory.kwhTotal">kWh · three-year total</small>
+                <small id="energyConsumptionPeriod" data-i18n="energyHistory.kwhAwaiting">kWh · awaiting data</small>
               </div>
               <div class="energy-total energy-total--solar">
                 <span data-i18n="energyHistory.solar">Solar generation</span>
                 <strong id="energySolarTotal">--</strong>
-                <small data-i18n="energyHistory.kwhTotal">kWh · three-year total</small>
+                <small id="energySolarPeriod" data-i18n="energyHistory.kwhAwaiting">kWh · awaiting data</small>
               </div>
               <div class="energy-total energy-total--grid">
                 <span data-i18n="energyHistory.grid">Grid draw</span>
                 <strong id="energyGridTotal">--</strong>
-                <small data-i18n="energyHistory.kwhTotal">kWh · three-year total</small>
+                <small id="energyGridPeriod" data-i18n="energyHistory.kwhAwaiting">kWh · awaiting data</small>
               </div>
             </div>
             <div class="energy-history-chart-wrap">

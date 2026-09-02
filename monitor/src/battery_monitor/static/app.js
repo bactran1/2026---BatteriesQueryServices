@@ -7,7 +7,8 @@ const state = {
   powerSeries: new Set(["grid_power_w", "battery_power_w", "solar_power_w", "load_power_w"]),
   energyView: "month",
   energyHistory: [],
-  energyTotals: {},
+  energySummary: {},
+  energySummaryPeriod: null,
   storage: {},
   rack: {},
   collectorState: "offline",
@@ -159,18 +160,20 @@ const translations = {
     "energyHistory.titleDate": "Energy by date",
     "energyHistory.titleMonth": "Energy by month",
     "energyHistory.titleYear": "Energy by year",
-    "energyHistory.description": "Consumption, solar generation, and grid draw over the last three years",
-    "energyHistory.descriptionHour": "Hourly meter detail for the last 7 days; readings remain archived for three years",
+    "energyHistory.description": "Three-year history grouped by calendar period; totals show the latest recorded period",
+    "energyHistory.descriptionHour": "Hourly meter detail for the last 7 days; totals show the latest recorded hour",
     "energyHistory.view": "Energy history view",
     "energyHistory.hour": "Hour",
     "energyHistory.date": "Date",
     "energyHistory.month": "Month",
     "energyHistory.year": "Year",
-    "energyHistory.totalsAria": "Three-year energy totals",
+    "energyHistory.totalsAria": "Energy totals for the latest selected period",
+    "energyHistory.totalsPeriodAria": "Energy totals for {period}",
     "energyHistory.consumption": "Power consumption",
     "energyHistory.solar": "Solar generation",
     "energyHistory.grid": "Grid draw",
-    "energyHistory.kwhTotal": "kWh · three-year total",
+    "energyHistory.kwhAwaiting": "kWh · awaiting data",
+    "energyHistory.kwhPeriod": "kWh · {period}",
     "energyHistory.chartAria": "Energy history in kilowatt-hours",
     "energyHistory.awaiting": "Awaiting inverter energy readings",
     "energyHistory.unavailable": "Energy history temporarily unavailable",
@@ -462,18 +465,20 @@ const translations = {
     "energyHistory.titleDate": "Năng lượng theo ngày",
     "energyHistory.titleMonth": "Năng lượng theo tháng",
     "energyHistory.titleYear": "Năng lượng theo năm",
-    "energyHistory.description": "Điện năng tiêu thụ, sản lượng điện mặt trời và điện lấy từ lưới trong ba năm qua",
-    "energyHistory.descriptionHour": "Chi tiết công tơ theo giờ trong 7 ngày qua; số liệu vẫn được lưu trữ trong ba năm",
+    "energyHistory.description": "Lịch sử ba năm được nhóm theo kỳ; tổng số hiển thị kỳ mới nhất đã ghi nhận",
+    "energyHistory.descriptionHour": "Chi tiết công tơ theo giờ trong 7 ngày qua; tổng số hiển thị giờ mới nhất đã ghi nhận",
     "energyHistory.view": "Chế độ xem lịch sử năng lượng",
     "energyHistory.hour": "Giờ",
     "energyHistory.date": "Ngày",
     "energyHistory.month": "Tháng",
     "energyHistory.year": "Năm",
-    "energyHistory.totalsAria": "Tổng năng lượng trong ba năm",
+    "energyHistory.totalsAria": "Tổng năng lượng cho kỳ được chọn mới nhất",
+    "energyHistory.totalsPeriodAria": "Tổng năng lượng cho {period}",
     "energyHistory.consumption": "Điện năng tiêu thụ",
     "energyHistory.solar": "Sản lượng mặt trời",
     "energyHistory.grid": "Điện lấy từ lưới",
-    "energyHistory.kwhTotal": "kWh · tổng ba năm",
+    "energyHistory.kwhAwaiting": "kWh · đang chờ dữ liệu",
+    "energyHistory.kwhPeriod": "kWh · {period}",
     "energyHistory.chartAria": "Biểu đồ lịch sử năng lượng theo kilowatt-giờ",
     "energyHistory.awaiting": "Đang chờ số liệu năng lượng từ biến tần",
     "energyHistory.unavailable": "Lịch sử năng lượng tạm thời không khả dụng",
@@ -769,8 +774,9 @@ async function refreshEnergyHistory() {
   if (requestedView !== state.energyView) {
     return refreshEnergyHistory();
   }
-  state.energyHistory = payload.points || [];
-  state.energyTotals = payload.totals || {};
+  state.energyHistory = Array.isArray(payload.points) ? payload.points : [];
+  state.energySummaryPeriod = latestEnergyHistoryPoint(state.energyHistory);
+  state.energySummary = state.energySummaryPeriod || {};
   state.lastEnergyRefreshAt = Date.now();
   state.resourceErrors.energy = null;
   $("energyHistoryChart").removeAttribute("data-refresh-error");
@@ -1693,8 +1699,22 @@ function renderEnergyHistory() {
     grid_import_kwh: "energyGridTotal",
   };
   Object.entries(totalIds).forEach(([field, id]) => {
-    $(id).textContent = formatEnergyTotal(state.energyTotals[field]);
+    $(id).textContent = formatEnergyTotal(state.energySummary[field]);
   });
+
+  const summaryPeriod = formatEnergySummaryPeriod(state.energySummaryPeriod);
+  const periodText = summaryPeriod
+    ? t("energyHistory.kwhPeriod", { period: summaryPeriod })
+    : t("energyHistory.kwhAwaiting");
+  ["energyConsumptionPeriod", "energySolarPeriod", "energyGridPeriod"].forEach((id) => {
+    $(id).textContent = periodText;
+  });
+  $("energyHistoryTotals").setAttribute(
+    "aria-label",
+    summaryPeriod
+      ? t("energyHistory.totalsPeriodAria", { period: summaryPeriod })
+      : t("energyHistory.totalsAria"),
+  );
 
   const titleKey = {
     hour: "energyHistory.titleHour",
@@ -1853,6 +1873,43 @@ function formatEnergyTotal(value) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(number);
+}
+
+function latestEnergyHistoryPoint(points) {
+  return points.reduce((latest, point) => {
+    const pointUnix = finiteNumber(point?.unix);
+    if (pointUnix === null) return latest;
+    const latestUnix = finiteNumber(latest?.unix);
+    return latestUnix === null || pointUnix > latestUnix ? point : latest;
+  }, null);
+}
+
+function formatEnergySummaryPeriod(point) {
+  if (!point) return null;
+  if (state.energyView === "year" && point.period) return String(point.period);
+
+  const unix = finiteNumber(point.unix);
+  const date = new Date(point.timestamp || (unix === null ? NaN : unix * 1000));
+  if (!Number.isFinite(date.getTime())) return point.period ? String(point.period) : null;
+
+  if (state.energyView === "hour") {
+    return new Intl.DateTimeFormat(currentLocale(), {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+    }).format(date);
+  }
+  if (state.energyView === "month") {
+    return new Intl.DateTimeFormat(currentLocale(), {
+      month: "long",
+      year: "numeric",
+    }).format(date);
+  }
+  return new Intl.DateTimeFormat(currentLocale(), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
 }
 
 function formatEnergyAxis(value) {
@@ -2665,6 +2722,9 @@ function bindControls() {
   document.querySelectorAll("#energyViewControls button[data-energy-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.energyView = button.dataset.energyView;
+      state.energyHistory = [];
+      state.energySummary = {};
+      state.energySummaryPeriod = null;
       document.querySelectorAll("#energyViewControls button").forEach((item) => {
         item.classList.remove("is-active");
         item.setAttribute("aria-pressed", "false");
