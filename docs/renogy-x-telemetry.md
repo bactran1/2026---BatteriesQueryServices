@@ -191,9 +191,12 @@ Prometheus metrics use the `inverter_` prefix, including PV, grid import/export,
 load, home load, battery power/SOC, temperatures, per-MPPT values, poll success,
 and optional range errors.
 
-The x86 monitor already forwards the inverter object inside its live snapshot,
-but its dashboard views and three-year SQLite schema remain battery-specific.
-Those can consume this collector contract in a separate monitor update.
+The x86 monitor forwards the inverter object inside its live snapshot and uses
+its PV, grid, load, state, alarm, fault, and thermal measurements. All
+battery-facing dashboard values and battery power history come from the direct
+Eco-worthy battery telemetry instead. Inverter-reported battery fields remain
+available in the collector response for diagnostics and register validation,
+but the monitor does not use them as a fallback.
 
 ## First-run validation
 

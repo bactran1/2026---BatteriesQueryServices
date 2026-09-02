@@ -233,9 +233,9 @@
             <small id="inverterLoadDetail" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
           </div>
           <div class="inverter-metric inverter-metric--battery">
-            <span data-i18n="inverter.battery">Inverter battery</span>
+            <span data-i18n="inverter.battery">Battery rack</span>
             <strong id="inverterBatteryPower">--</strong>
-            <small id="inverterBatteryDetail" data-i18n="inverter.waiting">Waiting for inverter telemetry</small>
+            <small id="inverterBatteryDetail" data-i18n="inverter.batteryWaiting">Waiting for direct battery telemetry</small>
           </div>
           <div class="inverter-metric inverter-metric--thermal">
             <span data-i18n="inverter.thermal">Inverter thermal</span>
@@ -385,7 +385,7 @@
               <div>
                 <p class="eyebrow" data-i18n="history.eyebrow">History</p>
                 <h2 id="chartTitle" data-i18n="history.powerTitle">Power sources &amp; demand</h2>
-                <p class="history-description" data-i18n="history.powerDescription">Overlay grid, battery, solar, and load power on one timeline</p>
+                <p class="history-description" data-i18n="history.powerDescription">Direct rack power with inverter-measured grid, solar, and load on one timeline</p>
               </div>
               <div class="controls">
                 <div class="segmented" aria-label="Range" data-i18n-aria-label="history.range">
@@ -409,7 +409,7 @@
                   <i></i><span data-i18n="history.grid">Grid</span>
                 </button>
                 <button type="button" class="power-series-toggle is-active" data-power-series="battery_power_w" aria-pressed="true" style="--series-color: #bf5af2">
-                  <i></i><span data-i18n="history.battery">Battery</span>
+                  <i></i><span data-i18n="history.battery">Battery rack</span>
                 </button>
                 <button type="button" class="power-series-toggle is-active" data-power-series="solar_power_w" aria-pressed="true" style="--series-color: #30b95f">
                   <i></i><span data-i18n="history.solar">Solar</span>

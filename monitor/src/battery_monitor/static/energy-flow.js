@@ -128,15 +128,14 @@ function startEnergyFlowScene() {
     const live = flowState.mode !== "stale" && flowState.batteryCount > 0;
     const charging = flowState.mode === "charging";
     const discharging = flowState.mode === "discharging";
-    const direct = flowState.inverterAvailable;
-    const gridActive = direct && Math.abs(flowState.gridPower) > 25;
-    const solarActive = direct && flowState.solarPower > 25;
-    const loadActive = direct && flowState.loadPower > 25;
-    const batteryActive = direct
-      ? Math.abs(flowState.batteryPower) > 25
-      : charging || discharging;
+    const inverterMetered = flowState.inverterAvailable;
+    const gridActive = inverterMetered && Math.abs(flowState.gridPower) > 25;
+    const solarActive = inverterMetered && flowState.solarPower > 25;
+    const loadActive = inverterMetered && flowState.loadPower > 25;
+    const batteryActive = live
+      && (Math.abs(flowState.batteryPower) > 25 || charging || discharging);
 
-    if (direct) {
+    if (inverterMetered) {
       configureRoute(
         network.grid,
         flowState.gridPower >= 0 ? "charging" : "discharging",
@@ -202,7 +201,7 @@ function startEnergyFlowScene() {
       module.signalMaterial.emissiveIntensity = reporting && isActiveMode(packMode) ? 1.35 : 0.16;
     });
 
-    canvas.dataset.energyDirection = direct
+    canvas.dataset.energyDirection = inverterMetered
       ? "metered-routes"
       : charging
         ? "inverter-to-battery"
@@ -211,7 +210,9 @@ function startEnergyFlowScene() {
           : "paused";
     canvas.dataset.energyMode = flowState.mode;
     canvas.dataset.activeRoutes = String(network.routes.filter(isRouteActive).length);
-    canvas.dataset.sourceTelemetry = direct ? "inverter" : "battery-only";
+    canvas.dataset.sourceTelemetry = inverterMetered
+      ? "inverter-and-direct-battery"
+      : "direct-battery-only";
     canvas.dataset.topology = "home-grid-solar-inverter-battery-load";
     canvas.dataset.sceneStyle = "isometric-home-energy";
     if (disposed) return;

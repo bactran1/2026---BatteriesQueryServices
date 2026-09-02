@@ -164,19 +164,30 @@ class RetentionStoreTests(unittest.TestCase):
                 hour=0, minute=20, second=0, microsecond=0
             )
             samples = [
-                (day, 0.4, 0.1, 0.3, 1200, 250, 180, 1270),
-                (day + timedelta(hours=1), 1.2, 0.6, 0.7, -350, -900, 1250, 700),
-                (day + timedelta(hours=2), 2.0, 1.5, 0.9, 500, 700, 1800, 1600),
+                (day, 0.4, 0.1, 0.3, 1200, 250, 310, 180, 1270),
+                (day + timedelta(hours=1), 1.2, 0.6, 0.7, -350, -900, -840, 1250, 700),
+                (day + timedelta(hours=2), 2.0, 1.5, 0.9, 500, 700, 760, 1800, 1600),
             ]
             for sequence, sample in enumerate(samples, start=1):
-                timestamp, consumption, solar, grid, grid_w, battery_w, solar_w, load_w = sample
+                (
+                    timestamp,
+                    consumption,
+                    solar,
+                    grid,
+                    grid_w,
+                    inverter_battery_w,
+                    direct_battery_w,
+                    solar_w,
+                    load_w,
+                ) = sample
                 snapshot = _energy_snapshot(
                     timestamp.isoformat(),
                     consumption_kwh=consumption,
                     solar_generation_kwh=solar,
                     grid_import_kwh=grid,
                     grid_power_w=grid_w,
-                    battery_power_w=battery_w,
+                    inverter_battery_power_w=inverter_battery_w,
+                    direct_battery_power_w=direct_battery_w,
                     solar_power_w=solar_w,
                     load_power_w=load_w,
                 )
@@ -197,9 +208,40 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(len(power), 3)
             self.assertEqual(power[0]["grid_power_w"], 1200.0)
             self.assertEqual(power[1]["grid_power_w"], -350.0)
-            self.assertEqual(power[1]["battery_power_w"], -900.0)
+            self.assertEqual(power[1]["battery_power_w"], -840.0)
             self.assertEqual(power[2]["solar_power_w"], 1800.0)
+            inverter_battery_values = store.connection.execute(
+                "SELECT battery_power_w FROM inverter_readings"
+            ).fetchall()
+            self.assertTrue(
+                all(row["battery_power_w"] is None for row in inverter_battery_values)
+            )
             self.assertEqual(store.stats(retention_days=1095)["inverter_point_count"], 3)
+            store.close()
+
+    def test_power_history_works_from_direct_batteries_without_an_inverter(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            snapshot = _sample_snapshot()
+            snapshot["service"]["captured_at"] = datetime.now(timezone.utc).isoformat()
+            snapshot["batteries"][0]["last_reading"]["power_w"] = 300.0
+            snapshot["batteries"][1] = {
+                "id": "rack-2",
+                "address": 2,
+                "status": "ok",
+                "last_error": None,
+                "last_reading": {"power_w": -125.0},
+            }
+
+            store.insert_snapshot(snapshot)
+
+            power = store.power_history(seconds=60 * 60, bucket_seconds=60)
+            self.assertEqual(len(power), 1)
+            self.assertEqual(power[0]["battery_power_w"], 175.0)
+            self.assertIsNone(power[0]["grid_power_w"])
+            self.assertIsNone(power[0]["solar_power_w"])
+            self.assertIsNone(power[0]["load_power_w"])
             store.close()
 
 
@@ -249,12 +291,17 @@ def _energy_snapshot(
     solar_generation_kwh: float | None,
     grid_import_kwh: float | None,
     grid_power_w: float | None = None,
-    battery_power_w: float | None = None,
+    inverter_battery_power_w: float | None = None,
+    direct_battery_power_w: float | None = None,
     solar_power_w: float | None = None,
     load_power_w: float | None = None,
 ) -> dict:
     snapshot = _sample_snapshot()
     snapshot["service"]["captured_at"] = timestamp
+    if direct_battery_power_w is not None:
+        reading = snapshot["batteries"][0]["last_reading"]
+        reading["power_w"] = direct_battery_power_w
+        reading["current_a"] = direct_battery_power_w / reading["voltage_v"]
     snapshot["inverter"] = {
         "id": "inverter-1",
         "status": "ok",
@@ -266,7 +313,7 @@ def _energy_snapshot(
             "grid_import_energy_today_kwh": grid_import_kwh,
             "grid_import_power_w": max(grid_power_w, 0) if grid_power_w is not None else None,
             "grid_export_power_w": max(-grid_power_w, 0) if grid_power_w is not None else None,
-            "battery_power_w": battery_power_w,
+            "battery_power_w": inverter_battery_power_w,
             "pv_total_power_w": solar_power_w,
             "load_total_power_w": load_power_w,
         },

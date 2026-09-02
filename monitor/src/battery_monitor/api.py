@@ -163,6 +163,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "range": range,
             "bucket_seconds": bucket_seconds,
+            "sources": {
+                "battery_power_w": "direct_battery_telemetry",
+                "grid_power_w": "inverter_telemetry",
+                "solar_power_w": "inverter_telemetry",
+                "load_power_w": "inverter_telemetry",
+            },
             "points": await asyncio.to_thread(
                 store.power_history,
                 seconds,
@@ -254,6 +260,7 @@ def _summary(batteries: list[dict]) -> dict:
     alarm_count = sum(len(reading.get("alarms") or []) for reading in readings)
     fault_count = sum(len(reading.get("faults") or []) for reading in readings)
     return {
+        "source": "direct_battery_telemetry",
         "battery_count": len(batteries),
         "online_count": online,
         "average_soc_percent": round(sum(soc_values) / len(soc_values), 1)

@@ -125,6 +125,7 @@ const translations = {
     "energy.batteryChargingPhrase": "{value} charging battery",
     "energy.batteryDischargingPhrase": "{value} from battery",
     "energy.batteryIdlePhrase": "Battery idle",
+    "energy.batteryUnavailablePhrase": "Battery telemetry unavailable",
     "energy.liveDescription": "{sources} · {load} · {battery}",
     "energy.importing": "{value} import",
     "energy.exporting": "{value} export",
@@ -132,8 +133,8 @@ const translations = {
     "energy.dischargingValue": "{value} discharging",
     "energy.pack": "battery pack",
     "energy.packs": "battery packs",
-    "energy.chargingDescription": "{rate} is measured entering {packs} through the inverter. Solar, grid, and home paths remain paused until inverter telemetry is connected.",
-    "energy.dischargingDescription": "{rate} is measured leaving {packs} through the inverter. Its destination remains unknown until inverter telemetry is connected.",
+    "energy.chargingDescription": "Direct battery telemetry measures {rate} entering {packs}. Solar, grid, and home paths remain paused until inverter telemetry is connected.",
+    "energy.dischargingDescription": "Direct battery telemetry measures {rate} leaving {packs}. Its destination remains unknown until inverter telemetry is connected.",
     "energy.idleDescription": "Battery telemetry shows no significant transfer. Solar, grid, and home meters are not connected yet.",
     "energy.staleDescription": "Live home flow is paused until fresh collector data arrives.",
     "inverter.summary": "Inverter summary",
@@ -147,8 +148,9 @@ const translations = {
     "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
     "inverter.load": "Backup load",
     "inverter.loadDetail": "{energy} today · External CT {external}",
-    "inverter.battery": "Inverter battery",
-    "inverter.batteryElectrical": "{voltage} · {current} · {soc} · {temperature}",
+    "inverter.battery": "Battery rack",
+    "inverter.batteryElectrical": "Direct RS485 · {voltage} · {current} · {soc} · {temperature}",
+    "inverter.batteryWaiting": "Waiting for direct battery telemetry",
     "inverter.thermal": "Inverter thermal",
     "inverter.internalTemperature": "{value} internal",
     "inverter.thermalDetail": "Inverter {inverter} · DC/DC {dcdc}",
@@ -265,11 +267,11 @@ const translations = {
     "workbench.aria": "Monitoring workbench",
     "history.eyebrow": "History",
     "history.powerTitle": "Power sources & demand",
-    "history.powerDescription": "Overlay grid, battery, solar, and load power on one timeline",
+    "history.powerDescription": "Direct rack power with inverter-measured grid, solar, and load on one timeline",
     "history.range": "Range",
     "history.seriesAria": "Visible power data",
     "history.grid": "Grid",
-    "history.battery": "Battery",
+    "history.battery": "Battery rack",
     "history.solar": "Solar",
     "history.load": "Load",
     "history.directionNote": "Above zero: grid import and battery charging. Below zero: grid export and battery discharge.",
@@ -430,6 +432,7 @@ const translations = {
     "energy.batteryChargingPhrase": "{value} đang nạp pin",
     "energy.batteryDischargingPhrase": "{value} từ pin",
     "energy.batteryIdlePhrase": "Pin đang nghỉ",
+    "energy.batteryUnavailablePhrase": "Chưa có dữ liệu trực tiếp từ pin",
     "energy.liveDescription": "{sources} · {load} · {battery}",
     "energy.importing": "nhập {value}",
     "energy.exporting": "xuất {value}",
@@ -437,8 +440,8 @@ const translations = {
     "energy.dischargingValue": "đang xả {value}",
     "energy.pack": "bộ pin",
     "energy.packs": "bộ pin",
-    "energy.chargingDescription": "Đo được {rate} đang đi vào {packs} qua biến tần. Các đường điện mặt trời, điện lưới và phụ tải sẽ tạm dừng cho đến khi có dữ liệu từ biến tần.",
-    "energy.dischargingDescription": "Đo được {rate} đang rời {packs} qua biến tần. Chưa thể xác định nơi nhận điện cho đến khi có dữ liệu từ biến tần.",
+    "energy.chargingDescription": "Dữ liệu trực tiếp từ pin ghi nhận {rate} đang đi vào {packs}. Các đường điện mặt trời, điện lưới và phụ tải sẽ tạm dừng cho đến khi có dữ liệu từ biến tần.",
+    "energy.dischargingDescription": "Dữ liệu trực tiếp từ pin ghi nhận {rate} đang rời {packs}. Chưa thể xác định nơi nhận điện cho đến khi có dữ liệu từ biến tần.",
     "energy.idleDescription": "Dữ liệu pin không ghi nhận truyền tải đáng kể. Chưa kết nối đồng hồ điện mặt trời, điện lưới và phụ tải.",
     "energy.staleDescription": "Dòng điện trong nhà tạm dừng cho đến khi có dữ liệu mới từ bộ thu thập.",
     "inverter.summary": "Tóm tắt biến tần",
@@ -452,8 +455,9 @@ const translations = {
     "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
     "inverter.load": "Phụ tải dự phòng",
     "inverter.loadDetail": "hôm nay {energy} · CT ngoài {external}",
-    "inverter.battery": "Pin qua biến tần",
-    "inverter.batteryElectrical": "{voltage} · {current} · {soc} · {temperature}",
+    "inverter.battery": "Tủ pin",
+    "inverter.batteryElectrical": "RS485 trực tiếp · {voltage} · {current} · {soc} · {temperature}",
+    "inverter.batteryWaiting": "Đang chờ dữ liệu trực tiếp từ pin",
     "inverter.thermal": "Nhiệt độ biến tần",
     "inverter.internalTemperature": "bên trong {value}",
     "inverter.thermalDetail": "Biến tần {inverter} · DC/DC {dcdc}",
@@ -570,11 +574,11 @@ const translations = {
     "workbench.aria": "Bảng điều khiển giám sát",
     "history.eyebrow": "Lịch sử",
     "history.powerTitle": "Nguồn điện & nhu cầu",
-    "history.powerDescription": "Chồng dữ liệu lưới, pin, mặt trời và tải trên cùng một dòng thời gian",
+    "history.powerDescription": "Công suất tủ pin trực tiếp cùng dữ liệu lưới, mặt trời và tải từ biến tần",
     "history.range": "Khoảng thời gian",
     "history.seriesAria": "Dữ liệu công suất đang hiển thị",
     "history.grid": "Lưới điện",
-    "history.battery": "Pin",
+    "history.battery": "Tủ pin",
     "history.solar": "Mặt trời",
     "history.load": "Tải",
     "history.directionNote": "Trên 0: lấy điện lưới và sạc pin. Dưới 0: phát điện lên lưới và xả pin.",
@@ -905,7 +909,7 @@ function renderLiveFailure(message) {
   renderBatteryCards();
   renderBatteryInventory();
   renderSelectedBattery();
-  renderEnergyFlow(state.summary, { mode: "stale", label: t("flow.lastKnownRack") });
+  renderEnergyFlow({ mode: "stale", label: t("flow.lastKnownRack") });
   renderInverterTelemetry();
 }
 
@@ -948,10 +952,10 @@ function renderSummary(summary) {
     : t("fleet.maxCellDelta", {
         value: formatValue(summary.maximum_cell_voltage_delta_v, "V", 3),
       });
-  renderEnergyFlow(summary, flow);
+  renderEnergyFlow(flow);
 }
 
-function renderEnergyFlow(summary, flow) {
+function renderEnergyFlow(flow) {
   const section = $("energyFlowSection");
   if (!section) return;
 
@@ -959,20 +963,12 @@ function renderEnergyFlow(summary, flow) {
     ? flow.mode
     : "stale";
   const inverter = inverterTelemetry();
-  const directMode = batteryPowerMode(inverter.batteryPower, rackMode);
-  const mode = inverter.available ? directMode : rackMode;
-  const current = inverter.available
-    ? inverter.batteryCurrent ?? finiteNumber(summary?.total_current_a)
-    : finiteNumber(summary?.total_current_a);
-  const power = inverter.available
-    ? inverter.batteryPower ?? finiteNumber(summary?.total_power_w)
-    : finiteNumber(summary?.total_power_w);
-  const soc = inverter.available
-    ? inverter.batterySoc ?? finiteNumber(summary?.average_soc_percent)
-    : finiteNumber(summary?.average_soc_percent);
-  const batteryCount = state.batteries.filter(
-    (battery) => battery.status === "ok" && battery.last_reading,
-  ).length;
+  const battery = rackBatteryTelemetry();
+  const mode = battery.available ? batteryPowerMode(battery.power, rackMode) : "stale";
+  const current = battery.current;
+  const power = battery.power;
+  const soc = battery.soc;
+  const batteryCount = battery.count;
   const packTelemetry = state.batteries.slice(0, 3).map((battery) => {
     const reading = battery.last_reading || {};
     const reporting = state.collectorOnline && battery.status === "ok" && Boolean(battery.last_reading);
@@ -999,8 +995,8 @@ function renderEnergyFlow(summary, flow) {
     if ((inverter.gridPower ?? 0) > 25) {
       activeSources.push({ key: "grid", text: t("energy.sourceGrid", { value: formatPower(inverter.gridPower) }) });
     }
-    if ((inverter.batteryPower ?? 0) < -25) {
-      activeSources.push({ key: "battery", text: t("energy.sourceBattery", { value: formatPower(Math.abs(inverter.batteryPower)) }) });
+    if (battery.available && (power ?? 0) < -25) {
+      activeSources.push({ key: "battery", text: t("energy.sourceBattery", { value: formatPower(Math.abs(power)) }) });
     }
 
     if (activeSources.length > 1) titleKey = "energy.mixedSupply";
@@ -1013,11 +1009,13 @@ function renderEnergyFlow(summary, flow) {
     if ((inverter.gridPower ?? 0) < -25) {
       sourceParts.push(t("energy.gridExport", { value: formatPower(Math.abs(inverter.gridPower)) }));
     }
-    const batteryPhrase = (inverter.batteryPower ?? 0) > 25
-      ? t("energy.batteryChargingPhrase", { value: formatPower(inverter.batteryPower) })
-      : (inverter.batteryPower ?? 0) < -25
-        ? t("energy.batteryDischargingPhrase", { value: formatPower(Math.abs(inverter.batteryPower)) })
-        : t("energy.batteryIdlePhrase");
+    const batteryPhrase = !battery.available
+      ? t("energy.batteryUnavailablePhrase")
+      : (power ?? 0) > 25
+        ? t("energy.batteryChargingPhrase", { value: formatPower(power) })
+        : (power ?? 0) < -25
+          ? t("energy.batteryDischargingPhrase", { value: formatPower(Math.abs(power)) })
+          : t("energy.batteryIdlePhrase");
     descriptionKey = "energy.liveDescription";
     descriptionValues = {
       sources: sourceParts.join(" + ") || t("energy.noActiveSource"),
@@ -1041,19 +1039,18 @@ function renderEnergyFlow(summary, flow) {
   section.dataset.soc = String(soc ?? 0);
   section.dataset.batteryCount = String(batteryCount);
   section.dataset.packTelemetry = JSON.stringify(packTelemetry);
+  section.dataset.batterySource = "direct-battery-telemetry";
   section.dataset.inverterAvailable = String(inverter.available);
   section.dataset.gridPower = String(inverter.gridPower ?? 0);
   section.dataset.solarPower = String(inverter.solarPower ?? 0);
   section.dataset.loadPower = String(inverter.loadPower ?? 0);
-  section.dataset.batteryPower = String(inverter.batteryPower ?? power ?? 0);
+  section.dataset.batteryPower = String(power ?? 0);
   section.dataset.gridActive = String(inverter.available && Math.abs(inverter.gridPower ?? 0) > 25);
   section.dataset.gridDirection = (inverter.gridPower ?? 0) < 0 ? "export" : "import";
   section.dataset.solarActive = String(inverter.available && (inverter.solarPower ?? 0) > 25);
   section.dataset.loadActive = String(inverter.available && (inverter.loadPower ?? 0) > 25);
   section.dataset.batteryActive = String(
-    inverter.available
-      ? Math.abs(inverter.batteryPower ?? 0) > 25
-      : mode === "charging" || mode === "discharging",
+    battery.available && (Math.abs(power ?? 0) > 25 || mode === "charging" || mode === "discharging"),
   );
   $("energyFlowTitle").textContent = t("energy.title");
   $("energyFlowState").textContent = t(titleKey);
@@ -1077,7 +1074,7 @@ function renderEnergyFlow(summary, flow) {
   const socLabel = soc === null ? null : formatValue(soc, "%");
   $("energyBatteryValue").textContent = mode === "stale"
     ? t("energy.unavailable")
-    : [socLabel, inverter.available ? formatBatteryPower(inverter.batteryPower) : rate]
+    : [socLabel, formatBatteryPower(power)]
         .filter(Boolean)
         .join(" · ");
 
@@ -1089,11 +1086,12 @@ function renderEnergyFlow(summary, flow) {
       soc,
       batteryCount,
       packs: packTelemetry,
+      batterySource: "direct-battery-telemetry",
       inverterAvailable: inverter.available,
       gridPower: inverter.gridPower,
       solarPower: inverter.solarPower,
       loadPower: inverter.loadPower,
-      batteryPower: inverter.batteryPower,
+      batteryPower: power,
     },
   }));
 }
@@ -1103,6 +1101,7 @@ function renderInverterTelemetry() {
   if (!band) return;
 
   const telemetry = inverterTelemetry();
+  const battery = rackBatteryTelemetry();
   const inverter = telemetry.inverter;
   const reading = telemetry.reading;
   const hasReading = telemetry.hasReading;
@@ -1166,15 +1165,17 @@ function renderInverterTelemetry() {
         external: formatPower(telemetry.externalLoadPower),
       })
     : t("inverter.waiting");
-  $("inverterBatteryPower").textContent = formatBatteryPower(telemetry.batteryPower);
-  $("inverterBatteryDetail").textContent = hasReading
+  $("inverterBatteryPower").textContent = battery.available
+    ? formatBatteryPower(battery.power)
+    : "--";
+  $("inverterBatteryDetail").textContent = battery.available
     ? t("inverter.batteryElectrical", {
-        voltage: formatValue(reading.battery_voltage_v, "V"),
-        current: formatValue(reading.battery_current_a, "A"),
-        soc: formatValue(reading.battery_soc_percent, "%"),
-        temperature: formatValue(reading.battery_temperature_c, "°C"),
+        voltage: formatValue(battery.voltage, "V"),
+        current: formatValue(battery.current, "A"),
+        soc: formatValue(battery.soc, "%"),
+        temperature: formatValue(battery.temperature, "°C"),
       })
-    : t("inverter.waiting");
+    : t("inverter.batteryWaiting");
   $("inverterThermalValue").textContent = hasReading
     ? t("inverter.internalTemperature", {
         value: formatValue(reading.internal_temperature_c, "°C"),
@@ -1217,9 +1218,40 @@ function inverterTelemetry(inverter = state.inverter) {
     solarPower: finiteNumber(reading.pv_total_power_w),
     loadPower: finiteNumber(reading.load_total_power_w),
     externalLoadPower: finiteNumber(reading.home_load_total_power_w),
-    batteryPower: finiteNumber(reading.battery_power_w),
-    batteryCurrent: finiteNumber(reading.battery_current_a),
-    batterySoc: finiteNumber(reading.battery_soc_percent),
+  };
+}
+
+function rackBatteryTelemetry(batteries = state.batteries) {
+  const readings = batteries
+    .filter(
+      (battery) => state.collectorOnline
+        && battery?.status === "ok"
+        && battery.last_reading
+        && typeof battery.last_reading === "object",
+    )
+    .map((battery) => battery.last_reading);
+  const values = (field) => readings
+    .map((reading) => finiteNumber(reading[field]))
+    .filter((value) => value !== null);
+  const total = (field) => {
+    const numbers = values(field);
+    return numbers.length ? numbers.reduce((sum, value) => sum + value, 0) : null;
+  };
+  const average = (field) => {
+    const numbers = values(field);
+    return numbers.length
+      ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length
+      : null;
+  };
+
+  return {
+    available: readings.length > 0,
+    count: readings.length,
+    power: total("power_w"),
+    current: total("current_a"),
+    voltage: average("voltage_v"),
+    soc: average("soc_percent"),
+    temperature: average("mosfet_temperature_c"),
   };
 }
 

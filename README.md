@@ -26,7 +26,7 @@ See [Renogy X inverter telemetry](docs/renogy-x-telemetry.md).
 - MOSFET state, operating state, alarms, faults, firmware, serial number, and known parallel pack addresses when reported by the BMS
 - Inverter PV1-PV4 voltage, current, power, and total solar power
 - Grid import/export, L1/L2 voltage/current/power, frequency, backup load, and measured home load
-- Inverter-side battery voltage/current/power/SOC, temperatures, operating state, alarms, faults, and energy counters
+- Inverter operating state, alarms, faults, temperatures, and energy counters; inverter-side battery fields remain available in raw collector output for diagnostics only
 
 ## Hardware assumptions
 
@@ -90,9 +90,11 @@ Defaults:
 - Storage path on the x86_64 host: `./data/monitor/battery-monitor.sqlite3`
 - CSV export: dashboard download button or `GET /api/export.csv`
 - Energy history: hourly, daily, monthly, and yearly consumption, solar generation, and grid import in kWh, available through `GET /api/energy?view=hour|date|month|year`
-- Power history: timestamped grid, battery, solar, and load power overlays, available through `GET /api/power-history?range=24h` (grid import and battery charging are positive; export and discharge are negative)
+- Power history: timestamped grid, battery, solar, and load power overlays, available through `GET /api/power-history?range=24h` (direct battery charging and grid import are positive; discharge and export are negative)
 
 The monitor owns one collector connection and serves a cached live snapshot to every browser. Opening more dashboard tabs does not create more requests to the Raspberry Pi. The dashboard refreshes live values every 5 seconds, pauses network work while its tab is hidden, and refreshes immediately when the tab becomes visible again.
+
+Every battery-facing dashboard value comes from the Eco-worthy battery bus: rack and pack SOC, voltage, current, power, capacity, cells, temperatures, state, alarms, and battery power history. The monitor does not substitute the Renogy inverter's battery registers when direct pack telemetry is missing. Solar, grid, load, and inverter-internal values continue to come from inverter telemetry.
 
 Dashboard HTML is always served with `no-store`. JavaScript, CSS, icons, and logos use a content fingerprint and immutable caching, so a normal reload after deployment picks up the new build without requiring a hard refresh.
 

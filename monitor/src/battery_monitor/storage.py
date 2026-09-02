@@ -342,34 +342,73 @@ class RetentionStore:
         with self._lock:
             rows = self.connection.execute(
                 """
-                SELECT
-                    bucket_unix,
-                    SUM(grid_power_w) AS grid_power_w,
-                    SUM(battery_power_w) AS battery_power_w,
-                    SUM(solar_power_w) AS solar_power_w,
-                    SUM(load_power_w) AS load_power_w
-                FROM (
+                WITH inverter_by_device AS (
                     SELECT
                         CAST(captured_at_unix / ? AS INTEGER) * ? AS bucket_unix,
                         inverter_id,
                         AVG(grid_power_w) AS grid_power_w,
-                        AVG(battery_power_w) AS battery_power_w,
                         AVG(solar_power_w) AS solar_power_w,
                         AVG(load_power_w) AS load_power_w
                     FROM inverter_readings
                     WHERE captured_at_unix >= ?
                       AND (
                           grid_power_w IS NOT NULL
-                          OR battery_power_w IS NOT NULL
                           OR solar_power_w IS NOT NULL
                           OR load_power_w IS NOT NULL
                       )
                     GROUP BY bucket_unix, inverter_id
+                ),
+                inverter_by_bucket AS (
+                    SELECT
+                        bucket_unix,
+                        SUM(grid_power_w) AS grid_power_w,
+                        SUM(solar_power_w) AS solar_power_w,
+                        SUM(load_power_w) AS load_power_w
+                    FROM inverter_by_device
+                    GROUP BY bucket_unix
+                ),
+                battery_by_pack AS (
+                    SELECT
+                        CAST(captured_at_unix / ? AS INTEGER) * ? AS bucket_unix,
+                        battery_id,
+                        AVG(power_w) AS battery_power_w
+                    FROM readings
+                    WHERE captured_at_unix >= ?
+                      AND status = 'ok'
+                      AND power_w IS NOT NULL
+                    GROUP BY bucket_unix, battery_id
+                ),
+                battery_by_bucket AS (
+                    SELECT
+                        bucket_unix,
+                        SUM(battery_power_w) AS battery_power_w
+                    FROM battery_by_pack
+                    GROUP BY bucket_unix
+                ),
+                buckets AS (
+                    SELECT bucket_unix FROM inverter_by_bucket
+                    UNION
+                    SELECT bucket_unix FROM battery_by_bucket
                 )
-                GROUP BY bucket_unix
-                ORDER BY bucket_unix ASC
+                SELECT
+                    buckets.bucket_unix,
+                    inverter_by_bucket.grid_power_w,
+                    battery_by_bucket.battery_power_w,
+                    inverter_by_bucket.solar_power_w,
+                    inverter_by_bucket.load_power_w
+                FROM buckets
+                LEFT JOIN inverter_by_bucket USING (bucket_unix)
+                LEFT JOIN battery_by_bucket USING (bucket_unix)
+                ORDER BY buckets.bucket_unix ASC
                 """,
-                (bucket_seconds, bucket_seconds, since),
+                (
+                    bucket_seconds,
+                    bucket_seconds,
+                    since,
+                    bucket_seconds,
+                    bucket_seconds,
+                    since,
+                ),
             ).fetchall()
 
         return [
@@ -884,7 +923,6 @@ def _inverter_reading_row(snapshot: dict[str, Any]) -> dict[str, Any] | None:
 
     values = {
         "grid_power_w": grid_power,
-        "battery_power_w": _number(reading.get("battery_power_w")),
         "solar_power_w": _number(reading.get("pv_total_power_w")),
         "load_power_w": _number(reading.get("load_total_power_w")),
         "consumption_meter_kwh": _nonnegative_number(
