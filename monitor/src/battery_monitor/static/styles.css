@@ -1221,12 +1221,13 @@ button {
 
 .energy-history-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 0.28fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
 .energy-history-totals {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1235,9 +1236,7 @@ button {
   min-height: 86px;
   overflow: hidden;
   padding: 14px 15px 13px 18px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--tile-bg);
+  border-bottom: 1px solid var(--line);
 }
 
 .energy-total::before {
@@ -1269,8 +1268,8 @@ button {
 .energy-total > span {
   font-size: 11px;
   font-weight: 750;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .energy-total > strong {
@@ -1279,6 +1278,7 @@ button {
   font-size: 27px;
   line-height: 1;
   font-weight: 760;
+  overflow-wrap: anywhere;
 }
 
 .energy-total > small {
@@ -1294,12 +1294,28 @@ button {
   background: var(--soft-bg);
 }
 
+.energy-chart-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.energy-chart-axis {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--soft-bg);
+}
+
 #energyHistoryChart {
   display: block;
   width: 100%;
   height: 310px;
   cursor: crosshair;
-  touch-action: pan-y;
+  touch-action: pan-x pan-y;
 }
 
 #energyHistoryChart:focus-visible {
@@ -1310,6 +1326,7 @@ button {
 
 .energy-history-empty {
   position: absolute;
+  z-index: 2;
   inset: 0;
   display: grid;
   place-items: center;
@@ -1329,6 +1346,7 @@ button {
   align-items: center;
   justify-content: flex-end;
   gap: 18px;
+  flex-wrap: wrap;
   margin-top: 12px;
   color: var(--muted);
   font-size: 11px;
@@ -1342,9 +1360,9 @@ button {
 }
 
 .energy-key {
-  width: 16px;
-  height: 3px;
-  border-radius: 999px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
   background: var(--series-color);
 }
 
@@ -1810,12 +1828,32 @@ button {
   padding: 20px;
 }
 
+.chart-panel,
+.energy-history-panel {
+  min-width: 0;
+  margin: 18px 0;
+  padding: 20px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.detail-panel {
+  margin-bottom: 18px;
+}
+
 .panel-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.panel-heading > div {
+  min-width: 0;
 }
 
 .panel h2 {
@@ -1857,7 +1895,7 @@ button {
 .power-series-toggle {
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
+  min-height: 44px;
   gap: 7px;
   padding: 0 11px;
   border: 1px solid var(--line);
@@ -2038,12 +2076,12 @@ select {
 
 .chart-tooltip--power {
   display: block;
-  min-width: 250px;
+  min-width: min(250px, calc(100% - 24px));
 }
 
 .chart-tooltip--energy {
   display: block;
-  min-width: 250px;
+  min-width: min(250px, calc(100% - 24px));
 }
 
 .power-tooltip__time,
@@ -2052,13 +2090,13 @@ select {
   margin-bottom: 7px;
   color: var(--muted);
   font-size: 10px;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .power-tooltip__row,
 .energy-tooltip__row {
   display: grid;
-  grid-template-columns: 8px minmax(70px, 1fr) auto;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 23px;
@@ -2642,6 +2680,21 @@ select {
     padding: 16px;
   }
 
+  .chart-panel,
+  .energy-history-panel {
+    padding: 16px 0;
+  }
+
+  #powerRangeControls {
+    width: 100%;
+  }
+
+  #powerRangeControls button {
+    min-width: 0;
+    flex: 1;
+    padding: 0 6px;
+  }
+
   .panel-heading {
     flex-direction: column;
   }
@@ -2670,12 +2723,27 @@ select {
   }
 
   .energy-history-totals {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .energy-total {
+    padding: 10px 4px 10px 10px;
+  }
+
+  .energy-total > strong {
+    font-size: 21px;
+  }
+
+  .energy-total > span,
+  .energy-total > small {
+    font-size: 10px;
+    line-height: 1.4;
   }
 
   .energy-history-legend {
     align-items: flex-start;
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
   }
 

@@ -281,6 +281,49 @@ class RetentionStoreTests(unittest.TestCase):
             store.close()
 
 
+    def test_home_and_backup_load_are_archived_independently(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+            first = _energy_snapshot(now.isoformat(), None, None, None, load_power_w=0)
+            first["inverter"]["last_reading"]["home_load_total_power_w"] = 1500
+            second = _energy_snapshot((now + timedelta(seconds=30)).isoformat(), None, None, None, load_power_w=400)
+            second["inverter"]["last_reading"]["home_load_total_power_w"] = 700
+            store.insert_snapshots([first, second])
+            points = store.power_history(86400, 3600)
+            self.assertEqual(points[0]["home_load_power_w"], 1100)
+            self.assertEqual(points[0]["load_power_w"], 200)
+
+            home_only = _energy_snapshot((now + timedelta(hours=1)).isoformat(), None, None, None)
+            home_only["batteries"] = []
+            home_only["inverter"]["last_reading"]["home_load_total_power_w"] = 0
+            store.insert_snapshot(home_only)
+            points = store.power_history(86400, 3600)
+            self.assertEqual(points[1]["home_load_power_w"], 0)
+            self.assertIsNone(points[1]["load_power_w"])
+            store.close()
+
+    def test_existing_inverter_archive_migrates_without_fabricating_home_load(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            store.insert_snapshot(_energy_snapshot(
+                datetime.now(timezone.utc).isoformat(), 1, 2, 3, load_power_w=420,
+            ))
+            # Reproduce the previous schema, including a real saved reading.
+            store.connection.execute("ALTER TABLE inverter_readings DROP COLUMN home_load_power_w")
+            store.connection.commit()
+            store.close()
+            store.initialize()
+            store.initialize()
+            points = store.power_history(86400, 3600)
+            self.assertEqual(points[0]["load_power_w"], 420)
+            self.assertIsNone(points[0]["home_load_power_w"])
+            self.assertEqual(store.energy_history("month")["points"][0]["consumption_kwh"], 1)
+            store.close()
+
+
 def _sample_snapshot() -> dict:
     return {
         "service": {"poll_count": 1},

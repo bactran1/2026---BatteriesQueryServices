@@ -123,6 +123,68 @@
           </div>
         </section>
 
+        <section id="powerHistorySection" class="panel chart-panel" aria-labelledby="chartTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow" data-i18n="history.eyebrow">History</p>
+              <h2 id="chartTitle" data-i18n="history.powerTitle">Power history</h2>
+              <p id="powerHistoryDescription" class="history-description" data-i18n="history.powerDescription">Home load: CT-side demand · Backup load: direct inverter output</p>
+            </div>
+            <div class="controls">
+              <div id="powerRangeControls" class="segmented" aria-label="Range" data-i18n-aria-label="history.range">
+                <button data-range="1h">1H</button>
+                <button data-range="date" class="is-active" data-i18n="history.date">Date</button>
+                <button data-range="24h">24H</button>
+                <button data-range="7d">7D</button>
+                <button data-range="30d">30D</button>
+                <button data-range="3y">3Y</button>
+              </div>
+              <label id="powerDateControl" class="power-date-control">
+                <span data-i18n="history.selectDate">Select day</span>
+                <input id="powerDateInput" type="date" aria-label="Select power history calendar day" data-i18n-aria-label="history.selectDateAria">
+              </label>
+            </div>
+          </div>
+          <div class="power-history-toolbar">
+            <div
+              id="powerSeriesControls"
+              class="power-series-controls"
+              role="group"
+              aria-label="Visible power data"
+              data-i18n-aria-label="history.seriesAria"
+            >
+              <button type="button" class="power-series-toggle is-active" data-power-series="grid_power_w" aria-pressed="true" style="--series-color: #0a84ff">
+                <i></i><span data-i18n="history.grid">Grid</span>
+              </button>
+              <button type="button" class="power-series-toggle is-active" data-power-series="battery_power_w" aria-pressed="true" style="--series-color: #bf5af2">
+                <i></i><span data-i18n="history.battery">Battery rack</span>
+              </button>
+              <button type="button" class="power-series-toggle is-active" data-power-series="solar_power_w" aria-pressed="true" style="--series-color: #30b95f">
+                <i></i><span data-i18n="history.solar">Solar</span>
+              </button>
+              <button type="button" class="power-series-toggle is-active" data-power-series="home_load_power_w" aria-pressed="true" style="--series-color: #ff7a00">
+                <i></i><span data-i18n="history.homeLoad">Home load</span>
+              </button>
+              <button type="button" class="power-series-toggle is-active" data-power-series="load_power_w" aria-pressed="true" style="--series-color: #e04b85">
+                <i></i><span data-i18n="history.load">Backup load</span>
+              </button>
+            </div>
+            <p class="power-direction-note" data-i18n="history.directionNote">Above zero: grid import and battery charging. Below zero: grid export and battery discharge.</p>
+          </div>
+          <div id="chartStage" class="chart-stage">
+            <canvas
+              id="historyChart"
+              height="320"
+              tabindex="0"
+              aria-label="Overlaid power history chart"
+              data-i18n-aria-label="history.chartAria"
+              aria-describedby="chartTooltip"
+            ></canvas>
+            <div id="chartTooltip" class="chart-tooltip" role="status" aria-live="polite" hidden></div>
+          </div>
+          <div id="chartLegend" class="chart-legend" aria-hidden="true"></div>
+        </section>
+
         <section
           id="energyFlowSection"
           class="energy-flow"
@@ -275,7 +337,7 @@
           <div class="energy-history-layout">
             <div id="energyHistoryTotals" class="energy-history-totals" aria-label="Energy totals for the latest selected period" data-i18n-aria-label="energyHistory.totalsAria">
               <div class="energy-total energy-total--consumption">
-                <span data-i18n="energyHistory.consumption">Power consumption</span>
+                <span data-i18n="energyHistory.consumption">Energy consumption</span>
                 <strong id="energyConsumptionTotal">--</strong>
                 <small id="energyConsumptionPeriod" data-i18n="energyHistory.kwhAwaiting">kWh · awaiting data</small>
               </div>
@@ -291,6 +353,7 @@
               </div>
             </div>
             <div class="energy-history-chart-wrap">
+              <div id="energyChartScroll" class="energy-chart-scroll">
               <canvas
                 id="energyHistoryChart"
                 height="310"
@@ -300,12 +363,14 @@
                 data-i18n-aria-label="energyHistory.chartAria"
                 aria-describedby="energyHistoryTooltip"
               ></canvas>
+              </div>
+              <canvas id="energyChartAxis" class="energy-chart-axis" aria-hidden="true"></canvas>
               <div id="energyHistoryTooltip" class="chart-tooltip chart-tooltip--energy" role="status" aria-live="polite" hidden></div>
               <div id="energyHistoryEmpty" class="energy-history-empty" data-i18n="energyHistory.awaiting">Awaiting inverter energy readings</div>
             </div>
           </div>
           <div id="energyHistoryLegend" class="energy-history-legend" aria-hidden="true">
-            <span><i class="energy-key energy-key--consumption"></i><span data-i18n="energyHistory.consumption">Power consumption</span></span>
+            <span><i class="energy-key energy-key--consumption"></i><span data-i18n="energyHistory.consumption">Energy consumption</span></span>
             <span><i class="energy-key energy-key--solar"></i><span data-i18n="energyHistory.solar">Solar generation</span></span>
             <span><i class="energy-key energy-key--grid"></i><span data-i18n="energyHistory.grid">Grid draw</span></span>
           </div>
@@ -390,79 +455,18 @@
           </div>
         </section>
 
-        <section class="workbench" aria-label="Monitoring workbench" data-i18n-aria-label="workbench.aria">
-          <div class="panel chart-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow" data-i18n="history.eyebrow">History</p>
-                <h2 id="chartTitle" data-i18n="history.powerTitle">Power sources &amp; demand</h2>
-                <p id="powerHistoryDescription" class="history-description" data-i18n="history.powerDescription">Direct rack power with inverter-measured grid, solar, and load on one timeline</p>
-              </div>
-              <div class="controls">
-                <div id="powerRangeControls" class="segmented" aria-label="Range" data-i18n-aria-label="history.range">
-                  <button data-range="1h">1H</button>
-                  <button data-range="date" class="is-active" data-i18n="history.date">Date</button>
-                  <button data-range="24h">24H</button>
-                  <button data-range="7d">7D</button>
-                  <button data-range="30d">30D</button>
-                  <button data-range="3y">3Y</button>
-                </div>
-                <label id="powerDateControl" class="power-date-control">
-                  <span data-i18n="history.selectDate">Select day</span>
-                  <input id="powerDateInput" type="date" aria-label="Select power history calendar day" data-i18n-aria-label="history.selectDateAria">
-                </label>
-              </div>
+        <section class="panel detail-panel" aria-labelledby="selectedName">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow" data-i18n="details.selectedPack">Selected pack</p>
+              <h2 id="selectedName" data-i18n="details.rack">Rack</h2>
             </div>
-            <div class="power-history-toolbar">
-              <div
-                id="powerSeriesControls"
-                class="power-series-controls"
-                role="group"
-                aria-label="Visible power data"
-                data-i18n-aria-label="history.seriesAria"
-              >
-                <button type="button" class="power-series-toggle is-active" data-power-series="grid_power_w" aria-pressed="true" style="--series-color: #0a84ff">
-                  <i></i><span data-i18n="history.grid">Grid</span>
-                </button>
-                <button type="button" class="power-series-toggle is-active" data-power-series="battery_power_w" aria-pressed="true" style="--series-color: #bf5af2">
-                  <i></i><span data-i18n="history.battery">Battery rack</span>
-                </button>
-                <button type="button" class="power-series-toggle is-active" data-power-series="solar_power_w" aria-pressed="true" style="--series-color: #30b95f">
-                  <i></i><span data-i18n="history.solar">Solar</span>
-                </button>
-                <button type="button" class="power-series-toggle is-active" data-power-series="load_power_w" aria-pressed="true" style="--series-color: #ff7a00">
-                  <i></i><span data-i18n="history.load">Load</span>
-                </button>
-              </div>
-              <p class="power-direction-note" data-i18n="history.directionNote">Above zero: grid import and battery charging. Below zero: grid export and battery discharge.</p>
-            </div>
-            <div id="chartStage" class="chart-stage">
-              <canvas
-                id="historyChart"
-                height="320"
-                tabindex="0"
-                aria-label="Overlaid power history chart"
-                data-i18n-aria-label="history.chartAria"
-                aria-describedby="chartTooltip"
-              ></canvas>
-              <div id="chartTooltip" class="chart-tooltip" role="status" aria-live="polite" hidden></div>
-            </div>
-            <div id="chartLegend" class="chart-legend" aria-hidden="true"></div>
+            <span id="selectedState" class="status-pill status-pill--pending" data-i18n="status.pending">Pending</span>
           </div>
 
-          <div class="panel detail-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow" data-i18n="details.selectedPack">Selected pack</p>
-                <h2 id="selectedName" data-i18n="details.rack">Rack</h2>
-              </div>
-              <span id="selectedState" class="status-pill status-pill--pending" data-i18n="status.pending">Pending</span>
-            </div>
-
-            <div class="cell-strip" id="cellStrip"></div>
-            <div class="temperature-row" id="temperatureRow"></div>
-            <dl class="detail-list" id="detailList"></dl>
-          </div>
+          <div class="cell-strip" id="cellStrip"></div>
+          <div class="temperature-row" id="temperatureRow"></div>
+          <dl class="detail-list" id="detailList"></dl>
         </section>
 
         <section class="lower-grid" aria-label="Logs and status" data-i18n-aria-label="logs.aria">

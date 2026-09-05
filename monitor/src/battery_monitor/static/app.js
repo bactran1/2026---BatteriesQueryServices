@@ -8,7 +8,7 @@ const state = {
   powerWindowStart: null,
   powerWindowEnd: null,
   history: [],
-  powerSeries: new Set(["grid_power_w", "battery_power_w", "solar_power_w", "load_power_w"]),
+  powerSeries: new Set(["grid_power_w", "battery_power_w", "solar_power_w", "home_load_power_w", "load_power_w"]),
   energyView: "month",
   energyDate: localCalendarDateValue(new Date()),
   energyTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -190,12 +190,12 @@ const translations = {
     "energyHistory.year": "Year",
     "energyHistory.totalsAria": "Energy totals for the latest selected period",
     "energyHistory.totalsPeriodAria": "Energy totals for {period}",
-    "energyHistory.consumption": "Power consumption",
+    "energyHistory.consumption": "Energy consumption",
     "energyHistory.solar": "Solar generation",
     "energyHistory.grid": "Grid draw",
     "energyHistory.kwhAwaiting": "kWh · awaiting data",
     "energyHistory.kwhPeriod": "kWh · {period}",
-    "energyHistory.chartAria": "Energy history in kilowatt-hours",
+    "energyHistory.chartAria": "Energy consumption, solar generation and grid draw, in kilowatt-hours by period",
     "energyHistory.pointAria": "Energy for {period}: {values}",
     "energyHistory.awaiting": "Awaiting inverter energy readings",
     "energyHistory.unavailable": "Energy history temporarily unavailable",
@@ -289,10 +289,10 @@ const translations = {
     "inventory.notSeen": "Not seen yet",
     "workbench.aria": "Monitoring workbench",
     "history.eyebrow": "History",
-    "history.powerTitle": "Power sources & demand",
-    "history.powerTitleDate": "Power sources & demand · {date}",
-    "history.powerDescription": "Direct rack power with inverter-measured grid, solar, and load on one timeline",
-    "history.powerDescriptionDate": "Grid, battery, solar, and load power from 0:00 to 24:00 on the selected calendar day",
+    "history.powerTitle": "Power history",
+    "history.powerTitleDate": "Power history · {date}",
+    "history.powerDescription": "Home load: CT-side demand · Backup load: direct inverter output",
+    "history.powerDescriptionDate": "Home load: CT-side demand · Backup load: direct inverter output",
     "history.range": "Range",
     "history.date": "Date",
     "history.selectDate": "Select day",
@@ -301,7 +301,8 @@ const translations = {
     "history.grid": "Grid",
     "history.battery": "Battery rack",
     "history.solar": "Solar",
-    "history.load": "Load",
+    "history.homeLoad": "Home load",
+    "history.load": "Backup load",
     "history.directionNote": "Above zero: grid import and battery charging. Below zero: grid export and battery discharge.",
     "history.chartAria": "Overlaid power history chart",
     "history.unavailable": "Power history temporarily unavailable",
@@ -612,10 +613,10 @@ const translations = {
     "inventory.notSeen": "Chưa ghi nhận",
     "workbench.aria": "Bảng điều khiển giám sát",
     "history.eyebrow": "Lịch sử",
-    "history.powerTitle": "Nguồn điện & nhu cầu",
-    "history.powerTitleDate": "Nguồn điện & nhu cầu · {date}",
-    "history.powerDescription": "Công suất tủ pin trực tiếp cùng dữ liệu lưới, mặt trời và tải từ biến tần",
-    "history.powerDescriptionDate": "Công suất lưới, pin, mặt trời và tải từ 0:00 đến 24:00 trong ngày đã chọn",
+    "history.powerTitle": "Lịch sử công suất",
+    "history.powerTitleDate": "Lịch sử công suất · {date}",
+    "history.powerDescription": "Phụ tải nhà: phía CT · Phụ tải dự phòng: đầu ra trực tiếp của biến tần",
+    "history.powerDescriptionDate": "Phụ tải nhà: phía CT · Phụ tải dự phòng: đầu ra trực tiếp của biến tần",
     "history.range": "Khoảng thời gian",
     "history.date": "Ngày",
     "history.selectDate": "Chọn ngày",
@@ -624,7 +625,8 @@ const translations = {
     "history.grid": "Lưới điện",
     "history.battery": "Tủ pin",
     "history.solar": "Mặt trời",
-    "history.load": "Tải",
+    "history.homeLoad": "Phụ tải nhà",
+    "history.load": "Phụ tải dự phòng",
     "history.directionNote": "Trên 0: lấy điện lưới và sạc pin. Dưới 0: phát điện lên lưới và xả pin.",
     "history.chartAria": "Biểu đồ chồng lịch sử công suất",
     "history.unavailable": "Lịch sử công suất tạm thời không khả dụng",
@@ -695,7 +697,8 @@ const powerHistorySeries = [
   { field: "grid_power_w", labelKey: "history.grid", color: "#0a84ff" },
   { field: "battery_power_w", labelKey: "history.battery", color: "#bf5af2" },
   { field: "solar_power_w", labelKey: "history.solar", color: "#30b95f" },
-  { field: "load_power_w", labelKey: "history.load", color: "#ff7a00" },
+  { field: "home_load_power_w", labelKey: "history.homeLoad", color: "#ff7a00" },
+  { field: "load_power_w", labelKey: "history.load", color: "#e04b85", dash: [6, 4] },
 ];
 const energySeries = [
   { field: "consumption_kwh", labelKey: "energyHistory.consumption", color: "#ff7a00" },
@@ -1948,140 +1951,123 @@ function renderEnergyHistory() {
   window.requestAnimationFrame(drawEnergyHistoryChart);
 }
 
+function energyAxisMaximum(values) {
+  const peak = Math.max(0, ...values);
+  if (!peak) return 1;
+  const step = 10 ** Math.floor(Math.log10(peak / 4));
+  const interval = [1, 2, 5, 10].find((factor) => factor * step >= peak / 4) * step;
+  return Math.ceil(peak / interval) * interval;
+}
+
+function energyChartSlots(points) {
+  const byTime = new Map(points.map((point) => [point.unix, point]));
+  const fixedDay = state.energyView === "date"
+    && finiteNumber(state.energyWindowStart) !== null
+    && finiteNumber(state.energyWindowEnd) !== null;
+  if (!points.length && !fixedDay) return [];
+  const start = fixedDay ? state.energyWindowStart : points[0].unix;
+  const end = fixedDay ? state.energyWindowEnd - 1 : points.at(-1).unix;
+  const slots = [];
+  for (let unix = start; unix <= end;) {
+    slots.push(byTime.get(unix) || { unix, timestamp: new Date(unix * 1000).toISOString() });
+    const next = new Date(unix * 1000);
+    if (state.energyView === "month") next.setUTCMonth(next.getUTCMonth() + 1);
+    else if (state.energyView === "year") next.setUTCFullYear(next.getUTCFullYear() + 1);
+    else next.setTime(next.getTime() + 3600000);
+    unix = next.getTime() / 1000;
+  }
+  return slots;
+}
+
 function drawEnergyHistoryChart() {
   const canvas = $("energyHistoryChart");
+  const scroller = $("energyChartScroll");
+  const viewport = scroller.getBoundingClientRect();
+  if (viewport.width <= 0) return;
   const ctx = canvas.getContext("2d");
   const theme = getThemeColors();
+  const points = state.energyHistory
+    .filter((point) => Number.isFinite(point.unix))
+    .sort((left, right) => left.unix - right.unix);
+  const slots = energyChartSlots(points);
+  // Keep each three-bar group readable, with scrolling confined to the chart.
+  const pad = { top: 26, right: 18, bottom: 40, left: 58 };
+  const chartWidth = Math.max(viewport.width, slots.length * 32 + pad.left + pad.right);
+  canvas.style.width = `${chartWidth}px`;
   const rect = canvas.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return;
-
-  const dpr = window.devicePixelRatio || 1;
-  const pixelWidth = Math.max(1, Math.floor(rect.width * dpr));
+  if (rect.height <= 0) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const pixelWidth = Math.max(1, Math.floor(chartWidth * dpr));
   const pixelHeight = Math.max(1, Math.floor(rect.height * dpr));
   if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
     canvas.width = pixelWidth;
     canvas.height = pixelHeight;
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, rect.width, rect.height);
-
-  const pad = rect.width < 520
-    ? { top: 18, right: 12, bottom: 38, left: 50 }
-    : { top: 18, right: 18, bottom: 40, left: 62 };
-  const width = Math.max(1, rect.width - pad.left - pad.right);
-  const height = Math.max(1, rect.height - pad.top - pad.bottom);
-  const points = state.energyHistory
-    .filter((point) => Number.isFinite(point.unix))
-    .sort((left, right) => left.unix - right.unix);
-  const values = points.flatMap((point) =>
-    energySeries
-      .map((series) => finiteNumber(point[series.field]))
-      .filter((value) => value !== null),
-  );
-  const hasFixedDateWindow = state.energyView === "date"
-    && finiteNumber(state.energyWindowStart) !== null
-    && finiteNumber(state.energyWindowEnd) !== null;
-
-  drawEnergyGrid(ctx, theme, pad, width, height, Math.max(1, ...values));
-  if (!points.length || !values.length) {
-    state.energyChartGeometry = null;
-    hideEnergyChartTooltip(false);
-    if (hasFixedDateWindow) {
-      drawEnergyTimeAxis(
-        ctx,
-        theme,
-        pad,
-        width,
-        height,
-        points,
-        state.energyWindowStart,
-        state.energyWindowEnd,
-      );
-    }
-    return;
-  }
-
-  let minTime = hasFixedDateWindow
-    ? state.energyWindowStart
-    : Math.min(...points.map((point) => point.unix));
-  let maxTime = hasFixedDateWindow
-    ? state.energyWindowEnd
-    : Math.max(...points.map((point) => point.unix));
-  if (minTime === maxTime) {
-    const spread = state.energyView === "hour"
-      ? 3600
-      : state.energyView === "date"
-        ? 86400
-        : state.energyView === "month"
-          ? 2678400
-          : 31536000;
-    minTime -= spread / 2;
-    maxTime += spread / 2;
-  }
-  const maxValue = Math.max(1, ...values) * 1.08;
-
+  ctx.clearRect(0, 0, chartWidth, rect.height);
+  const width = chartWidth - pad.left - pad.right;
+  const height = rect.height - pad.top - pad.bottom;
+  const values = points.flatMap((point) => energySeries
+    .map((series) => finiteNumber(point[series.field]))
+    .filter((value) => value !== null && value >= 0));
+  const maxValue = energyAxisMaximum(values);
+  drawEnergyGrid(ctx, theme, pad, width, height, maxValue);
+  const slotWidth = width / Math.max(1, slots.length);
+  const groupWidth = Math.min(slotWidth * 0.78, 84);
+  const gap = 2;
+  const barWidth = (groupWidth - gap * (energySeries.length - 1)) / energySeries.length;
   const plottedPoints = [];
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(pad.left, pad.top, width, height);
-  ctx.clip();
-  energySeries.forEach((series) => {
-    const seriesPoints = points
-      .map((point) => ({ point, value: finiteNumber(point[series.field]) }))
-      .filter((item) => item.value !== null)
-      .map((item) => ({
-        ...item,
-        series,
-        color: series.color,
-        x: pad.left + scale(item.point.unix, minTime, maxTime, 0, width),
-        y: pad.top + height - scale(item.value, 0, maxValue, 0, height),
-      }));
-    if (!seriesPoints.length) return;
-    plottedPoints.push(...seriesPoints);
-    ctx.beginPath();
-    seriesPoints.forEach((item, index) => {
-      if (index === 0) ctx.moveTo(item.x, item.y);
-      else ctx.lineTo(item.x, item.y);
-    });
-    ctx.strokeStyle = series.color;
-    ctx.lineWidth = 2.4;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.stroke();
-
-    if (seriesPoints.length <= 40) {
-      seriesPoints.forEach((item) => {
-        ctx.beginPath();
-        ctx.arc(item.x, item.y, 3.2, 0, Math.PI * 2);
-        ctx.fillStyle = series.color;
-        ctx.fill();
-      });
+  slots.forEach((point, index) => {
+    const groupX = pad.left + slotWidth * (index + 0.5);
+    const selected = state.energyChartHover?.unix === point.unix;
+    if (selected) {
+      ctx.fillStyle = theme.chartGrid;
+      ctx.fillRect(groupX - slotWidth / 2, pad.top, slotWidth, height);
     }
+    energySeries.forEach((series, seriesIndex) => {
+      const value = finiteNumber(point[series.field]);
+      if (value === null || value < 0) return;
+      const x = groupX - groupWidth / 2 + seriesIndex * (barWidth + gap);
+      const barHeight = value / maxValue * height;
+      const y = pad.top + height - barHeight;
+      ctx.fillStyle = series.color;
+      ctx.globalAlpha = selected ? 1 : 0.86;
+      ctx.fillRect(x, y, barWidth, barHeight);
+      ctx.globalAlpha = 1;
+      plottedPoints.push({ point, value, series, color: series.color,
+        x: x + barWidth / 2, y, groupX, barWidth });
+    });
   });
-  ctx.restore();
-
-  drawEnergyTimeAxis(ctx, theme, pad, width, height, points, minTime, maxTime);
+  drawEnergyTimeAxis(ctx, theme, pad, width, height, slots);
+  const axis = $("energyChartAxis");
+  axis.width = Math.floor(pad.left * dpr);
+  axis.height = pixelHeight;
+  axis.style.width = `${pad.left}px`;
+  axis.style.height = `${rect.height}px`;
+  axis.getContext("2d").drawImage(canvas, 0, 0, axis.width, pixelHeight, 0, 0, axis.width, pixelHeight);
   state.energyChartGeometry = {
     points: plottedPoints,
     plot: { left: pad.left, right: pad.left + width, top: pad.top, bottom: pad.top + height },
   };
-
+  canvas.dataset.chartType = "grouped-bars";
+  const viewKey = `${state.energyView}:${state.energyDate}`;
+  if (canvas.dataset.viewKey !== viewKey && points.length) {
+    canvas.dataset.viewKey = viewKey;
+    scroller.scrollLeft = state.energyView === "date" ? 0 : scroller.scrollWidth;
+  }
   const activePoints = state.energyChartHover
     ? plottedPoints.filter((item) => item.point.unix === state.energyChartHover.unix)
     : [];
-  if (activePoints.length) {
-    drawChartFocus(ctx, activePoints, theme, pad.top, pad.top + height);
-    renderEnergyChartTooltip(activePoints, rect);
-  } else {
-    hideEnergyChartTooltip(false);
-  }
+  if (activePoints.length) renderEnergyChartTooltip(activePoints, rect);
+  else hideEnergyChartTooltip(false);
 }
 
-function drawEnergyGrid(ctx, theme, pad, width, height, rawMaxValue) {
-  const maxValue = Math.max(1, rawMaxValue * 1.08);
+function drawEnergyGrid(ctx, theme, pad, width, height, maxValue) {
   ctx.save();
   ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   ctx.fillStyle = theme.chartMuted;
+  ctx.textAlign = "left";
+  ctx.fillText("kWh", 8, 14);
   for (let index = 0; index <= 4; index += 1) {
     const y = pad.top + (height * index) / 4;
     ctx.strokeStyle = theme.chartGrid;
@@ -2091,42 +2077,29 @@ function drawEnergyGrid(ctx, theme, pad, width, height, rawMaxValue) {
     ctx.stroke();
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(formatEnergyAxis(maxValue - (maxValue * index) / 4), pad.left - 9, y);
+    ctx.fillText(formatEnergyAxis(maxValue * (1 - index / 4)), pad.left - 9, y);
   }
   ctx.restore();
 }
 
-function drawEnergyTimeAxis(ctx, theme, pad, width, height, points, minTime, maxTime) {
-  if (state.energyView === "date") {
-    ctx.save();
-    ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-    ctx.fillStyle = theme.chartMuted;
-    for (let index = 0; index <= 4; index += 1) {
-      const x = pad.left + (width * index) / 4;
-      ctx.textAlign = index === 0 ? "left" : index === 4 ? "right" : "center";
-      ctx.textBaseline = "top";
-      ctx.fillText(`${index * 6}h`, x, pad.top + height + 11);
-    }
-    ctx.restore();
-    return;
-  }
-  const tickCount = Math.min(points.length, width < 520 ? 3 : 5);
-  if (!tickCount) return;
+function drawEnergyTimeAxis(ctx, theme, pad, width, height, slots) {
+  if (!slots.length) return;
+  const slotWidth = width / slots.length;
+  const stride = Math.max(1, Math.ceil(88 / slotWidth));
   ctx.save();
   ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   ctx.fillStyle = theme.chartMuted;
-  for (let index = 0; index < tickCount; index += 1) {
-    const pointIndex = tickCount === 1
-      ? 0
-      : Math.round((index * (points.length - 1)) / (tickCount - 1));
-    const point = points[pointIndex];
-    const x = tickCount === 1
-      ? pad.left + width / 2
-      : pad.left + scale(point.unix, minTime, maxTime, 0, width);
-    ctx.textAlign = index === 0 ? "left" : index === tickCount - 1 ? "right" : "center";
-    ctx.textBaseline = "top";
-    ctx.fillText(formatEnergyPeriod(point), x, pad.top + height + 11);
-  }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  slots.forEach((point, index) => {
+    if (index % stride) return;
+    const label = state.energyView === "date"
+      ? new Intl.DateTimeFormat(currentLocale(), {
+          hour: "numeric", minute: "2-digit", timeZone: state.energyTimezone,
+        }).format(new Date(point.unix * 1000))
+      : formatEnergyPeriod(point);
+    ctx.fillText(label, pad.left + slotWidth * (index + 0.5), pad.top + height + 11, 84);
+  });
   ctx.restore();
 }
 
@@ -2135,7 +2108,7 @@ function formatEnergyTotal(value) {
   if (number === null) return "--";
   return new Intl.NumberFormat(currentLocale(), {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 1,
+    maximumFractionDigits: number > 0 && number < 1 ? 3 : 1,
   }).format(number);
 }
 
@@ -2215,11 +2188,11 @@ function formatEnergyAxis(value) {
       maximumFractionDigits: 1,
     }).format(value);
   }
-  return new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 1 }).format(value);
+  return new Intl.NumberFormat(currentLocale(), { maximumSignificantDigits: 3 }).format(value);
 }
 
 function formatEnergyPeriod(point) {
-  if (state.energyView === "year") return String(point.period || "");
+  if (state.energyView === "year") return String(point.period || new Date(point.unix * 1000).getUTCFullYear());
   const date = new Date(point.timestamp || point.unix * 1000);
   if (state.energyView === "hour") {
     return new Intl.DateTimeFormat(currentLocale(), {
@@ -2268,6 +2241,13 @@ function formatEnergyPointValue(value) {
 
 function renderEnergyChartTooltip(activePoints, canvasRect) {
   const tooltip = $("energyHistoryTooltip");
+  const scroller = $("energyChartScroll");
+  const viewportWidth = scroller.clientWidth;
+  const anchorX = activePoints[0].groupX - scroller.scrollLeft;
+  if (anchorX < 0 || anchorX > viewportWidth) {
+    tooltip.hidden = true;
+    return;
+  }
   const period = formatEnergyPointPeriod(activePoints[0].point);
   const rows = activePoints
     .sort((left, right) => energySeries.indexOf(left.series) - energySeries.indexOf(right.series))
@@ -2285,15 +2265,14 @@ function renderEnergyChartTooltip(activePoints, canvasRect) {
   `;
   tooltip.hidden = false;
 
-  if (canvasRect.width < 540) {
+  if (viewportWidth < 540) {
     tooltip.dataset.mobile = "true";
     tooltip.style.left = "12px";
     tooltip.style.top = "12px";
   } else {
     delete tooltip.dataset.mobile;
-    const anchorX = activePoints[0].x;
     const anchorY = Math.min(...activePoints.map((item) => item.y));
-    tooltip.style.left = `${clamp(anchorX, 138, canvasRect.width - 138)}px`;
+    tooltip.style.left = `${clamp(anchorX, 138, viewportWidth - 138)}px`;
     tooltip.style.top = `${anchorY}px`;
     tooltip.classList.toggle("is-below", anchorY < 145);
   }
@@ -2335,7 +2314,7 @@ function updateEnergyChartHoverFromClient(clientX, clientY) {
   }
 
   const nearest = geometry.points.reduce((best, point) => {
-    const score = Math.abs(point.x - x) + Math.abs(point.y - y) * 0.16;
+    const score = Math.abs(point.groupX - x);
     return !best || score < best.score ? { point, score } : best;
   }, null)?.point;
   if (!nearest) return;
@@ -2363,6 +2342,12 @@ function moveEnergyChartKeyboardSelection(key) {
   else if (key === "ArrowRight") nextIndex = currentIndex < 0 ? 0 : currentIndex + 1;
   nextIndex = clamp(nextIndex, 0, timestamps.length - 1);
   state.energyChartHover = { unix: timestamps[nextIndex] };
+  const selected = state.energyChartGeometry.points.find((item) => item.point.unix === timestamps[nextIndex]);
+  const scroller = $("energyChartScroll");
+  if (selected.groupX < scroller.scrollLeft + 60) scroller.scrollLeft = selected.groupX - 60;
+  else if (selected.groupX > scroller.scrollLeft + scroller.clientWidth - 30) {
+    scroller.scrollLeft = selected.groupX - scroller.clientWidth + 30;
+  }
   drawEnergyHistoryChart();
 }
 
@@ -2404,8 +2389,8 @@ function drawChart() {
   ctx.clearRect(0, 0, rect.width, rect.height);
 
   const pad = rect.width < 520
-    ? { top: 18, right: 12, bottom: 34, left: 48 }
-    : { top: 18, right: 18, bottom: 36, left: 58 };
+    ? { top: 18, right: 12, bottom: 34, left: 64 }
+    : { top: 18, right: 18, bottom: 36, left: 72 };
   const width = Math.max(1, rect.width - pad.left - pad.right);
   const height = Math.max(1, rect.height - pad.top - pad.bottom);
   const visibleSeries = selectedPowerHistorySeries();
@@ -2465,7 +2450,7 @@ function drawChart() {
         y: pad.top + height - scale(item.value, minValue, maxValue, 0, height),
       }));
     plottedPoints.push(...points);
-    drawHistorySeries(ctx, points, series.color);
+    drawHistorySeries(ctx, points, series.color, series.dash);
   });
   ctx.restore();
 
@@ -2502,6 +2487,7 @@ function drawEmptyChart(ctx, theme, pad, width, height) {
     state.resourceErrors.history ? t("history.unavailable") : t("history.awaiting"),
     pad.left,
     pad.top + 28,
+    width,
   );
 }
 
@@ -2550,7 +2536,7 @@ function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValu
     ctx.textAlign = index === 0 ? "left" : index === tickCount - 1 ? "right" : "center";
     ctx.textBaseline = "top";
     ctx.fillText(
-      state.range === "date" ? `${index * 6}h` : formatChartTick(unix),
+      powerTimeTick(unix, ratio),
       x,
       pad.top + height + 10,
     );
@@ -2558,8 +2544,18 @@ function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValu
   ctx.restore();
 }
 
-function drawHistorySeries(ctx, points, color) {
+function powerTimeTick(unix, ratio) {
+  if (state.range !== "date") return formatChartTick(unix);
+  if (ratio === 0) return "0h";
+  if (ratio === 1) return "24h";
+  return new Intl.DateTimeFormat(currentLocale(), {
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: state.powerTimezone,
+  }).format(new Date(unix * 1000));
+}
+
+function drawHistorySeries(ctx, points, color, dash = []) {
   if (!points.length) return;
+  ctx.setLineDash(dash);
   ctx.beginPath();
   points.forEach((item, index) => {
     if (index === 0) ctx.moveTo(item.x, item.y);
@@ -2570,6 +2566,7 @@ function drawHistorySeries(ctx, points, color) {
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.stroke();
+  ctx.setLineDash([]);
 
   if (points.length <= 80) {
     points.forEach((point) => {
@@ -3267,6 +3264,10 @@ function bindControls() {
     moveEnergyChartKeyboardSelection(event.key);
   });
   energyChart.addEventListener("blur", () => hideEnergyChartTooltip());
+  $("energyChartScroll").addEventListener("scroll", () => {
+    window.cancelAnimationFrame(energyChartPointerFrame);
+    energyChartPointerFrame = window.requestAnimationFrame(drawEnergyHistoryChart);
+  }, { passive: true });
 
   const chartContainer = chart.parentElement;
   const energyChartContainer = energyChart.parentElement;

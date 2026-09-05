@@ -129,6 +129,7 @@ class RetentionStore:
                     battery_power_w REAL,
                     solar_power_w REAL,
                     load_power_w REAL,
+                    home_load_power_w REAL,
                     consumption_meter_kwh REAL,
                     solar_generation_meter_kwh REAL,
                     grid_import_meter_kwh REAL
@@ -149,6 +150,7 @@ class RetentionStore:
             )
             self._ensure_column("collector_stream_id", "TEXT")
             self._ensure_column("collector_sequence", "INTEGER")
+            self._ensure_column("home_load_power_w", "REAL", "inverter_readings")
             connection.execute(
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_collector_sample
@@ -370,13 +372,15 @@ class RetentionStore:
                         inverter_id,
                         AVG(grid_power_w) AS grid_power_w,
                         AVG(solar_power_w) AS solar_power_w,
-                        AVG(load_power_w) AS load_power_w
+                        AVG(load_power_w) AS load_power_w,
+                        AVG(home_load_power_w) AS home_load_power_w
                     FROM inverter_readings
                     WHERE {time_filter}
                       AND (
                           grid_power_w IS NOT NULL
                           OR solar_power_w IS NOT NULL
                           OR load_power_w IS NOT NULL
+                          OR home_load_power_w IS NOT NULL
                       )
                     GROUP BY bucket_unix, inverter_id
                 ),
@@ -385,7 +389,8 @@ class RetentionStore:
                         bucket_unix,
                         SUM(grid_power_w) AS grid_power_w,
                         SUM(solar_power_w) AS solar_power_w,
-                        SUM(load_power_w) AS load_power_w
+                        SUM(load_power_w) AS load_power_w,
+                        SUM(home_load_power_w) AS home_load_power_w
                     FROM inverter_by_device
                     GROUP BY bucket_unix
                 ),
@@ -417,7 +422,8 @@ class RetentionStore:
                     inverter_by_bucket.grid_power_w,
                     battery_by_bucket.battery_power_w,
                     inverter_by_bucket.solar_power_w,
-                    inverter_by_bucket.load_power_w
+                    inverter_by_bucket.load_power_w,
+                    inverter_by_bucket.home_load_power_w
                 FROM buckets
                 LEFT JOIN inverter_by_bucket USING (bucket_unix)
                 LEFT JOIN battery_by_bucket USING (bucket_unix)
@@ -441,6 +447,7 @@ class RetentionStore:
                 "battery_power_w": _rounded_power(row["battery_power_w"]),
                 "solar_power_w": _rounded_power(row["solar_power_w"]),
                 "load_power_w": _rounded_power(row["load_power_w"]),
+                "home_load_power_w": _rounded_power(row["home_load_power_w"]),
             }
             for row in rows
         ]
@@ -771,14 +778,17 @@ class RetentionStore:
             )
             self.connection.commit()
 
-    def _ensure_column(self, name: str, declaration: str) -> None:
+    def _ensure_column(
+        self, name: str, declaration: str,
+        table: Literal["readings", "inverter_readings"] = "readings",
+    ) -> None:
         columns = {
             str(row["name"])
-            for row in self.connection.execute("PRAGMA table_info(readings)").fetchall()
+            for row in self.connection.execute(f"PRAGMA table_info({table})").fetchall()
         }
         if name not in columns:
             self.connection.execute(
-                f"ALTER TABLE readings ADD COLUMN {name} {declaration}"
+                f"ALTER TABLE {table} ADD COLUMN {name} {declaration}"
             )
 
     def _verify_writable(self) -> None:
@@ -1018,6 +1028,7 @@ def _inverter_reading_row(snapshot: dict[str, Any]) -> dict[str, Any] | None:
         "grid_power_w": grid_power,
         "solar_power_w": _number(reading.get("pv_total_power_w")),
         "load_power_w": _number(reading.get("load_total_power_w")),
+        "home_load_power_w": _number(reading.get("home_load_total_power_w")),
         "consumption_meter_kwh": _nonnegative_number(
             reading.get("load_energy_today_kwh")
         ),

@@ -211,6 +211,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "grid_power_w": "inverter_telemetry",
                 "solar_power_w": "inverter_telemetry",
                 "load_power_w": "inverter_telemetry",
+                "home_load_power_w": "inverter_telemetry",
             },
             "points": await asyncio.to_thread(
                 store.power_history,
