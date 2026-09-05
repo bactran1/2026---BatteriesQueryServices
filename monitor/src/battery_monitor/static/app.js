@@ -26,6 +26,8 @@ const state = {
   theme: "light",
   chartGeometry: null,
   chartHover: null,
+  energyChartGeometry: null,
+  energyChartHover: null,
   chartReveal: 1,
   renderedSoc: new Map(),
   language: document.documentElement.lang === "vi" ? "vi" : "en",
@@ -33,6 +35,8 @@ const state = {
   summary: {},
   events: [],
 };
+
+const BATTERY_RESERVE_PERCENT = 20;
 
 const translations = {
   en: {
@@ -130,8 +134,8 @@ const translations = {
     "energy.batteryDischargingPhrase": "{value} from battery",
     "energy.batteryIdlePhrase": "Battery idle",
     "energy.batteryUnavailablePhrase": "Battery telemetry unavailable",
-    "energy.runtimeRemaining": "~{time} remaining at this discharge rate",
-    "energy.runtimeCallout": "~{time} remaining",
+    "energy.runtimeRemaining": "~{time} until the 20% battery reserve at this discharge rate",
+    "energy.runtimeCallout": "~{time} to 20% reserve",
     "energy.liveDescription": "{sources} · {load} · {battery}",
     "energy.importing": "{value} import",
     "energy.exporting": "{value} export",
@@ -157,7 +161,7 @@ const translations = {
     "inverter.battery": "Battery rack",
     "inverter.batteryElectrical": "Direct RS485 · {voltage} · {current} · {soc} · {temperature}",
     "inverter.batteryWaiting": "Waiting for direct battery telemetry",
-    "inverter.runtimeRemaining": "Estimated support · {time} at current discharge",
+    "inverter.runtimeRemaining": "Estimated support · {time} until the 20% cutoff",
     "inverter.thermal": "Inverter thermal",
     "inverter.internalTemperature": "{value} internal",
     "inverter.thermalDetail": "Inverter {inverter} · DC/DC {dcdc}",
@@ -188,6 +192,7 @@ const translations = {
     "energyHistory.kwhAwaiting": "kWh · awaiting data",
     "energyHistory.kwhPeriod": "kWh · {period}",
     "energyHistory.chartAria": "Energy history in kilowatt-hours",
+    "energyHistory.pointAria": "Energy for {period}: {values}",
     "energyHistory.awaiting": "Awaiting inverter energy readings",
     "energyHistory.unavailable": "Energy history temporarily unavailable",
     "runtime.minutes": "{minutes}m",
@@ -447,8 +452,8 @@ const translations = {
     "energy.batteryDischargingPhrase": "{value} từ pin",
     "energy.batteryIdlePhrase": "Pin đang nghỉ",
     "energy.batteryUnavailablePhrase": "Chưa có dữ liệu trực tiếp từ pin",
-    "energy.runtimeRemaining": "còn khoảng {time} ở mức xả hiện tại",
-    "energy.runtimeCallout": "còn khoảng {time}",
+    "energy.runtimeRemaining": "còn khoảng {time} đến mức dự trữ pin 20% ở mức xả hiện tại",
+    "energy.runtimeCallout": "còn khoảng {time} đến mức 20%",
     "energy.liveDescription": "{sources} · {load} · {battery}",
     "energy.importing": "nhập {value}",
     "energy.exporting": "xuất {value}",
@@ -474,7 +479,7 @@ const translations = {
     "inverter.battery": "Tủ pin",
     "inverter.batteryElectrical": "RS485 trực tiếp · {voltage} · {current} · {soc} · {temperature}",
     "inverter.batteryWaiting": "Đang chờ dữ liệu trực tiếp từ pin",
-    "inverter.runtimeRemaining": "Thời gian cấp điện ước tính · {time} ở mức xả hiện tại",
+    "inverter.runtimeRemaining": "Thời gian cấp điện ước tính · {time} đến ngưỡng cắt 20%",
     "inverter.thermal": "Nhiệt độ biến tần",
     "inverter.internalTemperature": "bên trong {value}",
     "inverter.thermalDetail": "Biến tần {inverter} · DC/DC {dcdc}",
@@ -505,6 +510,7 @@ const translations = {
     "energyHistory.kwhAwaiting": "kWh · đang chờ dữ liệu",
     "energyHistory.kwhPeriod": "kWh · {period}",
     "energyHistory.chartAria": "Biểu đồ lịch sử năng lượng theo kilowatt-giờ",
+    "energyHistory.pointAria": "Năng lượng trong {period}: {values}",
     "energyHistory.awaiting": "Đang chờ số liệu năng lượng từ biến tần",
     "energyHistory.unavailable": "Lịch sử năng lượng tạm thời không khả dụng",
     "runtime.minutes": "{minutes} phút",
@@ -678,9 +684,9 @@ const powerHistorySeries = [
   { field: "load_power_w", labelKey: "history.load", color: "#ff7a00" },
 ];
 const energySeries = [
-  { field: "consumption_kwh", color: "#ff7a00" },
-  { field: "solar_generation_kwh", color: "#30b95f" },
-  { field: "grid_import_kwh", color: "#0a84ff" },
+  { field: "consumption_kwh", labelKey: "energyHistory.consumption", color: "#ff7a00" },
+  { field: "solar_generation_kwh", labelKey: "energyHistory.solar", color: "#30b95f" },
+  { field: "grid_import_kwh", labelKey: "energyHistory.grid", color: "#0a84ff" },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -695,6 +701,7 @@ let schedulerTimer = null;
 let chartResizeFrame = null;
 let energyChartResizeFrame = null;
 let chartPointerFrame = null;
+let energyChartPointerFrame = null;
 let chartAnimationFrame = null;
 
 function t(key, values = {}) {
@@ -1314,21 +1321,15 @@ function rackBatteryTelemetry(batteries = state.batteries) {
       ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length
       : null;
   };
-  const remainingEnergyValues = readings
-    .map((reading) => {
-      const remainingCapacity = finiteNumber(reading.remaining_capacity_ah);
-      const voltage = finiteNumber(reading.voltage_v);
-      return remainingCapacity === null || voltage === null
-        ? null
-        : remainingCapacity * voltage;
-    })
+  const usableEnergyValues = readings
+    .map((reading) => usableBatteryEnergyWh(reading))
     .filter((value) => value !== null);
-  const remainingEnergyWh = remainingEnergyValues.length === readings.length
-    ? remainingEnergyValues.reduce((sum, value) => sum + value, 0)
+  const usableEnergyWh = usableEnergyValues.length === readings.length
+    ? usableEnergyValues.reduce((sum, value) => sum + value, 0)
     : null;
   const power = total("power_w");
-  const runtimeHours = power !== null && power < -25 && remainingEnergyWh !== null
-    ? remainingEnergyWh / Math.abs(power)
+  const runtimeHours = power !== null && power < -25 && usableEnergyWh !== null
+    ? usableEnergyWh / Math.abs(power)
     : null;
 
   return {
@@ -1339,9 +1340,30 @@ function rackBatteryTelemetry(batteries = state.batteries) {
     voltage: average("voltage_v"),
     soc: average("soc_percent"),
     temperature: average("mosfet_temperature_c"),
-    remainingEnergyWh,
+    usableEnergyWh,
     runtimeHours,
   };
+}
+
+function usableBatteryEnergyWh(reading, reservePercent = BATTERY_RESERVE_PERCENT) {
+  const remainingCapacity = finiteNumber(reading.remaining_capacity_ah);
+  const voltage = finiteNumber(reading.voltage_v);
+  const soc = finiteNumber(reading.soc_percent);
+  if (remainingCapacity === null || voltage === null) return null;
+  if (soc !== null && soc <= reservePercent) return 0;
+
+  let fullCapacity = finiteNumber(reading.full_capacity_ah);
+  if (fullCapacity === null || fullCapacity <= 0) {
+    fullCapacity = finiteNumber(reading.rated_capacity_ah);
+  }
+  if ((fullCapacity === null || fullCapacity <= 0) && soc !== null && soc > 0) {
+    fullCapacity = remainingCapacity / (soc / 100);
+  }
+  if (fullCapacity === null || fullCapacity <= 0) return null;
+
+  const reserveCapacity = (fullCapacity * reservePercent) / 100;
+  const usableCapacityAh = Math.max(0, remainingCapacity - reserveCapacity);
+  return usableCapacityAh * voltage;
 }
 
 function batteryPowerMode(power, fallback = "idle") {
@@ -1923,6 +1945,8 @@ function drawEnergyHistoryChart() {
 
   drawEnergyGrid(ctx, theme, pad, width, height, Math.max(1, ...values));
   if (!points.length || !values.length) {
+    state.energyChartGeometry = null;
+    hideEnergyChartTooltip(false);
     if (hasFixedDateWindow) {
       drawEnergyTimeAxis(
         ctx,
@@ -1957,6 +1981,7 @@ function drawEnergyHistoryChart() {
   }
   const maxValue = Math.max(1, ...values) * 1.08;
 
+  const plottedPoints = [];
   ctx.save();
   ctx.beginPath();
   ctx.rect(pad.left, pad.top, width, height);
@@ -1967,10 +1992,13 @@ function drawEnergyHistoryChart() {
       .filter((item) => item.value !== null)
       .map((item) => ({
         ...item,
+        series,
+        color: series.color,
         x: pad.left + scale(item.point.unix, minTime, maxTime, 0, width),
         y: pad.top + height - scale(item.value, 0, maxValue, 0, height),
       }));
     if (!seriesPoints.length) return;
+    plottedPoints.push(...seriesPoints);
     ctx.beginPath();
     seriesPoints.forEach((item, index) => {
       if (index === 0) ctx.moveTo(item.x, item.y);
@@ -1994,6 +2022,20 @@ function drawEnergyHistoryChart() {
   ctx.restore();
 
   drawEnergyTimeAxis(ctx, theme, pad, width, height, points, minTime, maxTime);
+  state.energyChartGeometry = {
+    points: plottedPoints,
+    plot: { left: pad.left, right: pad.left + width, top: pad.top, bottom: pad.top + height },
+  };
+
+  const activePoints = state.energyChartHover
+    ? plottedPoints.filter((item) => item.point.unix === state.energyChartHover.unix)
+    : [];
+  if (activePoints.length) {
+    drawChartFocus(ctx, activePoints, theme, pad.top, pad.top + height);
+    renderEnergyChartTooltip(activePoints, rect);
+  } else {
+    hideEnergyChartTooltip(false);
+  }
 }
 
 function drawEnergyGrid(ctx, theme, pad, width, height, rawMaxValue) {
@@ -2082,6 +2124,13 @@ function sumEnergyHistoryPoints(points) {
 function formatEnergySummaryPeriod(point) {
   if (!point) return null;
   if (state.energyView === "year" && point.period) return String(point.period);
+  if (state.energyView === "month" && /^\d{4}-\d{2}$/.test(String(point.period || ""))) {
+    return new Intl.DateTimeFormat(currentLocale(), {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(`${point.period}-15T12:00:00Z`));
+  }
   if (state.energyView === "date" && point.period) {
     return formatCalendarDate(String(point.period).slice(0, 10));
   }
@@ -2140,13 +2189,142 @@ function formatEnergyPeriod(point) {
     }).format(date);
   }
   if (state.energyView === "month") {
-    return new Intl.DateTimeFormat(currentLocale(), { month: "short", year: "2-digit" }).format(date);
+    const period = String(point.period || "");
+    const monthDate = /^\d{4}-\d{2}$/.test(period)
+      ? new Date(`${period}-15T12:00:00Z`)
+      : date;
+    return new Intl.DateTimeFormat(currentLocale(), {
+      month: "short",
+      year: "2-digit",
+      timeZone: "UTC",
+    }).format(monthDate);
   }
   return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",
     year: "2-digit",
   }).format(date);
+}
+
+function formatEnergyPointPeriod(point) {
+  if (state.energyView === "year" || state.energyView === "month") {
+    return formatEnergySummaryPeriod(point) || String(point.period || "");
+  }
+  const unix = finiteNumber(point.unix);
+  const date = new Date(point.timestamp || (unix === null ? NaN : unix * 1000));
+  if (!Number.isFinite(date.getTime())) return String(point.period || "");
+  return new Intl.DateTimeFormat(currentLocale(), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatEnergyPointValue(value) {
+  const number = finiteNumber(value);
+  return number === null ? "--" : `${formatEnergyTotal(number)} kWh`;
+}
+
+function renderEnergyChartTooltip(activePoints, canvasRect) {
+  const tooltip = $("energyHistoryTooltip");
+  const period = formatEnergyPointPeriod(activePoints[0].point);
+  const rows = activePoints
+    .sort((left, right) => energySeries.indexOf(left.series) - energySeries.indexOf(right.series))
+    .map((item) => `
+      <span class="energy-tooltip__row">
+        <i style="--series-color: ${item.color}"></i>
+        <span>${escapeHtml(t(item.series.labelKey))}</span>
+        <strong>${escapeHtml(formatEnergyPointValue(item.value))}</strong>
+      </span>
+    `)
+    .join("");
+  tooltip.innerHTML = `
+    <time class="energy-tooltip__period">${escapeHtml(period)}</time>
+    ${rows}
+  `;
+  tooltip.hidden = false;
+
+  if (canvasRect.width < 540) {
+    tooltip.dataset.mobile = "true";
+    tooltip.style.left = "12px";
+    tooltip.style.top = "12px";
+  } else {
+    delete tooltip.dataset.mobile;
+    const anchorX = activePoints[0].x;
+    const anchorY = Math.min(...activePoints.map((item) => item.y));
+    tooltip.style.left = `${clamp(anchorX, 138, canvasRect.width - 138)}px`;
+    tooltip.style.top = `${anchorY}px`;
+    tooltip.classList.toggle("is-below", anchorY < 145);
+  }
+
+  const values = activePoints
+    .map((item) => `${t(item.series.labelKey)} ${formatEnergyPointValue(item.value)}`)
+    .join(", ");
+  $("energyHistoryChart").setAttribute(
+    "aria-label",
+    t("energyHistory.pointAria", { period, values }),
+  );
+}
+
+function hideEnergyChartTooltip(redraw = true) {
+  state.energyChartHover = null;
+  const tooltip = $("energyHistoryTooltip");
+  tooltip.hidden = true;
+  tooltip.classList.remove("is-below");
+  delete tooltip.dataset.mobile;
+  $("energyHistoryChart").setAttribute("aria-label", t("energyHistory.chartAria"));
+  if (redraw) window.requestAnimationFrame(drawEnergyHistoryChart);
+}
+
+function updateEnergyChartHoverFromClient(clientX, clientY) {
+  const canvas = $("energyHistoryChart");
+  const rect = canvas.getBoundingClientRect();
+  const geometry = state.energyChartGeometry;
+  if (!geometry?.points.length) return;
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  if (
+    x < geometry.plot.left - 18
+    || x > geometry.plot.right + 18
+    || y < geometry.plot.top - 18
+    || y > geometry.plot.bottom + 18
+  ) {
+    hideEnergyChartTooltip();
+    return;
+  }
+
+  const nearest = geometry.points.reduce((best, point) => {
+    const score = Math.abs(point.x - x) + Math.abs(point.y - y) * 0.16;
+    return !best || score < best.score ? { point, score } : best;
+  }, null)?.point;
+  if (!nearest) return;
+  state.energyChartHover = { unix: nearest.point.unix };
+  drawEnergyHistoryChart();
+}
+
+function queueEnergyChartHover(clientX, clientY) {
+  window.cancelAnimationFrame(energyChartPointerFrame);
+  energyChartPointerFrame = window.requestAnimationFrame(
+    () => updateEnergyChartHoverFromClient(clientX, clientY),
+  );
+}
+
+function moveEnergyChartKeyboardSelection(key) {
+  const timestamps = Array.from(
+    new Set((state.energyChartGeometry?.points || []).map((item) => item.point.unix)),
+  ).sort((left, right) => left - right);
+  if (!timestamps.length) return;
+  const currentIndex = timestamps.indexOf(state.energyChartHover?.unix);
+  let nextIndex = currentIndex;
+  if (key === "Home") nextIndex = 0;
+  else if (key === "End") nextIndex = timestamps.length - 1;
+  else if (key === "ArrowLeft") nextIndex = currentIndex < 0 ? timestamps.length - 1 : currentIndex - 1;
+  else if (key === "ArrowRight") nextIndex = currentIndex < 0 ? 0 : currentIndex + 1;
+  nextIndex = clamp(nextIndex, 0, timestamps.length - 1);
+  state.energyChartHover = { unix: timestamps[nextIndex] };
+  drawEnergyHistoryChart();
 }
 
 function animateChartIn() {
@@ -2917,6 +3095,7 @@ function bindControls() {
     state.energySummaryPeriod = null;
     state.energyWindowStart = null;
     state.energyWindowEnd = null;
+    hideEnergyChartTooltip(false);
     renderEnergyHistory();
     refreshEnergyHistory().catch((error) => handleResourceFailure("energy", error));
   });
@@ -2953,6 +3132,7 @@ function bindControls() {
       state.energySummaryPeriod = null;
       state.energyWindowStart = null;
       state.energyWindowEnd = null;
+      hideEnergyChartTooltip(false);
       document.querySelectorAll("#energyViewControls button").forEach((item) => {
         item.classList.remove("is-active");
         item.setAttribute("aria-pressed", "false");
@@ -2987,8 +3167,26 @@ function bindControls() {
   });
   chart.addEventListener("blur", () => hideChartTooltip());
 
+  const energyChart = $("energyHistoryChart");
+  energyChart.addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") return;
+    queueEnergyChartHover(event.clientX, event.clientY);
+  });
+  energyChart.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "touch") queueEnergyChartHover(event.clientX, event.clientY);
+  });
+  energyChart.addEventListener("pointerleave", (event) => {
+    if (event.pointerType !== "touch") hideEnergyChartTooltip();
+  });
+  energyChart.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    moveEnergyChartKeyboardSelection(event.key);
+  });
+  energyChart.addEventListener("blur", () => hideEnergyChartTooltip());
+
   const chartContainer = chart.parentElement;
-  const energyChartContainer = $("energyHistoryChart").parentElement;
+  const energyChartContainer = energyChart.parentElement;
   if ("ResizeObserver" in window) {
     const observer = new ResizeObserver(() => {
       window.cancelAnimationFrame(chartResizeFrame);

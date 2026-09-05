@@ -294,10 +294,13 @@
               <canvas
                 id="energyHistoryChart"
                 height="310"
+                tabindex="0"
                 role="img"
                 aria-label="Energy history in kilowatt-hours"
                 data-i18n-aria-label="energyHistory.chartAria"
+                aria-describedby="energyHistoryTooltip"
               ></canvas>
+              <div id="energyHistoryTooltip" class="chart-tooltip chart-tooltip--energy" role="status" aria-live="polite" hidden></div>
               <div id="energyHistoryEmpty" class="energy-history-empty" data-i18n="energyHistory.awaiting">Awaiting inverter energy readings</div>
             </div>
           </div>

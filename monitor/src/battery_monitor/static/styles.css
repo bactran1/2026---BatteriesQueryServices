@@ -1274,6 +1274,14 @@ button {
   display: block;
   width: 100%;
   height: 310px;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+
+#energyHistoryChart:focus-visible {
+  border-radius: 8px;
+  outline: 3px solid rgba(255, 122, 0, 0.38);
+  outline-offset: -3px;
 }
 
 .energy-history-empty {
@@ -2009,7 +2017,13 @@ select {
   min-width: 250px;
 }
 
-.power-tooltip__time {
+.chart-tooltip--energy {
+  display: block;
+  min-width: 250px;
+}
+
+.power-tooltip__time,
+.energy-tooltip__period {
   display: block;
   margin-bottom: 7px;
   color: var(--muted);
@@ -2017,7 +2031,8 @@ select {
   white-space: nowrap;
 }
 
-.power-tooltip__row {
+.power-tooltip__row,
+.energy-tooltip__row {
   display: grid;
   grid-template-columns: 8px minmax(70px, 1fr) auto;
   align-items: center;
@@ -2026,14 +2041,16 @@ select {
   font-size: 11px;
 }
 
-.power-tooltip__row i {
+.power-tooltip__row i,
+.energy-tooltip__row i {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--series-color);
 }
 
-.power-tooltip__row strong {
+.power-tooltip__row strong,
+.energy-tooltip__row strong {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
