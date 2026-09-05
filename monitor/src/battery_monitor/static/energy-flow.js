@@ -254,8 +254,8 @@ function startEnergyFlowScene() {
         particle.scale.setScalar(endpointFade);
       });
 
-      route.particleMaterial.opacity = active ? 0.9 : 0;
-      route.particleGlowMaterial.opacity = active ? 0.08 : 0;
+      route.particleMaterial.opacity = active ? 0.96 : 0;
+      route.particleGlowMaterial.opacity = active ? 0.14 : 0;
     });
 
     pulseSignal(energySystem.gridSignalMaterial, network.grid.active, time, 0);
@@ -740,12 +740,12 @@ function createFlowRoute(curve, materials, particleCount, phaseOffset) {
   const glowMaterial = materials.flowGlow.clone();
   const particleMaterial = materials.particle.clone();
   const particleGlowMaterial = materials.particleGlow.clone();
-  const line = mesh(new THREE.TubeGeometry(curve, 64, 0.018, 6, false), lineMaterial);
-  const glow = mesh(new THREE.TubeGeometry(curve, 64, 0.055, 8, false), glowMaterial);
+  const line = mesh(new THREE.TubeGeometry(curve, 64, 0.027, 6, false), lineMaterial);
+  const glow = mesh(new THREE.TubeGeometry(curve, 64, 0.072, 8, false), glowMaterial);
   group.add(glow, line);
 
-  const coreGeometry = new THREE.SphereGeometry(0.072, 16, 12);
-  const glowGeometry = new THREE.SphereGeometry(0.1, 16, 12);
+  const coreGeometry = new THREE.SphereGeometry(0.085, 16, 12);
+  const glowGeometry = new THREE.SphereGeometry(0.125, 16, 12);
   const particles = Array.from({ length: particleCount }, () => {
     const particle = new THREE.Group();
     const halo = mesh(glowGeometry, particleGlowMaterial);
