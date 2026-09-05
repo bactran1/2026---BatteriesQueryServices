@@ -5,7 +5,7 @@ import csv
 import io
 import logging
 from contextlib import asynccontextmanager, suppress
-from datetime import date as calendar_date
+from datetime import date as calendar_date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -179,10 +179,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/api/power-history")
-    async def power_history(range: str = Query(default="24h")):
-        seconds = _range_seconds(range)
-        bucket_seconds = _bucket_seconds(seconds)
-        return {
+    async def power_history(
+        range: str = Query(default="24h"),
+        date: str | None = Query(default=None),
+        timezone_name: str = Query(default="UTC", alias="timezone"),
+    ):
+        selected_date = None
+        window_start = None
+        window_end = None
+        window_start_unix = None
+        window_end_unix = None
+        if range == "date":
+            (
+                selected_date,
+                window_start,
+                window_end,
+                window_start_unix,
+                window_end_unix,
+            ) = _calendar_day_window(date, timezone_name)
+            seconds = window_end_unix - window_start_unix
+            bucket_seconds = 5 * 60
+        else:
+            seconds = _range_seconds(range)
+            bucket_seconds = _bucket_seconds(seconds)
+
+        payload = {
             "range": range,
             "bucket_seconds": bucket_seconds,
             "sources": {
@@ -195,8 +216,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 store.power_history,
                 seconds,
                 bucket_seconds,
+                window_start_unix,
+                window_end_unix,
             ),
         }
+        if range == "date":
+            payload.update(
+                {
+                    "selected_date": selected_date,
+                    "timezone": timezone_name,
+                    "window_start": window_start,
+                    "window_start_unix": window_start_unix,
+                    "window_end": window_end,
+                    "window_end_unix": window_end_unix,
+                }
+            )
+        return payload
 
     @app.get("/api/events")
     async def events(range: str = Query(default="7d"), limit: int = Query(default=80, ge=1, le=300)):
@@ -335,6 +370,40 @@ def _range_seconds(value: str) -> int:
         return ranges[value]
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=f"Unsupported range: {value}") from exc
+
+
+def _calendar_day_window(
+    date_value: str | None, timezone_name: str
+) -> tuple[str, str, str, int, int]:
+    try:
+        selected_zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(status_code=400, detail="Unknown timezone") from exc
+
+    if date_value is None:
+        selected_date = datetime.now(selected_zone).date()
+    else:
+        try:
+            selected_date = calendar_date.fromisoformat(date_value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail="Date must use YYYY-MM-DD"
+            ) from exc
+
+    window_start = datetime(
+        selected_date.year,
+        selected_date.month,
+        selected_date.day,
+        tzinfo=selected_zone,
+    )
+    window_end = window_start + timedelta(days=1)
+    return (
+        selected_date.isoformat(),
+        window_start.isoformat(),
+        window_end.isoformat(),
+        int(window_start.timestamp()),
+        int(window_end.timestamp()),
+    )
 
 
 def _bucket_seconds(seconds: int) -> int:

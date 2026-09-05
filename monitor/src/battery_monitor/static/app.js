@@ -2,7 +2,11 @@ const state = {
   batteries: [],
   inverter: null,
   selectedBatteryId: null,
-  range: "24h",
+  range: "date",
+  powerDate: localCalendarDateValue(new Date()),
+  powerTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  powerWindowStart: null,
+  powerWindowEnd: null,
   history: [],
   powerSeries: new Set(["grid_power_w", "battery_power_w", "solar_power_w", "load_power_w"]),
   energyView: "month",
@@ -286,8 +290,13 @@ const translations = {
     "workbench.aria": "Monitoring workbench",
     "history.eyebrow": "History",
     "history.powerTitle": "Power sources & demand",
+    "history.powerTitleDate": "Power sources & demand · {date}",
     "history.powerDescription": "Direct rack power with inverter-measured grid, solar, and load on one timeline",
+    "history.powerDescriptionDate": "Grid, battery, solar, and load power from 0:00 to 24:00 on the selected calendar day",
     "history.range": "Range",
+    "history.date": "Date",
+    "history.selectDate": "Select day",
+    "history.selectDateAria": "Select power history calendar day",
     "history.seriesAria": "Visible power data",
     "history.grid": "Grid",
     "history.battery": "Battery rack",
@@ -604,8 +613,13 @@ const translations = {
     "workbench.aria": "Bảng điều khiển giám sát",
     "history.eyebrow": "Lịch sử",
     "history.powerTitle": "Nguồn điện & nhu cầu",
+    "history.powerTitleDate": "Nguồn điện & nhu cầu · {date}",
     "history.powerDescription": "Công suất tủ pin trực tiếp cùng dữ liệu lưới, mặt trời và tải từ biến tần",
+    "history.powerDescriptionDate": "Công suất lưới, pin, mặt trời và tải từ 0:00 đến 24:00 trong ngày đã chọn",
     "history.range": "Khoảng thời gian",
+    "history.date": "Ngày",
+    "history.selectDate": "Chọn ngày",
+    "history.selectDateAria": "Chọn ngày trên lịch cho lịch sử công suất",
     "history.seriesAria": "Dữ liệu công suất đang hiển thị",
     "history.grid": "Lưới điện",
     "history.battery": "Tủ pin",
@@ -794,19 +808,44 @@ async function refreshLive() {
 
 async function refreshHistory() {
   const requestedRange = state.range;
+  const requestedDate = state.powerDate;
   const params = new URLSearchParams({ range: requestedRange });
+  if (requestedRange === "date") {
+    params.set("date", requestedDate);
+    params.set("timezone", state.powerTimezone);
+  }
   const payload = await getJson(`/api/power-history?${params}`, "history");
-  if (requestedRange !== state.range) {
+  if (
+    requestedRange !== state.range
+    || (requestedRange === "date" && requestedDate !== state.powerDate)
+  ) {
     return refreshHistory();
   }
   state.history = payload.points || [];
+  state.powerWindowStart = finiteNumber(payload.window_start_unix);
+  state.powerWindowEnd = finiteNumber(payload.window_end_unix);
+  if (requestedRange === "date") {
+    state.powerDate = payload.selected_date || requestedDate;
+  }
   state.lastHistoryRefreshAt = Date.now();
   state.resourceErrors.history = null;
   $("historyChart").removeAttribute("data-refresh-error");
-  $("chartTitle").textContent = t("history.powerTitle");
+  renderPowerHistoryHeader();
   state.chartHover = null;
   hideChartTooltip(false);
   animateChartIn();
+}
+
+function renderPowerHistoryHeader() {
+  const isDate = state.range === "date";
+  $("chartTitle").textContent = isDate
+    ? t("history.powerTitleDate", { date: formatCalendarDate(state.powerDate) })
+    : t("history.powerTitle");
+  $("powerHistoryDescription").textContent = t(
+    isDate ? "history.powerDescriptionDate" : "history.powerDescription",
+  );
+  $("powerDateControl").hidden = !isDate;
+  $("powerDateInput").value = state.powerDate;
 }
 
 async function refreshEnergyHistory() {
@@ -2391,8 +2430,11 @@ function drawChart() {
       .map((series) => finiteNumber(point[series.field]))
       .filter((value) => value !== null),
   );
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
+  const hasFixedDateWindow = state.range === "date"
+    && finiteNumber(state.powerWindowStart) !== null
+    && finiteNumber(state.powerWindowEnd) !== null;
+  const minTime = hasFixedDateWindow ? state.powerWindowStart : Math.min(...times);
+  const maxTime = hasFixedDateWindow ? state.powerWindowEnd : Math.max(...times);
   let minValue = Math.min(0, ...values);
   let maxValue = Math.max(0, ...values);
   if (minValue === maxValue) {
@@ -2507,7 +2549,11 @@ function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValu
     ctx.stroke();
     ctx.textAlign = index === 0 ? "left" : index === tickCount - 1 ? "right" : "center";
     ctx.textBaseline = "top";
-    ctx.fillText(formatChartTick(unix), x, pad.top + height + 10);
+    ctx.fillText(
+      state.range === "date" ? `${index * 6}h` : formatChartTick(unix),
+      x,
+      pad.top + height + 10,
+    );
   }
   ctx.restore();
 }
@@ -2524,6 +2570,15 @@ function drawHistorySeries(ctx, points, color) {
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.stroke();
+
+  if (points.length <= 80) {
+    points.forEach((point) => {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    });
+  }
 }
 
 function drawChartFocus(ctx, activePoints, theme, top, bottom) {
@@ -2641,7 +2696,12 @@ function updateChartHoverFromClient(clientX, clientY) {
   if (!geometry?.points.length) return;
   const x = clientX - rect.left;
   const y = clientY - rect.top;
-  if (x < geometry.plot.left - 18 || x > geometry.plot.right + 18) {
+  if (
+    x < geometry.plot.left - 18
+    || x > geometry.plot.right + 18
+    || y < geometry.plot.top - 18
+    || y > geometry.plot.bottom + 18
+  ) {
     hideChartTooltip();
     return;
   }
@@ -2975,7 +3035,7 @@ function applyLanguage(language, persist) {
 }
 
 function rerenderLocalizedUi() {
-  $("chartTitle").textContent = t("history.powerTitle");
+  renderPowerHistoryHeader();
   $("chartLegend").dataset.signature = "";
   hideChartTooltip(false);
   renderEnergyHistory();
@@ -3081,6 +3141,24 @@ function bindControls() {
   initLanguage();
   initTheme();
 
+  const powerDateInput = $("powerDateInput");
+  const oldestPowerDate = new Date();
+  oldestPowerDate.setFullYear(oldestPowerDate.getFullYear() - 3);
+  powerDateInput.value = state.powerDate;
+  powerDateInput.max = localCalendarDateValue(new Date());
+  powerDateInput.min = localCalendarDateValue(oldestPowerDate);
+  powerDateInput.addEventListener("change", () => {
+    if (!powerDateInput.value || powerDateInput.value === state.powerDate) return;
+    state.powerDate = powerDateInput.value;
+    state.history = [];
+    state.powerWindowStart = null;
+    state.powerWindowEnd = null;
+    hideChartTooltip(false);
+    renderPowerHistoryHeader();
+    drawChart();
+    refreshHistory().catch((error) => handleResourceFailure("history", error));
+  });
+
   const energyDateInput = $("energyDateInput");
   const oldestDate = new Date();
   oldestDate.setFullYear(oldestDate.getFullYear() - 3);
@@ -3117,9 +3195,14 @@ function bindControls() {
   document.querySelectorAll(".segmented button[data-range]").forEach((button) => {
     button.addEventListener("click", () => {
       state.range = button.dataset.range;
+      state.history = [];
+      state.powerWindowStart = null;
+      state.powerWindowEnd = null;
       document.querySelectorAll(".segmented button[data-range]").forEach((item) => item.classList.remove("is-active"));
       button.classList.add("is-active");
       hideChartTooltip(false);
+      renderPowerHistoryHeader();
+      drawChart();
       refreshHistory().catch((error) => handleResourceFailure("history", error));
     });
   });

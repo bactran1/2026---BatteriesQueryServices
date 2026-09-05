@@ -231,6 +231,21 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(power[1]["grid_power_w"], -350.0)
             self.assertEqual(power[1]["battery_power_w"], -840.0)
             self.assertEqual(power[2]["solar_power_w"], 1800.0)
+            selected_power = store.power_history(
+                seconds=2 * 60 * 60,
+                bucket_seconds=3600,
+                window_start_unix=int(day.replace(hour=1, minute=0).timestamp()),
+                window_end_unix=int(day.replace(hour=3, minute=0).timestamp()),
+            )
+            self.assertEqual(len(selected_power), 2)
+            self.assertTrue(
+                all(
+                    day.replace(hour=1, minute=0).timestamp()
+                    <= point["unix"]
+                    < day.replace(hour=3, minute=0).timestamp()
+                    for point in selected_power
+                )
+            )
             inverter_battery_values = store.connection.execute(
                 "SELECT battery_power_w FROM inverter_readings"
             ).fetchall()

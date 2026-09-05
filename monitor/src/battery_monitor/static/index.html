@@ -396,16 +396,21 @@
               <div>
                 <p class="eyebrow" data-i18n="history.eyebrow">History</p>
                 <h2 id="chartTitle" data-i18n="history.powerTitle">Power sources &amp; demand</h2>
-                <p class="history-description" data-i18n="history.powerDescription">Direct rack power with inverter-measured grid, solar, and load on one timeline</p>
+                <p id="powerHistoryDescription" class="history-description" data-i18n="history.powerDescription">Direct rack power with inverter-measured grid, solar, and load on one timeline</p>
               </div>
               <div class="controls">
-                <div class="segmented" aria-label="Range" data-i18n-aria-label="history.range">
+                <div id="powerRangeControls" class="segmented" aria-label="Range" data-i18n-aria-label="history.range">
                   <button data-range="1h">1H</button>
-                  <button data-range="24h" class="is-active">24H</button>
+                  <button data-range="date" class="is-active" data-i18n="history.date">Date</button>
+                  <button data-range="24h">24H</button>
                   <button data-range="7d">7D</button>
                   <button data-range="30d">30D</button>
                   <button data-range="3y">3Y</button>
                 </div>
+                <label id="powerDateControl" class="power-date-control">
+                  <span data-i18n="history.selectDate">Select day</span>
+                  <input id="powerDateInput" type="date" aria-label="Select power history calendar day" data-i18n-aria-label="history.selectDateAria">
+                </label>
               </div>
             </div>
             <div class="power-history-toolbar">

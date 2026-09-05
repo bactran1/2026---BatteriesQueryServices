@@ -346,12 +346,24 @@ class RetentionStore:
         }
 
     def power_history(
-        self, seconds: int, bucket_seconds: int
+        self,
+        seconds: int,
+        bucket_seconds: int,
+        window_start_unix: int | None = None,
+        window_end_unix: int | None = None,
     ) -> list[dict[str, Any]]:
-        since = int(time.time()) - seconds
+        if window_start_unix is not None and window_end_unix is not None:
+            time_filter = "captured_at_unix >= ? AND captured_at_unix < ?"
+            time_params: tuple[object, ...] = (
+                window_start_unix,
+                window_end_unix,
+            )
+        else:
+            time_filter = "captured_at_unix >= ?"
+            time_params = (int(time.time()) - seconds,)
         with self._lock:
             rows = self.connection.execute(
-                """
+                f"""
                 WITH inverter_by_device AS (
                     SELECT
                         CAST(captured_at_unix / ? AS INTEGER) * ? AS bucket_unix,
@@ -360,7 +372,7 @@ class RetentionStore:
                         AVG(solar_power_w) AS solar_power_w,
                         AVG(load_power_w) AS load_power_w
                     FROM inverter_readings
-                    WHERE captured_at_unix >= ?
+                    WHERE {time_filter}
                       AND (
                           grid_power_w IS NOT NULL
                           OR solar_power_w IS NOT NULL
@@ -383,7 +395,7 @@ class RetentionStore:
                         battery_id,
                         AVG(power_w) AS battery_power_w
                     FROM readings
-                    WHERE captured_at_unix >= ?
+                    WHERE {time_filter}
                       AND status = 'ok'
                       AND power_w IS NOT NULL
                     GROUP BY bucket_unix, battery_id
@@ -414,10 +426,10 @@ class RetentionStore:
                 (
                     bucket_seconds,
                     bucket_seconds,
-                    since,
+                    *time_params,
                     bucket_seconds,
                     bucket_seconds,
-                    since,
+                    *time_params,
                 ),
             ).fetchall()
 
