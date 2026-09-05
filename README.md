@@ -89,8 +89,9 @@ Defaults:
 - Retention: 1095 days, approximately 3 years
 - Storage path on the x86_64 host: `./data/monitor/battery-monitor.sqlite3`
 - CSV export: dashboard download button or `GET /api/export.csv`
-- Energy history: hourly, daily, monthly, and yearly consumption, solar generation, and grid import in kWh, available through `GET /api/energy?view=hour|date|month|year`
+- Energy history: hourly, monthly, and yearly consumption, solar generation, and grid import in kWh. The Date view is a fixed 0:00–24:00 local calendar day selected with `GET /api/energy?view=date&date=YYYY-MM-DD&timezone=Area/City`
 - Power history: timestamped grid, battery, solar, and load power overlays, available through `GET /api/power-history?range=24h` (direct battery charging and grid import are positive; discharge and export are negative)
+- Battery runtime: while the rack is discharging, the live home and inverter views estimate remaining support time from direct pack voltage, remaining amp-hours, and discharge power
 
 The monitor owns one collector connection and serves a cached live snapshot to every browser. Opening more dashboard tabs does not create more requests to the Raspberry Pi. The dashboard refreshes live values every 5 seconds, pauses network work while its tab is hidden, and refreshes immediately when the tab becomes visible again.
 

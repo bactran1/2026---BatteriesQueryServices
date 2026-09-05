@@ -133,22 +133,13 @@ class RetentionStoreTests(unittest.TestCase):
                 )
             )
 
-            by_date = store.energy_history("date")
-            self.assertEqual(len(by_date["points"]), 2)
-            latest = by_date["points"][-1]
-            self.assertEqual(latest["period"], now.date().isoformat())
-            self.assertEqual(latest["consumption_kwh"], 15.0)
-            self.assertEqual(latest["solar_generation_kwh"], 8.0)
-            self.assertEqual(latest["grid_import_kwh"], 3.0)
-            self.assertEqual(by_date["totals"]["consumption_kwh"], 19.0)
-            self.assertEqual(by_date["totals"]["solar_generation_kwh"], 14.0)
-            self.assertEqual(by_date["totals"]["grid_import_kwh"], 4.5)
-
             by_month = store.energy_history("month")
             self.assertEqual(len(by_month["points"]), 2)
-            self.assertEqual(by_month["totals"], by_date["totals"])
+            self.assertEqual(by_month["totals"]["consumption_kwh"], 19.0)
+            self.assertEqual(by_month["totals"]["solar_generation_kwh"], 14.0)
+            self.assertEqual(by_month["totals"]["grid_import_kwh"], 4.5)
             by_year = store.energy_history("year")
-            self.assertEqual(by_year["totals"], by_date["totals"])
+            self.assertEqual(by_year["totals"], by_month["totals"])
 
             stats = store.stats(retention_days=1095)
             self.assertEqual(stats["energy_point_count"], 2)
@@ -203,6 +194,36 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(hourly["points"][1]["consumption_kwh"], 0.8)
             self.assertEqual(hourly["points"][1]["solar_generation_kwh"], 0.5)
             self.assertEqual(hourly["points"][1]["grid_import_kwh"], 0.4)
+
+            selected_date = store.energy_history("date", day.date().isoformat())
+            self.assertEqual(selected_date["view"], "date")
+            self.assertEqual(selected_date["selected_date"], day.date().isoformat())
+            self.assertEqual(
+                selected_date["window_end_unix"]
+                - selected_date["window_start_unix"],
+                24 * 60 * 60,
+            )
+            self.assertEqual(len(selected_date["points"]), 3)
+            self.assertEqual(selected_date["totals"]["consumption_kwh"], 2.0)
+            self.assertEqual(selected_date["totals"]["solar_generation_kwh"], 1.5)
+            self.assertEqual(selected_date["totals"]["grid_import_kwh"], 0.9)
+            self.assertTrue(
+                all(
+                    selected_date["window_start_unix"]
+                    <= point["unix"]
+                    < selected_date["window_end_unix"]
+                    for point in selected_date["points"]
+                )
+            )
+            los_angeles_date = store.energy_history(
+                "date", "2026-09-04", "America/Los_Angeles"
+            )
+            self.assertEqual(
+                los_angeles_date["window_start"], "2026-09-04T07:00:00Z"
+            )
+            self.assertEqual(
+                los_angeles_date["window_end"], "2026-09-05T07:00:00Z"
+            )
 
             power = store.power_history(seconds=24 * 60 * 60, bucket_seconds=3600)
             self.assertEqual(len(power), 3)

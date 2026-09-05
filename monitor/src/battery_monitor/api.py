@@ -5,7 +5,9 @@ import csv
 import io
 import logging
 from contextlib import asynccontextmanager, suppress
+from datetime import date as calendar_date
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -153,8 +155,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.get("/api/energy")
-    async def energy(view: EnergyView = Query(default="month")):
-        return await asyncio.to_thread(store.energy_history, view)
+    async def energy(
+        view: EnergyView = Query(default="month"),
+        date: str | None = Query(default=None),
+        timezone_name: str = Query(default="UTC", alias="timezone"),
+    ):
+        if date is not None:
+            try:
+                calendar_date.fromisoformat(date)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400, detail="Date must use YYYY-MM-DD"
+                ) from exc
+        try:
+            ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError as exc:
+            raise HTTPException(status_code=400, detail="Unknown timezone") from exc
+        return await asyncio.to_thread(
+            store.energy_history,
+            view,
+            date,
+            timezone_name,
+        )
 
     @app.get("/api/power-history")
     async def power_history(range: str = Query(default="24h")):

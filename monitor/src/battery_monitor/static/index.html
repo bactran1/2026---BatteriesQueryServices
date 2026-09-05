@@ -193,6 +193,7 @@
             </div>
             <div class="energy-flow__callout energy-flow__callout--battery energy-flow__callout--bottom">
               <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
+              <small id="energyBatteryRuntime" class="energy-flow__runtime" hidden></small>
               <span data-i18n="energy.storage">Battery rack</span>
             </div>
           </div>
@@ -236,6 +237,7 @@
             <span data-i18n="inverter.battery">Battery rack</span>
             <strong id="inverterBatteryPower">--</strong>
             <small id="inverterBatteryDetail" data-i18n="inverter.batteryWaiting">Waiting for direct battery telemetry</small>
+            <small id="inverterBatteryRuntime" class="inverter-runtime" hidden></small>
           </div>
           <div class="inverter-metric inverter-metric--thermal">
             <span data-i18n="inverter.thermal">Inverter thermal</span>
@@ -251,17 +253,23 @@
               <h2 id="energyHistoryTitle" data-i18n="energyHistory.titleMonth">Energy by month</h2>
               <p id="energyHistoryDescription" class="energy-history-description" data-i18n="energyHistory.description">Three-year history grouped by calendar period; totals show the latest recorded period</p>
             </div>
-            <div
-              id="energyViewControls"
-              class="segmented"
-              role="group"
-              aria-label="Energy history view"
-              data-i18n-aria-label="energyHistory.view"
-            >
-              <button type="button" data-energy-view="hour" data-i18n="energyHistory.hour" aria-pressed="false">Hour</button>
-              <button type="button" data-energy-view="date" data-i18n="energyHistory.date" aria-pressed="false">Date</button>
-              <button type="button" data-energy-view="month" data-i18n="energyHistory.month" class="is-active" aria-pressed="true">Month</button>
-              <button type="button" data-energy-view="year" data-i18n="energyHistory.year" aria-pressed="false">Year</button>
+            <div class="energy-history-actions">
+              <div
+                id="energyViewControls"
+                class="segmented"
+                role="group"
+                aria-label="Energy history view"
+                data-i18n-aria-label="energyHistory.view"
+              >
+                <button type="button" data-energy-view="hour" data-i18n="energyHistory.hour" aria-pressed="false">Hour</button>
+                <button type="button" data-energy-view="date" data-i18n="energyHistory.date" aria-pressed="false">Date</button>
+                <button type="button" data-energy-view="month" data-i18n="energyHistory.month" class="is-active" aria-pressed="true">Month</button>
+                <button type="button" data-energy-view="year" data-i18n="energyHistory.year" aria-pressed="false">Year</button>
+              </div>
+              <label id="energyDateControl" class="energy-date-control" hidden>
+                <span data-i18n="energyHistory.selectDate">Select day</span>
+                <input id="energyDateInput" type="date" aria-label="Select calendar day" data-i18n-aria-label="energyHistory.selectDateAria">
+              </label>
             </div>
           </div>
           <div class="energy-history-layout">

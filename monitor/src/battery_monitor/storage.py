@@ -4,9 +4,10 @@ import json
 import sqlite3
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 HistoryMetric = Literal[
     "voltage_v",
@@ -287,12 +288,21 @@ class RetentionStore:
             if row["value"] is not None
         ]
 
-    def energy_history(self, view: EnergyView) -> dict[str, Any]:
+    def energy_history(
+        self,
+        view: EnergyView,
+        energy_date: str | None = None,
+        energy_timezone: str = "UTC",
+    ) -> dict[str, Any]:
         if view == "hour":
             return self._hourly_energy_history()
+        if view == "date":
+            selected_date = energy_date or datetime.now(
+                ZoneInfo(energy_timezone)
+            ).date().isoformat()
+            return self._hourly_energy_history(selected_date, energy_timezone)
 
         period_expression = {
-            "date": "energy_date",
             "month": "substr(energy_date, 1, 7)",
             "year": "substr(energy_date, 1, 4)",
         }[str(view)]
@@ -423,21 +433,54 @@ class RetentionStore:
             for row in rows
         ]
 
-    def _hourly_energy_history(self) -> dict[str, Any]:
+    def _hourly_energy_history(
+        self, energy_date: str | None = None, energy_timezone: str = "UTC"
+    ) -> dict[str, Any]:
+        if energy_date is None:
+            time_filter = "captured_at_unix >= strftime('%s', 'now', '-7 days')"
+            params: tuple[object, ...] = ()
+            window_start_unix = int(time.time()) - 7 * 24 * 60 * 60
+            window_end_unix = int(time.time())
+            window_partition = "inverter_id, date(bucket_unix, 'unixepoch')"
+            bucket_expression = (
+                "CAST(captured_at_unix / 3600 AS INTEGER) * 3600"
+            )
+            first_bucket_condition = """
+                previous_bucket_unix IS NULL
+                AND strftime('%H', bucket_unix, 'unixepoch') = '00'
+            """
+        else:
+            selected_zone = ZoneInfo(energy_timezone)
+            selected_day = datetime.strptime(energy_date, "%Y-%m-%d").replace(
+                tzinfo=selected_zone
+            )
+            window_start_unix = int(selected_day.timestamp())
+            window_end_unix = int((selected_day + timedelta(days=1)).timestamp())
+            time_filter = "captured_at_unix >= ? AND captured_at_unix < ?"
+            params = (window_start_unix, window_end_unix)
+            window_partition = "inverter_id"
+            bucket_expression = f"""
+                CAST((captured_at_unix - {window_start_unix}) / 3600 AS INTEGER)
+                    * 3600 + {window_start_unix}
+            """
+            first_bucket_condition = f"""
+                previous_bucket_unix IS NULL
+                AND bucket_unix - {window_start_unix} < 3600
+            """
+
         with self._lock:
             rows = self.connection.execute(
-                """
+                f"""
                 WITH hourly AS (
                     SELECT
-                        CAST(captured_at_unix / 3600 AS INTEGER) * 3600
-                            AS bucket_unix,
+                        {bucket_expression} AS bucket_unix,
                         inverter_id,
                         MAX(consumption_meter_kwh) AS consumption_meter_kwh,
                         MAX(solar_generation_meter_kwh)
                             AS solar_generation_meter_kwh,
                         MAX(grid_import_meter_kwh) AS grid_import_meter_kwh
                     FROM inverter_readings
-                    WHERE captured_at_unix >= strftime('%s', 'now', '-7 days')
+                    WHERE {time_filter}
                     GROUP BY bucket_unix, inverter_id
                 ),
                 deltas AS (
@@ -452,9 +495,7 @@ class RetentionStore:
                             AS previous_grid_kwh
                     FROM hourly
                     WINDOW day_window AS (
-                        PARTITION BY
-                            inverter_id,
-                            date(bucket_unix, 'unixepoch')
+                        PARTITION BY {window_partition}
                         ORDER BY bucket_unix
                     )
                 )
@@ -462,8 +503,7 @@ class RetentionStore:
                     bucket_unix,
                     SUM(
                         CASE
-                            WHEN previous_bucket_unix IS NULL
-                                 AND strftime('%H', bucket_unix, 'unixepoch') = '00'
+                            WHEN {first_bucket_condition}
                             THEN consumption_meter_kwh
                             WHEN bucket_unix - previous_bucket_unix = 3600
                                  AND consumption_meter_kwh >= previous_consumption_kwh
@@ -472,8 +512,7 @@ class RetentionStore:
                     ) AS consumption_kwh,
                     SUM(
                         CASE
-                            WHEN previous_bucket_unix IS NULL
-                                 AND strftime('%H', bucket_unix, 'unixepoch') = '00'
+                            WHEN {first_bucket_condition}
                             THEN solar_generation_meter_kwh
                             WHEN bucket_unix - previous_bucket_unix = 3600
                                  AND solar_generation_meter_kwh >= previous_solar_kwh
@@ -482,8 +521,7 @@ class RetentionStore:
                     ) AS solar_generation_kwh,
                     SUM(
                         CASE
-                            WHEN previous_bucket_unix IS NULL
-                                 AND strftime('%H', bucket_unix, 'unixepoch') = '00'
+                            WHEN {first_bucket_condition}
                             THEN grid_import_meter_kwh
                             WHEN bucket_unix - previous_bucket_unix = 3600
                                  AND grid_import_meter_kwh >= previous_grid_kwh
@@ -496,14 +534,27 @@ class RetentionStore:
                     OR solar_generation_kwh IS NOT NULL
                     OR grid_import_kwh IS NOT NULL
                 ORDER BY bucket_unix ASC
-                """
+                """,
+                params,
             ).fetchall()
-            totals = self._energy_totals_locked()
+            totals = (
+                self._energy_totals_for_window_locked(
+                    window_start_unix, window_end_unix
+                )
+                if energy_date is not None
+                else self._energy_totals_locked()
+            )
 
         return {
-            "view": "hour",
+            "view": "date" if energy_date is not None else "hour",
             "retention_years": 3,
-            "window_days": 7,
+            "window_days": 1 if energy_date is not None else 7,
+            "selected_date": energy_date,
+            "timezone": energy_timezone if energy_date is not None else "UTC",
+            "window_start": _iso_from_unix(window_start_unix),
+            "window_start_unix": window_start_unix,
+            "window_end": _iso_from_unix(window_end_unix),
+            "window_end_unix": window_end_unix,
             "points": [
                 {
                     "period": _iso_from_unix(int(row["bucket_unix"]))[:13],
@@ -530,6 +581,36 @@ class RetentionStore:
             FROM daily_energy
             WHERE energy_date >= date('now', '-3 years')
             """
+        ).fetchone()
+        return {
+            "consumption_kwh": _rounded_number(row["consumption_kwh"]),
+            "solar_generation_kwh": _rounded_number(
+                row["solar_generation_kwh"]
+            ),
+            "grid_import_kwh": _rounded_number(row["grid_import_kwh"]),
+        }
+
+    def _energy_totals_for_window_locked(
+        self, window_start_unix: int, window_end_unix: int
+    ) -> dict[str, float | None]:
+        row = self.connection.execute(
+            """
+            SELECT
+                SUM(consumption_kwh) AS consumption_kwh,
+                SUM(solar_generation_kwh) AS solar_generation_kwh,
+                SUM(grid_import_kwh) AS grid_import_kwh
+            FROM (
+                SELECT
+                    inverter_id,
+                    MAX(consumption_meter_kwh) AS consumption_kwh,
+                    MAX(solar_generation_meter_kwh) AS solar_generation_kwh,
+                    MAX(grid_import_meter_kwh) AS grid_import_kwh
+                FROM inverter_readings
+                WHERE captured_at_unix >= ? AND captured_at_unix < ?
+                GROUP BY inverter_id
+            )
+            """,
+            (window_start_unix, window_end_unix),
         ).fetchone()
         return {
             "consumption_kwh": _rounded_number(row["consumption_kwh"]),

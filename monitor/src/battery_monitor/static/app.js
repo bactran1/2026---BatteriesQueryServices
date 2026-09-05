@@ -6,9 +6,13 @@ const state = {
   history: [],
   powerSeries: new Set(["grid_power_w", "battery_power_w", "solar_power_w", "load_power_w"]),
   energyView: "month",
+  energyDate: localCalendarDateValue(new Date()),
+  energyTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   energyHistory: [],
   energySummary: {},
   energySummaryPeriod: null,
+  energyWindowStart: null,
+  energyWindowEnd: null,
   storage: {},
   rack: {},
   collectorState: "offline",
@@ -126,6 +130,8 @@ const translations = {
     "energy.batteryDischargingPhrase": "{value} from battery",
     "energy.batteryIdlePhrase": "Battery idle",
     "energy.batteryUnavailablePhrase": "Battery telemetry unavailable",
+    "energy.runtimeRemaining": "~{time} remaining at this discharge rate",
+    "energy.runtimeCallout": "~{time} remaining",
     "energy.liveDescription": "{sources} · {load} · {battery}",
     "energy.importing": "{value} import",
     "energy.exporting": "{value} export",
@@ -151,6 +157,7 @@ const translations = {
     "inverter.battery": "Battery rack",
     "inverter.batteryElectrical": "Direct RS485 · {voltage} · {current} · {soc} · {temperature}",
     "inverter.batteryWaiting": "Waiting for direct battery telemetry",
+    "inverter.runtimeRemaining": "Estimated support · {time} at current discharge",
     "inverter.thermal": "Inverter thermal",
     "inverter.internalTemperature": "{value} internal",
     "inverter.thermalDetail": "Inverter {inverter} · DC/DC {dcdc}",
@@ -159,12 +166,16 @@ const translations = {
     "inverter.lastError": "Last error: {message}",
     "energyHistory.eyebrow": "Energy history",
     "energyHistory.titleHour": "Energy by hour",
-    "energyHistory.titleDate": "Energy by date",
+    "energyHistory.titleDate": "Energy for one day",
+    "energyHistory.titleDateFor": "Energy on {date}",
     "energyHistory.titleMonth": "Energy by month",
     "energyHistory.titleYear": "Energy by year",
     "energyHistory.description": "Three-year history grouped by calendar period; totals show the latest recorded period",
     "energyHistory.descriptionHour": "Hourly meter detail for the last 7 days; totals show the latest recorded hour",
+    "energyHistory.descriptionDate": "Hourly totals from 0:00 to 24:00 for the selected calendar day",
     "energyHistory.view": "Energy history view",
+    "energyHistory.selectDate": "Select day",
+    "energyHistory.selectDateAria": "Select calendar day",
     "energyHistory.hour": "Hour",
     "energyHistory.date": "Date",
     "energyHistory.month": "Month",
@@ -179,6 +190,9 @@ const translations = {
     "energyHistory.chartAria": "Energy history in kilowatt-hours",
     "energyHistory.awaiting": "Awaiting inverter energy readings",
     "energyHistory.unavailable": "Energy history temporarily unavailable",
+    "runtime.minutes": "{minutes}m",
+    "runtime.hoursMinutes": "{hours}h {minutes}m",
+    "runtime.daysHours": "{days}d {hours}h",
     "inverter.state.bypass": "Bypass",
     "inverter.state.standby": "Standby",
     "inverter.state.initializing": "Initializing",
@@ -433,6 +447,8 @@ const translations = {
     "energy.batteryDischargingPhrase": "{value} từ pin",
     "energy.batteryIdlePhrase": "Pin đang nghỉ",
     "energy.batteryUnavailablePhrase": "Chưa có dữ liệu trực tiếp từ pin",
+    "energy.runtimeRemaining": "còn khoảng {time} ở mức xả hiện tại",
+    "energy.runtimeCallout": "còn khoảng {time}",
     "energy.liveDescription": "{sources} · {load} · {battery}",
     "energy.importing": "nhập {value}",
     "energy.exporting": "xuất {value}",
@@ -458,6 +474,7 @@ const translations = {
     "inverter.battery": "Tủ pin",
     "inverter.batteryElectrical": "RS485 trực tiếp · {voltage} · {current} · {soc} · {temperature}",
     "inverter.batteryWaiting": "Đang chờ dữ liệu trực tiếp từ pin",
+    "inverter.runtimeRemaining": "Thời gian cấp điện ước tính · {time} ở mức xả hiện tại",
     "inverter.thermal": "Nhiệt độ biến tần",
     "inverter.internalTemperature": "bên trong {value}",
     "inverter.thermalDetail": "Biến tần {inverter} · DC/DC {dcdc}",
@@ -466,12 +483,16 @@ const translations = {
     "inverter.lastError": "Lỗi gần nhất: {message}",
     "energyHistory.eyebrow": "Lịch sử năng lượng",
     "energyHistory.titleHour": "Năng lượng theo giờ",
-    "energyHistory.titleDate": "Năng lượng theo ngày",
+    "energyHistory.titleDate": "Năng lượng trong một ngày",
+    "energyHistory.titleDateFor": "Năng lượng ngày {date}",
     "energyHistory.titleMonth": "Năng lượng theo tháng",
     "energyHistory.titleYear": "Năng lượng theo năm",
     "energyHistory.description": "Lịch sử ba năm được nhóm theo kỳ; tổng số hiển thị kỳ mới nhất đã ghi nhận",
     "energyHistory.descriptionHour": "Chi tiết công tơ theo giờ trong 7 ngày qua; tổng số hiển thị giờ mới nhất đã ghi nhận",
+    "energyHistory.descriptionDate": "Tổng năng lượng theo giờ từ 0:00 đến 24:00 trong ngày đã chọn",
     "energyHistory.view": "Chế độ xem lịch sử năng lượng",
+    "energyHistory.selectDate": "Chọn ngày",
+    "energyHistory.selectDateAria": "Chọn ngày trên lịch",
     "energyHistory.hour": "Giờ",
     "energyHistory.date": "Ngày",
     "energyHistory.month": "Tháng",
@@ -486,6 +507,9 @@ const translations = {
     "energyHistory.chartAria": "Biểu đồ lịch sử năng lượng theo kilowatt-giờ",
     "energyHistory.awaiting": "Đang chờ số liệu năng lượng từ biến tần",
     "energyHistory.unavailable": "Lịch sử năng lượng tạm thời không khả dụng",
+    "runtime.minutes": "{minutes} phút",
+    "runtime.hoursMinutes": "{hours} giờ {minutes} phút",
+    "runtime.daysHours": "{days} ngày {hours} giờ",
     "inverter.state.bypass": "Điện lưới chuyển thẳng",
     "inverter.state.standby": "Đang chờ",
     "inverter.state.initializing": "Đang khởi tạo",
@@ -685,6 +709,13 @@ function currentLocale() {
   return state.language === "vi" ? "vi-VN" : "en-US";
 }
 
+function localCalendarDateValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function applyStaticTranslations() {
   document.title = t("page.title");
   document.querySelectorAll("[data-i18n]").forEach((element) => {
@@ -773,14 +804,34 @@ async function refreshHistory() {
 
 async function refreshEnergyHistory() {
   const requestedView = state.energyView;
+  const requestedDate = state.energyDate;
   const params = new URLSearchParams({ view: requestedView });
+  if (requestedView === "date") {
+    params.set("date", requestedDate);
+    params.set("timezone", state.energyTimezone);
+  }
   const payload = await getJson(`/api/energy?${params}`, "energy");
-  if (requestedView !== state.energyView) {
+  if (
+    requestedView !== state.energyView ||
+    (requestedView === "date" && requestedDate !== state.energyDate)
+  ) {
     return refreshEnergyHistory();
   }
   state.energyHistory = Array.isArray(payload.points) ? payload.points : [];
-  state.energySummaryPeriod = latestEnergyHistoryPoint(state.energyHistory);
-  state.energySummary = state.energySummaryPeriod || {};
+  state.energyWindowStart = finiteNumber(payload.window_start_unix);
+  state.energyWindowEnd = finiteNumber(payload.window_end_unix);
+  if (requestedView === "date") {
+    state.energyDate = payload.selected_date || requestedDate;
+    state.energySummaryPeriod = {
+      period: state.energyDate,
+      timestamp: payload.window_start,
+      unix: state.energyWindowStart,
+    };
+    state.energySummary = payload.totals || sumEnergyHistoryPoints(state.energyHistory);
+  } else {
+    state.energySummaryPeriod = latestEnergyHistoryPoint(state.energyHistory);
+    state.energySummary = state.energySummaryPeriod || {};
+  }
   state.lastEnergyRefreshAt = Date.now();
   state.resourceErrors.energy = null;
   $("energyHistoryChart").removeAttribute("data-refresh-error");
@@ -968,6 +1019,7 @@ function renderEnergyFlow(flow) {
   const current = battery.current;
   const power = battery.power;
   const soc = battery.soc;
+  const runtime = formatBatteryRuntime(battery.runtimeHours);
   const batteryCount = battery.count;
   const packTelemetry = state.batteries.slice(0, 3).map((battery) => {
     const reading = battery.last_reading || {};
@@ -1045,6 +1097,7 @@ function renderEnergyFlow(flow) {
   section.dataset.solarPower = String(inverter.solarPower ?? 0);
   section.dataset.loadPower = String(inverter.loadPower ?? 0);
   section.dataset.batteryPower = String(power ?? 0);
+  section.dataset.batteryRuntimeHours = String(battery.runtimeHours ?? 0);
   section.dataset.gridActive = String(inverter.available && Math.abs(inverter.gridPower ?? 0) > 25);
   section.dataset.gridDirection = (inverter.gridPower ?? 0) < 0 ? "export" : "import";
   section.dataset.solarActive = String(inverter.available && (inverter.solarPower ?? 0) > 25);
@@ -1054,7 +1107,13 @@ function renderEnergyFlow(flow) {
   );
   $("energyFlowTitle").textContent = t("energy.title");
   $("energyFlowState").textContent = t(titleKey);
-  $("energyFlowDescription").textContent = t(descriptionKey, descriptionValues);
+  const runtimeText = runtime
+    ? t("energy.runtimeRemaining", { time: runtime })
+    : null;
+  $("energyFlowDescription").textContent = [
+    t(descriptionKey, descriptionValues),
+    runtimeText,
+  ].filter(Boolean).join(" · ");
   $("energyGridValue").textContent = inverter.available
     ? formatGridPower(inverter.gridPower)
     : t("energy.unmetered");
@@ -1077,6 +1136,11 @@ function renderEnergyFlow(flow) {
     : [socLabel, formatBatteryPower(power)]
         .filter(Boolean)
         .join(" · ");
+  const energyRuntime = $("energyBatteryRuntime");
+  energyRuntime.hidden = !runtimeText;
+  energyRuntime.textContent = runtime
+    ? t("energy.runtimeCallout", { time: runtime })
+    : "";
 
   window.dispatchEvent(new CustomEvent("battery-energy-flow", {
     detail: {
@@ -1092,6 +1156,7 @@ function renderEnergyFlow(flow) {
       solarPower: inverter.solarPower,
       loadPower: inverter.loadPower,
       batteryPower: power,
+      batteryRuntimeHours: battery.runtimeHours,
     },
   }));
 }
@@ -1176,6 +1241,12 @@ function renderInverterTelemetry() {
         temperature: formatValue(battery.temperature, "°C"),
       })
     : t("inverter.batteryWaiting");
+  const runtime = formatBatteryRuntime(battery.runtimeHours);
+  const inverterRuntime = $("inverterBatteryRuntime");
+  inverterRuntime.hidden = !runtime;
+  inverterRuntime.textContent = runtime
+    ? t("inverter.runtimeRemaining", { time: runtime })
+    : "";
   $("inverterThermalValue").textContent = hasReading
     ? t("inverter.internalTemperature", {
         value: formatValue(reading.internal_temperature_c, "°C"),
@@ -1243,15 +1314,33 @@ function rackBatteryTelemetry(batteries = state.batteries) {
       ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length
       : null;
   };
+  const remainingEnergyValues = readings
+    .map((reading) => {
+      const remainingCapacity = finiteNumber(reading.remaining_capacity_ah);
+      const voltage = finiteNumber(reading.voltage_v);
+      return remainingCapacity === null || voltage === null
+        ? null
+        : remainingCapacity * voltage;
+    })
+    .filter((value) => value !== null);
+  const remainingEnergyWh = remainingEnergyValues.length === readings.length
+    ? remainingEnergyValues.reduce((sum, value) => sum + value, 0)
+    : null;
+  const power = total("power_w");
+  const runtimeHours = power !== null && power < -25 && remainingEnergyWh !== null
+    ? remainingEnergyWh / Math.abs(power)
+    : null;
 
   return {
     available: readings.length > 0,
     count: readings.length,
-    power: total("power_w"),
+    power,
     current: total("current_a"),
     voltage: average("voltage_v"),
     soc: average("soc_percent"),
     temperature: average("mosfet_temperature_c"),
+    remainingEnergyWh,
+    runtimeHours,
   };
 }
 
@@ -1291,6 +1380,27 @@ function formatPower(value) {
   if (power === null) return "--";
   if (Math.abs(power) >= 1000) return formatValue(power / 1000, " kW", 2);
   return formatValue(power, " W", 0);
+}
+
+function formatBatteryRuntime(value) {
+  const hours = finiteNumber(value);
+  if (hours === null || hours <= 0) return null;
+  const totalMinutes = Math.max(1, Math.round(hours * 60));
+  if (totalMinutes < 60) {
+    return t("runtime.minutes", { minutes: formatNumber(totalMinutes) });
+  }
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (wholeHours < 48) {
+    return t("runtime.hoursMinutes", {
+      hours: formatNumber(wholeHours),
+      minutes: formatNumber(minutes),
+    });
+  }
+  return t("runtime.daysHours", {
+    days: formatNumber(Math.floor(wholeHours / 24)),
+    hours: formatNumber(wholeHours % 24),
+  });
 }
 
 function formatEnergy(value) {
@@ -1754,10 +1864,17 @@ function renderEnergyHistory() {
     month: "energyHistory.titleMonth",
     year: "energyHistory.titleYear",
   }[state.energyView];
-  $("energyHistoryTitle").textContent = t(titleKey || "energyHistory.titleMonth");
-  $("energyHistoryDescription").textContent = t(
-    state.energyView === "hour" ? "energyHistory.descriptionHour" : "energyHistory.description",
-  );
+  $("energyHistoryTitle").textContent = state.energyView === "date"
+    ? t("energyHistory.titleDateFor", { date: formatCalendarDate(state.energyDate) })
+    : t(titleKey || "energyHistory.titleMonth");
+  const descriptionKey = state.energyView === "hour"
+    ? "energyHistory.descriptionHour"
+    : state.energyView === "date"
+      ? "energyHistory.descriptionDate"
+      : "energyHistory.description";
+  $("energyHistoryDescription").textContent = t(descriptionKey);
+  $("energyDateControl").hidden = state.energyView !== "date";
+  $("energyDateInput").value = state.energyDate;
 
   const hasPoints = state.energyHistory.some((point) =>
     energySeries.some((series) => finiteNumber(point[series.field]) !== null),
@@ -1800,12 +1917,33 @@ function drawEnergyHistoryChart() {
       .map((series) => finiteNumber(point[series.field]))
       .filter((value) => value !== null),
   );
+  const hasFixedDateWindow = state.energyView === "date"
+    && finiteNumber(state.energyWindowStart) !== null
+    && finiteNumber(state.energyWindowEnd) !== null;
 
   drawEnergyGrid(ctx, theme, pad, width, height, Math.max(1, ...values));
-  if (!points.length || !values.length) return;
+  if (!points.length || !values.length) {
+    if (hasFixedDateWindow) {
+      drawEnergyTimeAxis(
+        ctx,
+        theme,
+        pad,
+        width,
+        height,
+        points,
+        state.energyWindowStart,
+        state.energyWindowEnd,
+      );
+    }
+    return;
+  }
 
-  let minTime = Math.min(...points.map((point) => point.unix));
-  let maxTime = Math.max(...points.map((point) => point.unix));
+  let minTime = hasFixedDateWindow
+    ? state.energyWindowStart
+    : Math.min(...points.map((point) => point.unix));
+  let maxTime = hasFixedDateWindow
+    ? state.energyWindowEnd
+    : Math.max(...points.map((point) => point.unix));
   if (minTime === maxTime) {
     const spread = state.energyView === "hour"
       ? 3600
@@ -1878,6 +2016,19 @@ function drawEnergyGrid(ctx, theme, pad, width, height, rawMaxValue) {
 }
 
 function drawEnergyTimeAxis(ctx, theme, pad, width, height, points, minTime, maxTime) {
+  if (state.energyView === "date") {
+    ctx.save();
+    ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.fillStyle = theme.chartMuted;
+    for (let index = 0; index <= 4; index += 1) {
+      const x = pad.left + (width * index) / 4;
+      ctx.textAlign = index === 0 ? "left" : index === 4 ? "right" : "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(`${index * 6}h`, x, pad.top + height + 11);
+    }
+    ctx.restore();
+    return;
+  }
   const tickCount = Math.min(points.length, width < 520 ? 3 : 5);
   if (!tickCount) return;
   ctx.save();
@@ -1916,9 +2067,24 @@ function latestEnergyHistoryPoint(points) {
   }, null);
 }
 
+function sumEnergyHistoryPoints(points) {
+  return energySeries.reduce((totals, series) => {
+    const values = points
+      .map((point) => finiteNumber(point?.[series.field]))
+      .filter((value) => value !== null);
+    totals[series.field] = values.length
+      ? values.reduce((sum, value) => sum + value, 0)
+      : null;
+    return totals;
+  }, {});
+}
+
 function formatEnergySummaryPeriod(point) {
   if (!point) return null;
   if (state.energyView === "year" && point.period) return String(point.period);
+  if (state.energyView === "date" && point.period) {
+    return formatCalendarDate(String(point.period).slice(0, 10));
+  }
 
   const unix = finiteNumber(point.unix);
   const date = new Date(point.timestamp || (unix === null ? NaN : unix * 1000));
@@ -1942,6 +2108,16 @@ function formatEnergySummaryPeriod(point) {
     day: "numeric",
     year: "numeric",
   }).format(date);
+}
+
+function formatCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return String(value || "");
+  return new Intl.DateTimeFormat(currentLocale(), {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T12:00:00Z`));
 }
 
 function formatEnergyAxis(value) {
@@ -2727,6 +2903,24 @@ function bindControls() {
   initLanguage();
   initTheme();
 
+  const energyDateInput = $("energyDateInput");
+  const oldestDate = new Date();
+  oldestDate.setFullYear(oldestDate.getFullYear() - 3);
+  energyDateInput.value = state.energyDate;
+  energyDateInput.max = localCalendarDateValue(new Date());
+  energyDateInput.min = localCalendarDateValue(oldestDate);
+  energyDateInput.addEventListener("change", () => {
+    if (!energyDateInput.value || energyDateInput.value === state.energyDate) return;
+    state.energyDate = energyDateInput.value;
+    state.energyHistory = [];
+    state.energySummary = {};
+    state.energySummaryPeriod = null;
+    state.energyWindowStart = null;
+    state.energyWindowEnd = null;
+    renderEnergyHistory();
+    refreshEnergyHistory().catch((error) => handleResourceFailure("energy", error));
+  });
+
   document.querySelectorAll("[data-power-series]").forEach((button) => {
     button.addEventListener("click", () => {
       const field = button.dataset.powerSeries;
@@ -2757,6 +2951,8 @@ function bindControls() {
       state.energyHistory = [];
       state.energySummary = {};
       state.energySummaryPeriod = null;
+      state.energyWindowStart = null;
+      state.energyWindowEnd = null;
       document.querySelectorAll("#energyViewControls button").forEach((item) => {
         item.classList.remove("is-active");
         item.setAttribute("aria-pressed", "false");

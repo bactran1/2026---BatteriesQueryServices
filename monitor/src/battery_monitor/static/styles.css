@@ -683,6 +683,20 @@ button {
   text-transform: uppercase;
 }
 
+.energy-flow__runtime {
+  display: block;
+  margin-top: 3px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 680;
+  line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.94), 0 0 9px rgba(0, 0, 0, 0.68);
+}
+
+.energy-flow__runtime[hidden] {
+  display: none;
+}
+
 .energy-flow__callout::after {
   position: absolute;
   top: 100%;
@@ -1033,6 +1047,15 @@ button {
   overflow-wrap: anywhere;
 }
 
+.inverter-metric .inverter-runtime {
+  color: #167a35;
+  font-weight: 720;
+}
+
+.inverter-runtime[hidden] {
+  display: none;
+}
+
 #inverterHealth {
   color: #167a35;
   font-weight: 680;
@@ -1132,6 +1155,36 @@ button {
 
 .energy-history-heading {
   align-items: center;
+}
+
+.energy-history-actions {
+  display: grid;
+  justify-items: end;
+  gap: 9px;
+}
+
+.energy-date-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.energy-date-control[hidden] {
+  display: none;
+}
+
+.energy-date-control input {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  color: var(--ink);
+  background: var(--control-bg);
+  font: inherit;
+  color-scheme: light dark;
 }
 
 .energy-history-description {
@@ -2555,6 +2608,11 @@ select {
   .controls {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .energy-history-actions {
+    width: 100%;
+    justify-items: start;
   }
 
   .power-history-toolbar {
