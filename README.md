@@ -97,6 +97,8 @@ The monitor owns one collector connection and serves a cached live snapshot to e
 
 Every battery-facing dashboard value comes from the Eco-worthy battery bus: rack and pack SOC, voltage, current, power, capacity, cells, temperatures, state, alarms, and battery power history. The monitor does not substitute the Renogy inverter's battery registers when direct pack telemetry is missing. Solar, grid, load, and inverter-internal values continue to come from inverter telemetry.
 
+In Live home energy, Home load uses `home_load_total_power_w` for the load between the CT meter and the inverter breaker. Backup load uses `load_total_power_w` for the inverter's direct load output. An unavailable Home load reading is shown as not metered and its animation pauses; a measured zero is shown as 0 W.
+
 Dashboard HTML is always served with `no-store`. JavaScript, CSS, icons, and logos use a content fingerprint and immutable caching, so a normal reload after deployment picks up the new build without requiring a hard refresh.
 
 Connection states are explicit: `online` means every active battery is responding, `degraded` means the collector is reachable but at least one battery is not healthy, `stale` means last-known data is being shown during recovery, and `offline` means the collector has exceeded the configured outage threshold.

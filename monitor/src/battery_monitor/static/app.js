@@ -161,7 +161,7 @@ const translations = {
     "inverter.grid": "Grid",
     "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
     "inverter.load": "Backup load",
-    "inverter.loadDetail": "{energy} today · External CT {external}",
+    "inverter.loadDetail": "{energy} today · Home load {external}",
     "inverter.battery": "Battery rack",
     "inverter.batteryElectrical": "Direct RS485 · {voltage} · {current} · {soc} · {temperature}",
     "inverter.batteryWaiting": "Waiting for direct battery telemetry",
@@ -484,7 +484,7 @@ const translations = {
     "inverter.grid": "Điện lưới",
     "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
     "inverter.load": "Phụ tải dự phòng",
-    "inverter.loadDetail": "hôm nay {energy} · CT ngoài {external}",
+    "inverter.loadDetail": "hôm nay {energy} · Phụ tải nhà {external}",
     "inverter.battery": "Tủ pin",
     "inverter.batteryElectrical": "RS485 trực tiếp · {voltage} · {current} · {soc} · {temperature}",
     "inverter.batteryWaiting": "Đang chờ dữ liệu trực tiếp từ pin",
@@ -1117,7 +1117,7 @@ function renderEnergyFlow(flow) {
     descriptionKey = "energy.liveDescription";
     descriptionValues = {
       sources: sourceParts.join(" + ") || t("energy.noActiveSource"),
-      load: t("energy.loadPhrase", { value: formatPower(inverter.loadPower) }),
+      load: t("energy.loadPhrase", { value: formatPower(inverter.homeLoadPower) }),
       battery: batteryPhrase,
     };
   } else if (mode === "charging") {
@@ -1141,13 +1141,13 @@ function renderEnergyFlow(flow) {
   section.dataset.inverterAvailable = String(inverter.available);
   section.dataset.gridPower = String(inverter.gridPower ?? 0);
   section.dataset.solarPower = String(inverter.solarPower ?? 0);
-  section.dataset.loadPower = String(inverter.loadPower ?? 0);
+  section.dataset.loadPower = String(inverter.homeLoadPower ?? 0);
   section.dataset.batteryPower = String(power ?? 0);
   section.dataset.batteryRuntimeHours = String(battery.runtimeHours ?? 0);
   section.dataset.gridActive = String(inverter.available && Math.abs(inverter.gridPower ?? 0) > 25);
   section.dataset.gridDirection = (inverter.gridPower ?? 0) < 0 ? "export" : "import";
   section.dataset.solarActive = String(inverter.available && (inverter.solarPower ?? 0) > 25);
-  section.dataset.loadActive = String(inverter.available && (inverter.loadPower ?? 0) > 25);
+  section.dataset.loadActive = String(inverter.available && (inverter.homeLoadPower ?? 0) > 25);
   section.dataset.batteryActive = String(
     battery.available && (Math.abs(power ?? 0) > 25 || mode === "charging" || mode === "discharging"),
   );
@@ -1166,8 +1166,8 @@ function renderEnergyFlow(flow) {
   $("energySolarValue").textContent = inverter.available
     ? formatPower(inverter.solarPower)
     : t("energy.unmetered");
-  $("energyLoadValue").textContent = inverter.available
-    ? formatPower(inverter.loadPower)
+  $("energyLoadValue").textContent = inverter.available && inverter.homeLoadPower !== null
+    ? formatPower(inverter.homeLoadPower)
     : t("energy.unmetered");
   $("energyInverterValue").textContent = inverter.available
     ? inverterStateLabel(inverter.reading.system_state || inverter.reading.inverter_state)
@@ -1200,7 +1200,7 @@ function renderEnergyFlow(flow) {
       inverterAvailable: inverter.available,
       gridPower: inverter.gridPower,
       solarPower: inverter.solarPower,
-      loadPower: inverter.loadPower,
+      loadPower: inverter.homeLoadPower,
       batteryPower: power,
       batteryRuntimeHours: battery.runtimeHours,
     },
@@ -1269,11 +1269,11 @@ function renderInverterTelemetry() {
         frequency: formatValue(reading.grid_frequency_hz, "Hz", 2),
       })
     : t("inverter.waiting");
-  $("inverterLoadPower").textContent = formatPower(telemetry.loadPower);
+  $("inverterLoadPower").textContent = formatPower(telemetry.backupLoadPower);
   $("inverterLoadDetail").textContent = hasReading
     ? t("inverter.loadDetail", {
         energy: formatEnergy(reading.load_energy_today_kwh),
-        external: formatPower(telemetry.externalLoadPower),
+        external: formatPower(telemetry.homeLoadPower),
       })
     : t("inverter.waiting");
   $("inverterBatteryPower").textContent = battery.available
@@ -1333,8 +1333,8 @@ function inverterTelemetry(inverter = state.inverter) {
     reading,
     gridPower,
     solarPower: finiteNumber(reading.pv_total_power_w),
-    loadPower: finiteNumber(reading.load_total_power_w),
-    externalLoadPower: finiteNumber(reading.home_load_total_power_w),
+    backupLoadPower: finiteNumber(reading.load_total_power_w),
+    homeLoadPower: finiteNumber(reading.home_load_total_power_w),
   };
 }
 
