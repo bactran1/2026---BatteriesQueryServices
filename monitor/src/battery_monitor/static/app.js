@@ -105,12 +105,13 @@ const translations = {
     "energy.title": "Home power flow",
     "energy.waiting": "Waiting for live energy telemetry",
     "energy.waitingShort": "Waiting",
-    "energy.sceneAria": "Three-dimensional power flow between the grid, inverter, battery rack, and home load",
+    "energy.sceneAria": "Three-dimensional home with solar, CT-side home load, grid, hybrid inverter, three rack batteries, and separate backup load",
     "energy.grid": "Grid",
     "energy.inverter": "Inverter",
     "energy.solar": "Solar",
     "energy.storage": "Battery rack",
     "energy.load": "Home load",
+    "energy.backup": "Backup load",
     "energy.direction": "Observed path",
     "energy.rate": "Battery power",
     "energy.charging": "Charging the battery",
@@ -429,12 +430,13 @@ const translations = {
     "energy.title": "Dòng điện trong nhà",
     "energy.waiting": "Đang chờ dữ liệu năng lượng trực tiếp",
     "energy.waitingShort": "Đang chờ",
-    "energy.sceneAria": "Mô phỏng ba chiều dòng điện giữa điện lưới, biến tần, tủ pin và phụ tải trong nhà",
+    "energy.sceneAria": "Nhà ba chiều với điện mặt trời, phụ tải nhà phía CT, lưới điện, biến tần hybrid, ba bộ pin và phụ tải dự phòng riêng",
     "energy.grid": "Điện lưới",
     "energy.inverter": "Biến tần",
     "energy.solar": "Điện mặt trời",
     "energy.storage": "Tủ pin",
     "energy.load": "Phụ tải nhà",
+    "energy.backup": "Phụ tải dự phòng",
     "energy.direction": "Đường truyền quan sát",
     "energy.rate": "Công suất pin",
     "energy.charging": "Đang nạp tủ pin",
@@ -1145,6 +1147,10 @@ function renderEnergyFlow(flow) {
   section.dataset.gridPower = String(inverter.gridPower ?? 0);
   section.dataset.solarPower = String(inverter.solarPower ?? 0);
   section.dataset.loadPower = String(inverter.homeLoadPower ?? 0);
+  section.dataset.backupPower = String(inverter.backupLoadPower ?? 0);
+  section.dataset.acLinkPower = String(inverter.acLinkPower ?? 0);
+  section.dataset.acLinkAvailable = String(inverter.available && inverter.acLinkPower !== null);
+  section.dataset.backupActive = String(inverter.available && (inverter.backupLoadPower ?? 0) > 25);
   section.dataset.batteryPower = String(power ?? 0);
   section.dataset.batteryRuntimeHours = String(battery.runtimeHours ?? 0);
   section.dataset.gridActive = String(inverter.available && Math.abs(inverter.gridPower ?? 0) > 25);
@@ -1171,6 +1177,9 @@ function renderEnergyFlow(flow) {
     : t("energy.unmetered");
   $("energyLoadValue").textContent = inverter.available && inverter.homeLoadPower !== null
     ? formatPower(inverter.homeLoadPower)
+    : t("energy.unmetered");
+  $("energyBackupValue").textContent = inverter.available && inverter.backupLoadPower !== null
+    ? formatPower(inverter.backupLoadPower)
     : t("energy.unmetered");
   $("energyInverterValue").textContent = inverter.available
     ? inverterStateLabel(inverter.reading.system_state || inverter.reading.inverter_state)
@@ -1204,6 +1213,9 @@ function renderEnergyFlow(flow) {
       gridPower: inverter.gridPower,
       solarPower: inverter.solarPower,
       loadPower: inverter.homeLoadPower,
+      backupPower: inverter.backupLoadPower,
+      acLinkPower: inverter.acLinkPower,
+      acLinkAvailable: inverter.available && inverter.acLinkPower !== null,
       batteryPower: power,
       batteryRuntimeHours: battery.runtimeHours,
     },
@@ -1328,6 +1340,12 @@ function inverterTelemetry(inverter = state.inverter) {
     : gridTotal === null
       ? null
       : -gridTotal;
+  const homeLoadPower = finiteNumber(reading.home_load_total_power_w);
+  // At the CT-side junction: inverter contribution = home demand - grid import.
+  // Do not infer a direction if either meter value is unavailable.
+  const acLinkPower = homeLoadPower !== null && homeLoadPower >= 0 && gridPower !== null
+    ? homeLoadPower - gridPower
+    : null;
 
   return {
     available,
@@ -1337,7 +1355,8 @@ function inverterTelemetry(inverter = state.inverter) {
     gridPower,
     solarPower: finiteNumber(reading.pv_total_power_w),
     backupLoadPower: finiteNumber(reading.load_total_power_w),
-    homeLoadPower: finiteNumber(reading.home_load_total_power_w),
+    homeLoadPower,
+    acLinkPower,
   };
 }
 
@@ -1990,6 +2009,7 @@ function drawEnergyHistoryChart() {
     .filter((point) => Number.isFinite(point.unix))
     .sort((left, right) => left.unix - right.unix);
   const slots = energyChartSlots(points);
+  const followingLatest = Math.abs(scroller.scrollLeft - Number(canvas.dataset.maxScroll || 0)) <= 2;
   // Keep each three-bar group readable, with scrolling confined to the chart.
   const pad = { top: 26, right: 18, bottom: 40, left: 58 };
   const chartWidth = Math.max(viewport.width, slots.length * 32 + pad.left + pad.right);
@@ -2054,7 +2074,10 @@ function drawEnergyHistoryChart() {
   if (canvas.dataset.viewKey !== viewKey && points.length) {
     canvas.dataset.viewKey = viewKey;
     scroller.scrollLeft = state.energyView === "date" ? 0 : scroller.scrollWidth;
+  } else if (followingLatest && state.energyView !== "date") {
+    scroller.scrollLeft = scroller.scrollWidth;
   }
+  canvas.dataset.maxScroll = String(Math.max(0, scroller.scrollWidth - scroller.clientWidth));
   const activePoints = state.energyChartHover
     ? plottedPoints.filter((item) => item.point.unix === state.energyChartHover.unix)
     : [];
@@ -2085,7 +2108,8 @@ function drawEnergyGrid(ctx, theme, pad, width, height, maxValue) {
 function drawEnergyTimeAxis(ctx, theme, pad, width, height, slots) {
   if (!slots.length) return;
   const slotWidth = width / slots.length;
-  const stride = Math.max(1, Math.ceil(88 / slotWidth));
+  const labelSpacing = state.energyView === "year" ? 44 : 88;
+  const stride = Math.max(1, Math.ceil(labelSpacing / slotWidth));
   ctx.save();
   ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   ctx.fillStyle = theme.chartMuted;
@@ -2236,7 +2260,9 @@ function formatEnergyPointPeriod(point) {
 
 function formatEnergyPointValue(value) {
   const number = finiteNumber(value);
-  return number === null ? "--" : `${formatEnergyTotal(number)} kWh`;
+  return number === null ? "--" : `${new Intl.NumberFormat(currentLocale(), {
+    maximumFractionDigits: 4,
+  }).format(number)} kWh`;
 }
 
 function renderEnergyChartTooltip(activePoints, canvasRect) {

@@ -11,11 +11,25 @@ const NODE_COLORS = {
   grid: 0x72d7ff,
   inverter: 0xffa31a,
   load: 0xffdf87,
+  backup: 0xf07bac,
   solar: 0xf2ef50,
 };
 
 const CAMERA_POSITION = new THREE.Vector3(7.8, 6.4, 9.6);
 const CAMERA_LOOK_AT = new THREE.Vector3(0, -0.05, 0);
+const HOUSE_SCENE_SCALE = 0.9;
+const POWER_PORTS = {
+  solar: new THREE.Vector3(0.4, 1.4, 0.75),
+  inverterSolar: new THREE.Vector3(0.4, 0.42, 2.2),
+  inverterAc: new THREE.Vector3(0.8, 0.15, 2.2),
+  inverterBattery: new THREE.Vector3(0.8, -0.42, 2.2),
+  inverterBackup: new THREE.Vector3(0, -0.42, 2.2),
+  battery: new THREE.Vector3(1.2, -0.42, 2.2),
+  meter: new THREE.Vector3(3.05, 0.15, 2.2),
+  home: new THREE.Vector3(-2.35, -0.3, 2.2),
+  backup: new THREE.Vector3(-0.8, -0.42, 2.2),
+  grid: new THREE.Vector3(3.8, 1.05, 0.15),
+};
 
 function startEnergyFlowScene() {
   const section = document.getElementById("energyFlowSection");
@@ -50,6 +64,7 @@ function startEnergyFlowScene() {
   camera.lookAt(CAMERA_LOOK_AT);
 
   const root = new THREE.Group();
+  root.scale.setScalar(HOUSE_SCENE_SCALE);
   root.position.y = -0.2;
   scene.add(root);
 
@@ -73,9 +88,9 @@ function startEnergyFlowScene() {
   keyLight.shadow.camera.top = 5;
   keyLight.shadow.camera.bottom = -5;
   keyLight.shadow.bias = -0.0004;
-  const rimLight = new THREE.DirectionalLight(0xf2ef50, 1.4);
+  const rimLight = new THREE.DirectionalLight(0xe1ebe8, 1.4);
   rimLight.position.set(5.5, 3.2, -4.5);
-  const fillLight = new THREE.DirectionalLight(0xb9c8ff, 1.35);
+  const fillLight = new THREE.DirectionalLight(0xd9e5eb, 1.35);
   fillLight.position.set(3.5, 2.8, 7.5);
   const homeGlow = new THREE.PointLight(0xffe5a7, 2.2, 4.5, 2);
   homeGlow.position.set(-1.45, -0.25, 2.5);
@@ -92,6 +107,9 @@ function startEnergyFlowScene() {
     gridPower: 0,
     solarPower: 0,
     loadPower: 0,
+    backupPower: 0,
+    acLinkPower: 0,
+    acLinkAvailable: false,
     batteryPower: 0,
   };
   const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -117,6 +135,9 @@ function startEnergyFlowScene() {
       gridPower: finite(detail.gridPower ?? section.dataset.gridPower),
       solarPower: finite(detail.solarPower ?? section.dataset.solarPower),
       loadPower: finite(detail.loadPower ?? section.dataset.loadPower),
+      backupPower: finite(detail.backupPower ?? section.dataset.backupPower),
+      acLinkPower: finite(detail.acLinkPower ?? section.dataset.acLinkPower),
+      acLinkAvailable: booleanValue(detail.acLinkAvailable ?? section.dataset.acLinkAvailable),
       batteryPower: finite(detail.batteryPower ?? section.dataset.batteryPower),
     };
   }
@@ -179,11 +200,18 @@ function startEnergyFlowScene() {
       configureRoute(network.solar, "stale", 0, false, 1, false);
     }
 
+    configureRoute(network.backup, "charging", routeMagnitude(flowState.backupPower),
+      inverterMetered && flowState.backupPower > 25, 1, inverterMetered, NODE_COLORS.backup);
+    configureRoute(network.acLink, flowState.acLinkPower >= 0 ? "charging" : "discharging",
+      routeMagnitude(flowState.acLinkPower), Math.abs(flowState.acLinkPower) > 25,
+      flowState.acLinkPower >= 0 ? 1 : -1, inverterMetered && flowState.acLinkAvailable, NODE_COLORS.grid);
+
     const systemActive = network.routes.some(isRouteActive);
     setSignal(energySystem.gridSignalMaterial, NODE_COLORS.grid, network.grid.active);
     setSignal(energySystem.inverterSignalMaterial, systemActive ? flowColor : NODE_COLORS.inverter, systemActive);
     setSignal(energySystem.batterySignalMaterial, network.battery.active ? flowColor : FLOW_COLORS.stale, network.battery.active);
     setSignal(energySystem.loadSignalMaterial, NODE_COLORS.load, network.load.active);
+    setSignal(energySystem.backupSignalMaterial, NODE_COLORS.backup, network.backup.active);
     setSignal(energySystem.solarSignalMaterial, NODE_COLORS.solar, network.solar.active);
 
     energySystem.batteryModules.forEach((module, index) => {
@@ -214,7 +242,10 @@ function startEnergyFlowScene() {
       ? "inverter-and-direct-battery"
       : "direct-battery-only";
     canvas.dataset.topology = "home-grid-solar-inverter-battery-load";
-    canvas.dataset.sceneStyle = "isometric-home-energy";
+    canvas.dataset.sceneStyle = "modern-home-energy";
+    canvas.dataset.acLinkSource = flowState.acLinkAvailable ? "home-minus-grid" : "unavailable";
+    canvas.dataset.routeStyle = "straight-conduits";
+    canvas.dataset.backupActive = String(network.backup.active);
     if (disposed) return;
     renderOnce(performance.now());
     scheduleFrame();
@@ -262,10 +293,11 @@ function startEnergyFlowScene() {
     pulseSignal(energySystem.inverterSignalMaterial, network.routes.some(isRouteActive), time, 0.7);
     pulseSignal(energySystem.batterySignalMaterial, network.battery.active, time, 1.15);
     pulseSignal(energySystem.loadSignalMaterial, network.load.active, time, 1.7);
+    pulseSignal(energySystem.backupSignalMaterial, network.backup.active, time, 1.9);
     pulseSignal(energySystem.solarSignalMaterial, network.solar.active, time, 2.1);
     energySystem.windowMaterial.emissiveIntensity = network.load.active
-      ? 1.2 + Math.sin(time * 0.0034) * 0.18
-      : 0.62;
+      ? 0.48 + Math.sin(time * 0.0034) * 0.06
+      : 0.24;
     homeGlow.intensity = network.load.active
       ? 2.7 + Math.sin(time * 0.0034) * 0.35
       : 1.65;
@@ -358,22 +390,22 @@ function startEnergyFlowScene() {
     const dark = document.documentElement.dataset.theme === "dark";
     const palette = dark
       ? {
-          wall: 0x292b2f,
-          wallSide: 0x202226,
-          roof: 0x45484e,
-          roofEdge: 0x5c5f66,
-          device: 0x3a3d42,
-          deviceFace: 0x17181b,
+          wall: 0x343a3d,
+          wallSide: 0x282e31,
+          roof: 0x303739,
+          roofEdge: 0x8b9697,
+          device: 0x535c60,
+          deviceFace: 0x20282b,
           utility: 0x676b72,
           ground: 0x101113,
         }
       : {
-          wall: 0x35373b,
-          wallSide: 0x292b2f,
-          roof: 0x55585f,
-          roofEdge: 0x73767d,
-          device: 0x4a4d53,
-          deviceFace: 0x202226,
+          wall: 0x394144,
+          wallSide: 0x2d3538,
+          roof: 0x373f42,
+          roofEdge: 0x95a0a1,
+          device: 0x5b6469,
+          deviceFace: 0x242d30,
           utility: 0x7a7e85,
           ground: 0x151618,
         };
@@ -385,10 +417,10 @@ function startEnergyFlowScene() {
     materials.deviceFace.color.setHex(palette.deviceFace);
     materials.utility.color.setHex(palette.utility);
     materials.ground.color.setHex(palette.ground);
-    ambient.intensity = dark ? 1.85 : 2.05;
+    ambient.intensity = dark ? 2.15 : 2.05;
     keyLight.intensity = dark ? 3.9 : 4.2;
     rimLight.intensity = dark ? 1.7 : 1.25;
-    fillLight.intensity = dark ? 1.65 : 1.5;
+    fillLight.intensity = dark ? 2.1 : 1.9;
     renderer.toneMappingExposure = dark ? 1.12 : 1.08;
     needsPixelAudit = true;
     renderOnce(performance.now());
@@ -451,6 +483,7 @@ function startEnergyFlowScene() {
   canvas.dataset.renderer = "webgl";
   canvas.dataset.camera = "orthographic";
   canvas.dataset.sceneReady = "true";
+  canvas.dataset.sceneScale = String(HOUSE_SCENE_SCALE);
   section.dataset.renderMode = "webgl";
   resize();
   updateTheme();
@@ -511,6 +544,13 @@ function createMaterials() {
   };
 }
 
+function addBox(group, size, position, material, shadow = false) {
+  const item = mesh(new THREE.BoxGeometry(...size), material, shadow, true);
+  item.position.set(...position);
+  group.add(item);
+  return item;
+}
+
 function createRenogySystem(materials) {
   const group = new THREE.Group();
   const house = createHouseShell(materials);
@@ -518,15 +558,6 @@ function createRenogySystem(materials) {
   const powerCenter = createPowerCenter(materials);
   const utility = createUtilityPole(materials);
   group.add(house.group, solar.group, powerCenter.group, utility.group);
-
-  const serviceCable = createTubePath([
-    new THREE.Vector3(3.85, 1.1, 0.2),
-    new THREE.Vector3(3.25, 0.75, 0.8),
-    new THREE.Vector3(2.55, 0.15, 1.68),
-    new THREE.Vector3(0.78, 0.1, 1.78),
-  ], materials.cable, 0.022);
-  group.add(serviceCable);
-
   return {
     group,
     batteryModules: powerCenter.batteryModules,
@@ -534,6 +565,7 @@ function createRenogySystem(materials) {
     gridSignalMaterial: utility.signalMaterial,
     inverterSignalMaterial: powerCenter.inverterSignalMaterial,
     loadSignalMaterial: house.loadSignalMaterial,
+    backupSignalMaterial: powerCenter.backupSignalMaterial,
     solarSignalMaterial: solar.signalMaterial,
     windowMaterial: house.windowMaterial,
   };
@@ -541,51 +573,40 @@ function createRenogySystem(materials) {
 
 function createHouseShell(materials) {
   const group = new THREE.Group();
-  const body = mesh(new THREE.BoxGeometry(5.05, 2.15, 3.15), materials.wall, true, true);
-  body.position.set(-0.55, -0.17, 0);
-  const sideWing = mesh(new THREE.BoxGeometry(1.45, 1.7, 2.65), materials.wallSide, true, true);
-  sideWing.position.set(-3.05, -0.39, 0.15);
-  const roof = mesh(new THREE.BoxGeometry(5.75, 0.18, 3.78), materials.roof, true, true);
-  roof.position.set(-0.55, 1.12, -0.02);
-  roof.rotation.x = 0.16;
-  const roofEdge = mesh(new THREE.BoxGeometry(5.9, 0.07, 3.9), materials.roofEdge, true, true);
-  roofEdge.position.set(-0.55, 1.04, -0.02);
-  roofEdge.rotation.x = 0.16;
-  group.add(body, sideWing, roofEdge, roof);
+  addBox(group, [5.05, 2.15, 3.15], [-0.55, -0.17, 0], materials.wall, true);
+  addBox(group, [1.5, 1.6, 2.65], [-3.05, -0.44, 0.1], materials.wallSide, true);
+  addBox(group, [1.68, 0.12, 2.9], [-3.05, 0.42, 0.1], materials.roof, true);
+  addBox(group, [5.55, 0.18, 3.6], [-0.55, 1.0, 0], materials.roof, true);
+  // Flat parapets and slim metal fascias keep the dark roof readable.
+  addBox(group, [5.6, 0.055, 0.06], [-0.55, 1.10, 1.8], materials.roofEdge);
+  addBox(group, [0.06, 0.14, 3.6], [2.2, 1.08, 0], materials.roofEdge);
+  addBox(group, [5.6, 0.14, 0.08], [-0.55, 1.08, -1.77], materials.wallSide);
+  addBox(group, [5.4, 0.1, 0.52], [-0.55, -1.24, 1.76], materials.roofEdge, true);
+  addBox(group, [1.3, 1.62, 0.18], [2.57, -0.42, 1.68], materials.wallSide, true);
 
   const windowMaterial = new THREE.MeshStandardMaterial({
-    color: 0xfff8de,
-    emissive: 0xffe4a0,
-    emissiveIntensity: 0.62,
-    metalness: 0.02,
-    roughness: 0.16,
+    color: 0x435154, emissive: 0xbfd3cd, emissiveIntensity: 0.24,
+    metalness: 0.28, roughness: 0.22,
   });
-  const windowFrame = mesh(new THREE.BoxGeometry(1.78, 1.4, 0.12), materials.trim);
-  windowFrame.position.set(-1.55, -0.24, 1.62);
-  const windowPane = mesh(new THREE.BoxGeometry(1.62, 1.24, 0.14), windowMaterial);
-  windowPane.position.set(-1.55, -0.24, 1.68);
-  const mullion = mesh(new THREE.BoxGeometry(0.055, 1.24, 0.16), materials.wallSide);
-  mullion.position.set(-1.55, -0.24, 1.76);
-  const sill = mesh(new THREE.BoxGeometry(1.72, 0.055, 0.16), materials.wallSide);
-  sill.position.set(-1.55, -0.05, 1.76);
-  const door = mesh(new THREE.BoxGeometry(0.72, 1.3, 0.12), materials.deviceFace);
-  door.position.set(-0.2, -0.3, 1.62);
-  const doorGlass = mesh(new THREE.BoxGeometry(0.5, 0.56, 0.14), windowMaterial);
-  doorGlass.position.set(-0.2, -0.04, 1.69);
-  group.add(windowFrame, windowPane, mullion, sill, door, doorGlass);
-
+  addBox(group, [2.14, 1.55, 0.08], [-2.13, -0.34, 1.63], materials.deviceFace);
+  addBox(group, [2.02, 1.43, 0.07], [-2.13, -0.34, 1.68], windowMaterial);
+  [-2.8, -2.13, -1.46].forEach((x) => {
+    addBox(group, [0.045, 1.48, 0.08], [x, -0.34, 1.73], materials.deviceFace);
+  });
+  addBox(group, [0.045, 0.28, 0.035], [-1.52, -0.32, 1.79], materials.trim);
+  for (let index = 0; index < 13; index += 1) {
+    addBox(group, [0.045, 1.92, 0.045], [-0.85 + index * 0.22, -0.16, 1.60], materials.wallSide);
+  }
+  const eaveLight = new THREE.MeshBasicMaterial({ color: 0xd5e5de });
+  addBox(group, [2.16, 0.025, 0.028], [-2.13, 0.48, 1.70], eaveLight);
   const loadSignalMaterial = createSignalMaterial(NODE_COLORS.load);
-  const loadSignal = mesh(new THREE.SphereGeometry(0.075, 16, 10), loadSignalMaterial);
-  loadSignal.position.set(-1.15, -0.18, 1.88);
-  group.add(loadSignal);
-
+  addBox(group, [0.12, 0.12, 0.08], POWER_PORTS.home.toArray(), loadSignalMaterial);
   return { group, windowMaterial, loadSignalMaterial };
 }
 
 function createSolarArray(materials) {
   const group = new THREE.Group();
-  group.position.set(-0.65, 1.32, 0.06);
-  group.rotation.x = 0.16;
+  group.position.set(-0.8, 1.3, -0.1);
 
   const columns = 4;
   const rows = 2;
@@ -618,10 +639,14 @@ function createSolarArray(materials) {
     [new THREE.BoxGeometry(0.035, 0.04, arrayDepth), new THREE.Vector3(-arrayWidth / 2, 0.09, 0)],
     [new THREE.BoxGeometry(0.035, 0.04, arrayDepth), new THREE.Vector3(arrayWidth / 2, 0.09, 0)],
   ].forEach(([geometry, position]) => {
-    const edge = mesh(geometry, signalMaterial);
+    const edge = mesh(geometry, materials.panelFrame);
     edge.position.copy(position);
     group.add(edge);
   });
+
+  const solarPort = mesh(new THREE.BoxGeometry(0.18, 0.06, 0.12), signalMaterial);
+  solarPort.position.copy(POWER_PORTS.solar).sub(group.position);
+  group.add(solarPort);
 
   return { group, signalMaterial };
 }
@@ -629,11 +654,12 @@ function createSolarArray(materials) {
 function createPowerCenter(materials) {
   const group = new THREE.Group();
   const inverter = new THREE.Group();
-  inverter.position.set(0.63, -0.12, 1.78);
+  inverter.position.set(0.4, -0.12, 1.82);
   const inverterBody = mesh(new THREE.BoxGeometry(0.76, 1.02, 0.34), materials.device, true);
   const inverterFace = mesh(new THREE.BoxGeometry(0.62, 0.8, 0.06), materials.deviceFace);
   inverterFace.position.z = 0.2;
-  const inverterScreen = mesh(new THREE.BoxGeometry(0.34, 0.18, 0.07), materials.trim);
+  const displayMaterial = new THREE.MeshBasicMaterial({ color: 0xa5d1d2 });
+  const inverterScreen = mesh(new THREE.BoxGeometry(0.34, 0.18, 0.07), displayMaterial);
   inverterScreen.position.set(0, 0.2, 0.235);
   const inverterVent = mesh(new THREE.BoxGeometry(0.38, 0.035, 0.07), materials.utility);
   inverterVent.position.set(0, -0.28, 0.235);
@@ -641,6 +667,8 @@ function createPowerCenter(materials) {
   const inverterStripe = mesh(new THREE.BoxGeometry(0.055, 0.82, 0.08), inverterSignalMaterial);
   inverterStripe.position.set(-0.31, 0, 0.245);
   inverter.add(inverterBody, inverterFace, inverterScreen, inverterVent, inverterStripe);
+  addBox(inverter, [0.12, 0.025, 0.075], [-0.05, 0.23, 0.25], materials.deviceFace);
+  addBox(inverter, [0.20, 0.025, 0.075], [0, 0.17, 0.25], materials.deviceFace);
 
   const battery = new THREE.Group();
   battery.position.set(1.63, -0.33, 1.82);
@@ -671,18 +699,29 @@ function createPowerCenter(materials) {
     const signal = mesh(new THREE.SphereGeometry(0.035, 12, 8), signalMaterial);
     signal.position.set(0.27, y + 0.065, 0.39);
     battery.add(moduleFace, track, fill, signal);
+    [-0.21, 0.29].forEach((x) => {
+      addBox(battery, [0.035, 0.14, 0.08], [x, y, 0.39], materials.trim);
+    });
     batteryModules.push({ fill, fillMaterial, signalMaterial });
   });
 
   const pedestal = mesh(new THREE.BoxGeometry(1.22, 0.12, 0.7), materials.utility, true);
   pedestal.position.set(1.36, -1.12, 1.76);
   group.add(inverter, battery, pedestal);
-  return { group, batteryModules, batterySignalMaterial, inverterSignalMaterial };
+  const backupSignalMaterial = createSignalMaterial(NODE_COLORS.backup);
+  addBox(group, [0.45, 0.58, 0.18], [-0.8, -0.42, 1.89], materials.device, true);
+  addBox(group, [0.32, 0.38, 0.05], [-0.8, -0.42, 2.01], materials.deviceFace);
+  [-0.87, -0.74].forEach((x) => addBox(group, [0.05, 0.12, 0.06], [x, -0.42, 2.06], materials.trim));
+  addBox(group, [0.12, 0.05, 0.04], POWER_PORTS.backup.toArray(), backupSignalMaterial);
+  addBox(group, [0.55, 0.74, 0.18], [3.05, 0.15, 1.92], materials.device, true);
+  addBox(group, [0.4, 0.22, 0.05], [3.05, 0.30, 2.03], displayMaterial);
+  addBox(group, [0.23, 0.07, 0.06], [3.05, -0.05, 2.06], materials.deviceFace);
+  return { group, batteryModules, batterySignalMaterial, inverterSignalMaterial, backupSignalMaterial };
 }
 
 function createUtilityPole(materials) {
   const group = new THREE.Group();
-  group.position.set(3.78, 0, 0.15);
+  group.position.set(3.8, 0, 0.15);
   const pole = mesh(new THREE.CylinderGeometry(0.075, 0.11, 3.7, 12), materials.utility, true);
   pole.position.y = 0.42;
   const upperArm = mesh(new THREE.BoxGeometry(1.05, 0.08, 0.1), materials.utility, true);
@@ -697,41 +736,46 @@ function createUtilityPole(materials) {
   });
   const signalMaterial = createSignalMaterial(NODE_COLORS.grid);
   const signal = mesh(new THREE.SphereGeometry(0.07, 14, 10), signalMaterial);
-  signal.position.set(0, 1.12, 0.04);
+  signal.position.copy(POWER_PORTS.grid).sub(group.position);
   group.add(signal);
   return { group, signalMaterial };
 }
 
+function createStraightPath(points) {
+  const path = new THREE.CurvePath();
+  for (let index = 1; index < points.length; index += 1) {
+    path.add(new THREE.LineCurve3(points[index - 1], points[index]));
+  }
+  return path;
+}
+
 function createFlowNetwork(materials) {
   const group = new THREE.Group();
-  const inverterHub = new THREE.Vector3(0.66, -0.1, 2.05);
-  const grid = createFlowRoute(new THREE.CatmullRomCurve3([
-    new THREE.Vector3(3.78, 1.12, 0.2),
-    new THREE.Vector3(3.48, 0.75, 0.76),
-    new THREE.Vector3(2.55, 0.12, 1.88),
-    new THREE.Vector3(1.5, -0.02, 2.05),
-    inverterHub,
+  const p = POWER_PORTS;
+  const grid = createFlowRoute(createStraightPath([
+    p.grid, new THREE.Vector3(p.grid.x, p.meter.y, p.grid.z),
+    new THREE.Vector3(p.grid.x, p.meter.y, p.meter.z), p.meter,
   ]), materials, 1, 0);
-  const battery = createFlowRoute(new THREE.CatmullRomCurve3([
-    inverterHub,
-    new THREE.Vector3(1.03, -0.08, 2.1),
-    new THREE.Vector3(1.38, -0.18, 2.1),
-    new THREE.Vector3(1.63, -0.22, 2.08),
+  const acLink = createFlowRoute(createStraightPath([
+    p.inverterAc, new THREE.Vector3(p.inverterAc.x, 0.65, p.inverterAc.z),
+    new THREE.Vector3(p.meter.x, 0.65, p.meter.z), p.meter,
+  ]), materials, 1, 0.12);
+  const battery = createFlowRoute(createStraightPath([
+    p.inverterBattery, p.battery,
   ]), materials, 1, 0.17);
-  const load = createFlowRoute(new THREE.CatmullRomCurve3([
-    inverterHub,
-    new THREE.Vector3(0.15, -0.08, 2.1),
-    new THREE.Vector3(-0.55, -0.12, 2.02),
-    new THREE.Vector3(-1.15, -0.18, 1.88),
+  const load = createFlowRoute(createStraightPath([
+    p.meter, new THREE.Vector3(p.meter.x, -1.05, p.meter.z),
+    new THREE.Vector3(p.home.x, -1.05, p.home.z), p.home,
   ]), materials, 1, 0.31);
-  const solar = createFlowRoute(new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-0.05, 1.5, 0.92),
-    new THREE.Vector3(0.15, 1.14, 1.55),
-    new THREE.Vector3(0.44, 0.52, 1.92),
-    inverterHub,
+  const backup = createFlowRoute(createStraightPath([
+    p.inverterBackup, p.backup,
+  ]), materials, 1, 0.37);
+  const solar = createFlowRoute(createStraightPath([
+    p.solar, new THREE.Vector3(p.solar.x, p.solar.y, p.inverterSolar.z), p.inverterSolar,
   ]), materials, 1, 0.43);
-  group.add(grid.group, battery.group, load.group, solar.group);
-  return { group, grid, battery, load, solar, routes: [grid, battery, load, solar] };
+  const routes = [grid, acLink, battery, load, backup, solar];
+  routes.forEach((route) => group.add(route.group));
+  return { group, grid, acLink, battery, load, backup, solar, routes };
 }
 
 function createFlowRoute(curve, materials, particleCount, phaseOffset) {
@@ -750,6 +794,8 @@ function createFlowRoute(curve, materials, particleCount, phaseOffset) {
     const particle = new THREE.Group();
     const halo = mesh(glowGeometry, particleGlowMaterial);
     const core = mesh(coreGeometry, particleMaterial);
+    halo.scale.set(0.85, 0.85, 1.85);
+    core.scale.set(0.75, 0.75, 1.7);
     particle.add(halo, core);
     particle.visible = false;
     group.add(particle);
@@ -789,11 +835,6 @@ function configureRoute(route, mode, magnitude, active, direction, reporting, ac
   route.glowMaterial.opacity = route.active ? 0.07 : 0.01;
   route.particleMaterial.color.setHex(color);
   route.particleGlowMaterial.color.setHex(color);
-}
-
-function createTubePath(points, material, radius) {
-  const curve = new THREE.CatmullRomCurve3(points);
-  return mesh(new THREE.TubeGeometry(curve, 48, radius, 6, false), material);
 }
 
 function createSignalMaterial(color) {

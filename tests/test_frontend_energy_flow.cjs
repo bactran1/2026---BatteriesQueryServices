@@ -109,3 +109,32 @@ test("Vietnamese Home load uses the same independent measurement", () => {
   assert.equal(ui.element("inverterLoadPower").textContent, "450 W");
   assert.equal(ui.events.at(-1).detail.loadPower, 1500);
 });
+
+test("Backup load has its own live value and animation feed", () => {
+  const ui = dashboard(1500, 450);
+  assert.equal(ui.element("energyBackupValue").textContent, "450 W");
+  assert.equal(ui.events.at(-1).detail.backupPower, 450);
+  assert.equal(ui.element("energyFlowSection").dataset.backupActive, "true");
+  ui.state.inverter.last_reading.load_total_power_w = null;
+  ui.render();
+  assert.equal(ui.element("energyBackupValue").textContent, "Not metered");
+  assert.equal(ui.element("energyFlowSection").dataset.backupActive, "false");
+});
+
+test("CT-side link obeys home and grid balance without using backup or battery readings", () => {
+  const ui = dashboard(1500, 4000);
+  assert.equal(ui.events.at(-1).detail.acLinkPower, 1500);
+  ui.state.inverter.last_reading.grid_import_power_w = 2000;
+  ui.render();
+  assert.equal(ui.events.at(-1).detail.acLinkPower, -500);
+  ui.state.inverter.last_reading.grid_import_power_w = 0;
+  ui.state.inverter.last_reading.grid_export_power_w = 1000;
+  ui.render();
+  assert.equal(ui.events.at(-1).detail.acLinkPower, 2500);
+  assert.equal(ui.events.at(-1).detail.acLinkAvailable, true);
+  ui.state.inverter.last_reading.grid_export_power_w = null;
+  ui.state.inverter.last_reading.grid_import_power_w = null;
+  ui.render();
+  assert.equal(ui.events.at(-1).detail.acLinkAvailable, false);
+  assert.equal(ui.events.at(-1).detail.acLinkPower, null);
+});

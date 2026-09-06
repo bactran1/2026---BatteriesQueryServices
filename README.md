@@ -89,8 +89,8 @@ Defaults:
 - Retention: 1095 days, approximately 3 years
 - Storage path on the x86_64 host: `./data/monitor/battery-monitor.sqlite3`
 - CSV export: dashboard download button or `GET /api/export.csv`
-- Energy history: hourly, monthly, and yearly consumption, solar generation, and grid import in kWh. The Date view is a fixed 0:00–24:00 local calendar day selected with `GET /api/energy?view=date&date=YYYY-MM-DD&timezone=Area/City`
-- Power history: timestamped grid, battery, solar, and load power overlays. Use `GET /api/power-history?range=date&date=YYYY-MM-DD&timezone=Area/City` for a fixed local 0:00–24:00 calendar day, or `range=24h` for a running 24 hours (direct battery charging and grid import are positive; discharge and export are negative)
+- Energy history: grouped bars for hourly, monthly, and yearly consumption, solar generation, and grid import in kWh. Long timelines scroll within the chart with a fixed value axis. The Date view shows hourly bars for a local calendar day selected with `GET /api/energy?view=date&date=YYYY-MM-DD&timezone=Area/City`
+- Power history: line charts near the top of the dashboard with separate grid, direct battery, solar, Home load (CT-side), and Backup load (direct inverter output) series. Use `GET /api/power-history?range=date&date=YYYY-MM-DD&timezone=Area/City` for a fixed local 0:00–24:00 calendar day, or `range=24h` for a running 24 hours (direct battery charging and grid import are positive; discharge and export are negative)
 - Battery runtime: while the rack is discharging, the live home and inverter views estimate remaining support time until the inverter's 20% battery cutoff from direct pack voltage, usable amp-hours above the reserve, and discharge power
 
 The monitor owns one collector connection and serves a cached live snapshot to every browser. Opening more dashboard tabs does not create more requests to the Raspberry Pi. The dashboard refreshes live values every 5 seconds, pauses network work while its tab is hidden, and refreshes immediately when the tab becomes visible again.
@@ -98,6 +98,10 @@ The monitor owns one collector connection and serves a cached live snapshot to e
 Every battery-facing dashboard value comes from the Eco-worthy battery bus: rack and pack SOC, voltage, current, power, capacity, cells, temperatures, state, alarms, and battery power history. The monitor does not substitute the Renogy inverter's battery registers when direct pack telemetry is missing. Solar, grid, load, and inverter-internal values continue to come from inverter telemetry.
 
 In Live home energy, Home load uses `home_load_total_power_w` for the load between the CT meter and the inverter breaker. Backup load uses `load_total_power_w` for the inverter's direct load output. An unavailable Home load reading is shown as not metered and its animation pauses; a measured zero is shown as 0 W.
+
+The modern house scene uses straight conduit runs with separate CT-side Home load and inverter-fed Backup load branches. Direction on the inverter-to-CT link is derived from Home load minus signed grid import, and pauses if either reading is unavailable. The three battery modules and their charging direction continue to use direct battery telemetry.
+
+The monitor archives Home load separately as `home_load_power_w`; the existing `load_power_w` history field remains Backup load. Existing SQLite databases are upgraded automatically without deleting readings. Home load history starts with newly logged samples after this update; older rows remain unavailable rather than being filled with backup values or zeros.
 
 Dashboard HTML is always served with `no-store`. JavaScript, CSS, icons, and logos use a content fingerprint and immutable caching, so a normal reload after deployment picks up the new build without requiring a hard refresh.
 

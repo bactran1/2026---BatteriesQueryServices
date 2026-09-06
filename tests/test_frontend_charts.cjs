@@ -72,6 +72,7 @@ test("Zero energy stays zero and missing energy is not drawn as zero", () => {
   assert.equal(ui.bars[0][3], 0);
   assert.ok(ui.labels.some(([text]) => text === "0.002"));
   assert.equal(ui.run("formatEnergyTotal(0.002)"), "0.002");
+  assert.equal(ui.run("formatEnergyPointValue(1.5678)"), "1.5678 kWh");
 });
 
 test("Date bars preserve all hours of normal and daylight-saving days", () => {

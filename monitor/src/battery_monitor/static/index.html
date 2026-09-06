@@ -198,10 +198,14 @@
           data-grid-power="0"
           data-solar-power="0"
           data-load-power="0"
+          data-backup-power="0"
+          data-ac-link-power="0"
+          data-ac-link-available="false"
           data-battery-power="0"
           data-grid-active="false"
           data-solar-active="false"
           data-load-active="false"
+          data-backup-active="false"
           data-battery-active="false"
           data-grid-direction="import"
           aria-labelledby="energyFlowTitle"
@@ -252,6 +256,10 @@
             <div class="energy-flow__callout energy-flow__callout--load energy-flow__callout--bottom">
               <strong id="energyLoadValue" data-i18n="energy.unmetered">Not metered</strong>
               <span data-i18n="energy.load">Home load</span>
+            </div>
+            <div class="energy-flow__callout energy-flow__callout--backup energy-flow__callout--bottom">
+              <strong id="energyBackupValue" data-i18n="energy.unmetered">Not metered</strong>
+              <span data-i18n="energy.backup">Backup load</span>
             </div>
             <div class="energy-flow__callout energy-flow__callout--battery energy-flow__callout--bottom">
               <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
