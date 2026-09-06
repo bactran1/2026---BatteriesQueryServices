@@ -332,6 +332,11 @@ const translations = {
     "details.noCellData": "No cell data",
     "details.cellTitle": "Cell {number}: {voltage}",
     "details.noTemperatureData": "No temperature data",
+    "details.temperature": "Temp",
+    "details.cells": "Cell voltages",
+    "details.temperatures": "Temperatures",
+    "details.specs": "Specifications",
+    "details.moreLabel": "Cells, temps & specs",
     "details.batteryId": "Battery ID",
     "details.ipAddress": "IP address",
     "details.model": "Model",
@@ -657,6 +662,11 @@ const translations = {
     "details.noCellData": "Chưa có dữ liệu cell",
     "details.cellTitle": "Cell {number}: {voltage}",
     "details.noTemperatureData": "Chưa có dữ liệu nhiệt độ",
+    "details.temperature": "Nhiệt độ",
+    "details.cells": "Điện áp cell",
+    "details.temperatures": "Nhiệt độ",
+    "details.specs": "Thông số kỹ thuật",
+    "details.moreLabel": "Cell, nhiệt độ & thông số",
     "details.batteryId": "Mã pin",
     "details.ipAddress": "Địa chỉ IP",
     "details.model": "Model",
@@ -798,16 +808,11 @@ async function refreshLive() {
   state.collectorOnline = ["online", "degraded"].includes(state.collectorState);
   state.lastLiveReceivedAt = Date.now();
   state.resourceErrors.live = null;
-  if (!state.selectedBatteryId && state.batteries.length) {
-    state.selectedBatteryId = state.batteries[0].id;
-  }
   renderStatus(payload);
   renderRackOverview();
   renderSummary(state.summary);
   renderInverterTelemetry();
-  renderBatteryCards();
-  renderBatteryInventory();
-  renderSelectedBattery();
+  renderBatteryPacks();
   renderStorage();
 }
 
@@ -1008,9 +1013,7 @@ function renderLiveFailure(message) {
       })
     : t("status.noDashboardResponse");
   $("connectionDetail").textContent = t("status.refreshError", { message });
-  renderBatteryCards();
-  renderBatteryInventory();
-  renderSelectedBattery();
+  renderBatteryPacks();
   renderEnergyFlow({ mode: "stale", label: t("flow.lastKnownRack") });
   renderInverterTelemetry();
 }
@@ -1623,264 +1626,161 @@ function renderRackOverview() {
   $("rackConnection").textContent = localizedConnectionName(rack.connection);
 }
 
-function renderBatteryCards() {
-  const grid = $("batteryGrid");
+function renderBatteryPacks() {
+  const container = $("batteryPacks");
   if (!state.batteries.length) {
-    grid.innerHTML = `<div class="empty-state">${escapeHtml(t("battery.awaitingReadings"))}</div>`;
+    container.innerHTML = `<div class="empty-state">${escapeHtml(t("battery.awaitingReadings"))}</div>`;
     return;
   }
 
-  grid.querySelector(".empty-state")?.remove();
-  const existingCards = new Map(
-    Array.from(grid.querySelectorAll(".battery-card")).map((card) => [card.dataset.batteryId, card]),
+  // Preserve which packs the user has expanded across periodic re-renders.
+  const openIds = new Set(
+    Array.from(container.querySelectorAll(".pack"))
+      .filter((pack) => pack.querySelector("details")?.open)
+      .map((pack) => pack.dataset.batteryId),
   );
-  const activeIds = new Set();
 
-  for (const battery of state.batteries) {
-    const reading = battery.last_reading || {};
-    const profile = batteryProfile(battery);
-    const displayName = localizedBatteryName(profile?.name || battery.id);
-    const socValue = finiteNumber(reading.soc_percent);
-    const soc = clamp(socValue ?? 0, 0, 100);
-    const previousSoc = state.renderedSoc.get(battery.id) ?? 0;
-    const flow = energyFlowPresentation(
-      reading,
-      state.collectorOnline && battery.status === "ok",
-    );
-    let card = existingCards.get(battery.id);
-    const isNew = !card;
-    if (!card) {
-      card = document.createElement("button");
-      card.type = "button";
-      card.addEventListener("click", () => {
-        const batteryId = card.dataset.batteryId;
-        if (!batteryId) return;
-        state.selectedBatteryId = batteryId;
-        renderBatteryCards();
-        renderBatteryInventory();
-        renderSelectedBattery();
-      });
-    }
+  const activeIds = new Set(state.batteries.map((battery) => battery.id));
 
-    activeIds.add(battery.id);
-    card.dataset.batteryId = battery.id;
-    card.dataset.flow = flow.mode;
-    card.className = `battery-card ${battery.id === state.selectedBatteryId ? "is-selected" : ""}`;
-    card.setAttribute("aria-pressed", String(battery.id === state.selectedBatteryId));
-
-    card.innerHTML = `
-      <div class="battery-card__top">
-        <span>
-          <strong>${escapeHtml(displayName)}</strong>
-          <small>${escapeHtml(battery.id)} · RS485 ${escapeHtml(battery.address ?? "--")}</small>
-        </span>
-        <span class="${batteryDotClass(battery.status)}"></span>
-      </div>
-      <div class="battery-card__soc">
-        <div class="battery-card__soc-heading">
-          <span>${escapeHtml(t("metric.soc"))}</span>
-          <strong>${socValue === null ? "--" : `${Math.round(soc)}%`}</strong>
-        </div>
-        <div
-          class="soc-progress soc-progress--${flow.mode}"
-          style="--soc: ${previousSoc}"
-          role="progressbar"
-          aria-label="${escapeHtml(t("battery.socAria", { name: displayName }))}"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          ${socValue === null ? "" : `aria-valuenow="${soc}"`}
-        >
-          <span class="soc-progress__fill"></span>
-        </div>
-        <small class="soc-flow-label"><span class="soc-flow-dot" aria-hidden="true"></span>${escapeHtml(flow.label)}</small>
-      </div>
-      <div class="battery-card__metrics">
-        <div><span>${escapeHtml(t("battery.voltage"))}</span><strong>${formatValue(reading.voltage_v, "V")}</strong></div>
-        <div><span>${escapeHtml(t("battery.current"))}</span><strong>${formatValue(reading.current_a, "A")}</strong></div>
-        <div><span>${escapeHtml(t("battery.power"))}</span><strong>${formatValue(reading.power_w, "W")}</strong></div>
-        <div><span>${escapeHtml(t("battery.cellDelta"))}</span><strong>${formatValue(reading.cell_voltage_delta_v, "V", 3)}</strong></div>
-      </div>
-    `;
-    grid.appendChild(card);
-    if (isNew) {
-      card.classList.add("is-entering");
-      window.requestAnimationFrame(() => card.classList.remove("is-entering"));
-    }
-    const progress = card.querySelector(".soc-progress");
-    window.requestAnimationFrame(() => {
-      if (progress?.isConnected) progress.style.setProperty("--soc", String(soc));
-    });
-    state.renderedSoc.set(battery.id, soc);
-  }
-
-  existingCards.forEach((card, batteryId) => {
-    if (!activeIds.has(batteryId)) {
-      card.remove();
-      state.renderedSoc.delete(batteryId);
-    }
-  });
-}
-
-function renderBatteryInventory() {
-  const inventory = state.rack.batteries || [];
-  const body = $("batteryInventory");
-  const expected = state.rack.expected_battery_count ?? inventory.length;
-  $("inventoryStatus").textContent = `${formatNumber(expected)} ${t(
-    expected === 1 ? "inventory.batterySingular" : "inventory.batteries",
-  )}`;
-
-  if (!inventory.length) {
-    body.innerHTML = `<div class="empty-mini inventory-empty">${escapeHtml(t("inventory.noneConfigured"))}</div>`;
-    return;
-  }
-
-  body.innerHTML = inventory
+  container.innerHTML = state.batteries
     .map((battery) => {
+      const reading = battery.last_reading || {};
+      const profile = batteryProfile(battery);
+      const reporting = state.collectorOnline && battery.status === "ok";
+      const displayName = localizedBatteryName(profile?.name || battery.id);
+      const flow = energyFlowPresentation(reading, reporting);
       const status = statusPresentation(state.collectorOnline ? battery.status : "stale");
-      const displayName = localizedBatteryName(battery.name || battery.id);
-      const hardware = [
-        localizedBatteryModel(battery.model),
-        battery.serial_number ? `S/N ${battery.serial_number}` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      const busDetail = battery.rs485_protocol || "Modbus RTU";
+      const socValue = finiteNumber(reading.soc_percent);
+      const soc = clamp(socValue ?? 0, 0, 100);
+      const previousSoc = state.renderedSoc.get(battery.id) ?? soc;
+      state.renderedSoc.set(battery.id, soc);
+      const address = battery.address ?? profile?.address ?? "--";
+      const cells = Array.isArray(reading.cell_voltages_v) ? reading.cell_voltages_v : [];
+      const temps = Array.isArray(reading.temperatures_c) ? reading.temperatures_c : [];
+      const tempPeak = temps.length ? Math.max(...temps) : null;
+      const cellSummary = packCellSummary(cells, finiteNumber(reading.cell_voltage_delta_v));
+
       return `
-        <button class="inventory-row ${battery.id === state.selectedBatteryId ? "is-selected" : ""}" data-battery-id="${escapeHtml(battery.id)}" type="button">
-          <span class="inventory-cell" data-label="${escapeHtml(t("inventory.battery"))}">
-            <strong>${escapeHtml(displayName)}</strong>
-            <small>${escapeHtml(battery.id)}</small>
-          </span>
-          <span class="inventory-cell" data-label="${escapeHtml(t("inventory.network"))}">
-            <strong>${escapeHtml(battery.ip_address || t("common.notConfigured"))}</strong>
-            <small>${escapeHtml(battery.ip_address ? t("inventory.wifiAddress") : t("inventory.noDirectIp"))}</small>
-          </span>
-          <span class="inventory-cell" data-label="RS485">
-            <strong>${escapeHtml(t("inventory.address", { address: battery.address ?? "--" }))}</strong>
-            <small>${escapeHtml(busDetail)}</small>
-          </span>
-          <span class="inventory-cell" data-label="${escapeHtml(t("inventory.hardware"))}">
-            <strong>${escapeHtml(hardware || t("inventory.defaultHardware"))}</strong>
-            <small>${escapeHtml(
-              battery.firmware_version
-                ? t("inventory.firmware", { version: battery.firmware_version })
-                : t("inventory.firmwarePending"),
-            )}</small>
-          </span>
-          <span class="inventory-cell inventory-cell--state" data-label="${escapeHtml(t("inventory.state"))}">
-            <span class="status-pill ${status.className}">${status.label}</span>
-            <small>${escapeHtml(
-              battery.last_polled_at
-                ? t("inventory.seen", { relative: formatRelativeTime(battery.last_polled_at) })
-                : t("inventory.notSeen"),
-            )}</small>
-          </span>
-        </button>
-      `;
+        <article class="pack" data-battery-id="${escapeHtml(battery.id)}" data-flow="${flow.mode}">
+          <header class="pack__head">
+            <span class="pack__id">
+              <strong>${escapeHtml(displayName)}</strong>
+              <small>${escapeHtml(battery.id)} · RS485 ${escapeHtml(String(address))}</small>
+            </span>
+            <span class="pack__status">
+              <span class="${batteryDotClass(battery.status)}"></span>
+              <span class="status-pill ${status.className}">${status.label}</span>
+            </span>
+          </header>
+
+          <div class="pack__soc">
+            <div class="pack__soc-top">
+              <span>${escapeHtml(t("metric.soc"))}</span>
+              <strong>${socValue === null ? "--" : `${Math.round(soc)}%`}</strong>
+            </div>
+            <div
+              class="soc-progress soc-progress--${flow.mode}"
+              style="--soc: ${previousSoc}"
+              role="progressbar"
+              aria-label="${escapeHtml(t("battery.socAria", { name: displayName }))}"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              ${socValue === null ? "" : `aria-valuenow="${soc}"`}
+            >
+              <span class="soc-progress__fill"></span>
+            </div>
+            <small class="soc-flow-label"><span class="soc-flow-dot" aria-hidden="true"></span>${escapeHtml(flow.label)}</small>
+          </div>
+
+          <div class="pack__metrics">
+            <div><span>${escapeHtml(t("battery.voltage"))}</span><strong>${formatValue(reading.voltage_v, "V", 2)}</strong></div>
+            <div><span>${escapeHtml(t("battery.current"))}</span><strong>${formatValue(reading.current_a, "A")}</strong></div>
+            <div><span>${escapeHtml(t("battery.power"))}</span><strong>${formatValue(reading.power_w, "W")}</strong></div>
+            <div><span>${escapeHtml(t("details.temperature"))}</span><strong>${formatValue(tempPeak, "°C", 1)}</strong></div>
+            <div><span>${escapeHtml(t("details.soh"))}</span><strong>${formatValue(reading.soh_percent, "%")}</strong></div>
+            <div><span>${escapeHtml(t("details.cycles"))}</span><strong>${reading.cycle_count ?? "--"}</strong></div>
+          </div>
+
+          ${cellSummary ? `<p class="pack__cellline">${escapeHtml(cellSummary)}</p>` : ""}
+
+          <details class="pack__more"${openIds.has(battery.id) ? " open" : ""}>
+            <summary>${escapeHtml(t("details.moreLabel"))}</summary>
+            <div class="pack__more-body">
+              <h4>${escapeHtml(t("details.cells"))}</h4>
+              <div class="cell-strip">${packCellsHtml(cells)}</div>
+              <h4>${escapeHtml(t("details.temperatures"))}</h4>
+              <div class="temperature-row">${packTempsHtml(temps)}</div>
+              <h4>${escapeHtml(t("details.specs"))}</h4>
+              <dl class="detail-list">${packSpecsHtml(reading, battery, profile)}</dl>
+            </div>
+          </details>
+        </article>`;
     })
     .join("");
 
-  body.querySelectorAll(".inventory-row").forEach((row) => {
-    row.addEventListener("click", () => {
-      const batteryId = row.dataset.batteryId;
-      if (!state.batteries.some((battery) => battery.id === batteryId)) return;
-      state.selectedBatteryId = batteryId;
-      renderBatteryCards();
-      renderBatteryInventory();
-      renderSelectedBattery();
-    });
+  // Animate each SOC bar from its previous width to the live value.
+  container.querySelectorAll(".pack").forEach((pack) => {
+    const bar = pack.querySelector(".soc-progress");
+    const target = state.renderedSoc.get(pack.dataset.batteryId);
+    if (bar && typeof target === "number") {
+      window.requestAnimationFrame(() => {
+        if (bar.isConnected) bar.style.setProperty("--soc", String(target));
+      });
+    }
+  });
+
+  state.renderedSoc.forEach((_soc, batteryId) => {
+    if (!activeIds.has(batteryId)) state.renderedSoc.delete(batteryId);
   });
 }
 
-function renderSelectedBattery() {
-  const battery = selectedBattery();
-  if (!battery) {
-    $("selectedName").textContent = t("details.rack");
-    $("selectedState").textContent = t("status.pending");
-    $("cellStrip").innerHTML = "";
-    $("temperatureRow").innerHTML = "";
-    $("detailList").innerHTML = "";
-    $("payloadView").textContent = "";
-    return;
-  }
-
-  const reading = battery.last_reading || {};
-  const profile = batteryProfile(battery);
-  $("selectedName").textContent = localizedBatteryName(profile?.name || battery.id);
-  const status = statusPresentation(state.collectorOnline ? battery.status : "stale");
-  $("selectedState").textContent = status.label;
-  $("selectedState").className = `status-pill ${status.className}`;
-
-  renderCells(reading.cell_voltages_v || []);
-  renderTemperatures(reading.temperatures_c || []);
-  renderDetails(reading, battery);
-  $("payloadView").textContent = JSON.stringify(battery, null, 2);
-}
-
-function renderCells(cells) {
-  const strip = $("cellStrip");
-  strip.innerHTML = "";
-  if (!cells.length) {
-    strip.innerHTML = `<div class="empty-mini">${escapeHtml(t("details.noCellData"))}</div>`;
-    return;
-  }
+function packCellSummary(cells, delta) {
+  if (!cells.length) return null;
   const min = Math.min(...cells);
   const max = Math.max(...cells);
-  for (const [index, voltage] of cells.entries()) {
-    const cell = document.createElement("div");
-    cell.className = "cell-chip";
-    // Flag the weakest/strongest cell so spread is still readable at a glance,
-    // now that the values are shown numerically instead of as a bar graph.
-    if (max - min > 0.0005) {
-      if (voltage === max) cell.classList.add("cell-chip--max");
-      else if (voltage === min) cell.classList.add("cell-chip--min");
-    }
-    cell.title = t("details.cellTitle", {
-      number: index + 1,
-      voltage: formatValue(voltage, "V", 3),
-    });
-    cell.innerHTML = `<span>${index + 1}</span><strong>${voltage.toFixed(3)}</strong>`;
-    strip.appendChild(cell);
-  }
+  const spread = finiteNumber(delta) ?? max - min;
+  return `${min.toFixed(3)}–${max.toFixed(3)} V · Δ ${Math.round(spread * 1000)} mV`;
 }
 
-function renderTemperatures(temperatures) {
-  const row = $("temperatureRow");
-  row.innerHTML = "";
-  if (!temperatures.length) {
-    row.innerHTML = `<div class="empty-mini">${escapeHtml(t("details.noTemperatureData"))}</div>`;
-    return;
-  }
-  for (const [index, temperature] of temperatures.entries()) {
-    const chip = document.createElement("div");
-    chip.className = "temp-chip";
-    chip.innerHTML = `<span>T${index + 1}</span><strong>${formatValue(temperature, "°C", 1)}</strong>`;
-    row.appendChild(chip);
-  }
+function packCellsHtml(cells) {
+  if (!cells.length) return `<div class="empty-mini">${escapeHtml(t("details.noCellData"))}</div>`;
+  const min = Math.min(...cells);
+  const max = Math.max(...cells);
+  return cells
+    .map((voltage, index) => {
+      let className = "cell-chip";
+      if (max - min > 0.0005) {
+        if (voltage === max) className += " cell-chip--max";
+        else if (voltage === min) className += " cell-chip--min";
+      }
+      const title = t("details.cellTitle", { number: index + 1, voltage: formatValue(voltage, "V", 3) });
+      return `<div class="${className}" title="${escapeHtml(title)}"><span>${index + 1}</span><strong>${voltage.toFixed(3)}</strong></div>`;
+    })
+    .join("");
 }
 
-function renderDetails(reading, battery) {
-  const profile = batteryProfile(battery);
-  const details = [
-    [t("details.batteryId"), battery.id],
-    [t("details.ipAddress"), profile?.ip_address || t("common.notConfigured")],
+function packTempsHtml(temperatures) {
+  if (!temperatures.length) return `<div class="empty-mini">${escapeHtml(t("details.noTemperatureData"))}</div>`;
+  return temperatures
+    .map((temperature, index) =>
+      `<div class="temp-chip"><span>T${index + 1}</span><strong>${formatValue(temperature, "°C", 1)}</strong></div>`,
+    )
+    .join("");
+}
+
+function packSpecsHtml(reading, battery, profile) {
+  const specs = [
     [t("details.model"), localizedBatteryModel(profile?.model)],
-    [t("details.address"), battery.address],
-    [t("details.state"), operationLabel(reading.operation_status)],
-    [t("details.soh"), formatValue(reading.soh_percent, "%")],
-    [t("details.cycles"), reading.cycle_count],
+    [t("details.firmware"), reading.firmware_version],
+    [t("details.ipAddress"), profile?.ip_address || t("common.notConfigured")],
+    [t("details.serial"), reading.serial_number || profile?.serial_number],
     [t("details.remaining"), formatValue(reading.remaining_capacity_ah, "Ah")],
     [t("details.full"), formatValue(reading.full_capacity_ah, "Ah")],
     [t("details.chargeLimit"), formatValue(reading.charge_current_limit_a, "A")],
     [t("details.dischargeLimit"), formatValue(reading.discharge_current_limit_a, "A")],
-    [t("details.firmware"), reading.firmware_version],
-    [t("details.serial"), reading.serial_number],
   ];
-  $("detailList").innerHTML = details
-    .map(
-      ([label, value]) =>
-        `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value ?? "--")}</dd></div>`,
-    )
+  return specs
+    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value ?? "--")}</dd></div>`)
     .join("");
 }
 
@@ -3072,9 +2972,7 @@ function rerenderLocalizedUi() {
     renderRackOverview();
     renderSummary(state.summary);
     renderInverterTelemetry();
-    renderBatteryCards();
-    renderBatteryInventory();
-    renderSelectedBattery();
+    renderBatteryPacks();
     renderStorage();
   }
   if (state.lastEventsRefreshAt || state.resourceErrors.events) {

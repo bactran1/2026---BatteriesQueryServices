@@ -385,9 +385,9 @@
           </div>
         </section>
 
-        <section class="fleet-band" aria-label="Fleet summary" data-i18n-aria-label="fleet.summary">
-          <div class="fleet-metric fleet-metric--soc">
-            <div class="fleet-metric__heading">
+        <section class="rack-summary" aria-label="Rack summary" data-i18n-aria-label="fleet.summary">
+          <div class="rack-summary__soc">
+            <div class="rack-summary__soc-heading">
               <span data-i18n="fleet.rackSoc">Rack SOC</span>
               <strong id="fleetSoc">--</strong>
             </div>
@@ -405,78 +405,39 @@
             </div>
             <small id="fleetFlow" class="soc-flow-label" data-i18n="common.waitingReadings">Waiting for readings</small>
           </div>
-          <div class="fleet-metric">
-            <span data-i18n="fleet.livePower">Live power</span>
-            <strong id="fleetPower">--</strong>
-            <small id="fleetPowerDetail" data-i18n="fleet.netPower">Net rack power</small>
-          </div>
-          <div class="fleet-metric">
-            <span data-i18n="fleet.rackCurrent">Rack current</span>
-            <strong id="fleetCurrent">--</strong>
-            <small data-i18n="fleet.netCurrentDetail">Net across all packs</small>
-          </div>
-          <div class="fleet-metric">
-            <span data-i18n="fleet.averageVoltage">Average voltage</span>
-            <strong id="fleetVoltage">--</strong>
-            <small data-i18n="fleet.averageVoltageDetail">Across reporting packs</small>
-          </div>
-          <div class="fleet-metric">
-            <span data-i18n="fleet.capacityLeft">Capacity left</span>
-            <strong id="fleetCapacity">--</strong>
-            <small id="fleetCapacityDetail" data-i18n="fleet.combinedCapacity">Combined capacity</small>
-          </div>
-          <div class="fleet-metric fleet-metric--temperature">
-            <span data-i18n="fleet.mosfetTemperature">MOSFET temperature</span>
-            <strong id="fleetMosfetTemp">--</strong>
-            <small id="fleetMosfetPeak" data-i18n="fleet.peakUnavailable">Peak unavailable</small>
-          </div>
-          <div class="fleet-metric fleet-metric--temperature">
-            <span data-i18n="fleet.ambientTemperature">Ambient temperature</span>
-            <strong id="fleetAmbientTemp">--</strong>
-            <small id="fleetAmbientPeak" data-i18n="fleet.peakUnavailable">Peak unavailable</small>
-          </div>
-          <div id="fleetHealthMetric" class="fleet-metric fleet-metric--health">
-            <span data-i18n="fleet.rackHealth">Rack health</span>
-            <strong id="fleetHealth">--</strong>
-            <small id="fleetCellDelta" data-i18n="fleet.cellSpreadUnavailable">Cell spread unavailable</small>
-          </div>
-        </section>
-
-        <section id="batteryGrid" class="battery-grid" aria-label="Battery readings" data-i18n-aria-label="battery.readings"></section>
-
-        <section class="panel inventory-panel" aria-labelledby="inventoryTitle">
-          <div class="panel-heading inventory-heading">
+          <dl class="rack-summary__stats">
             <div>
-              <p class="eyebrow" data-i18n="inventory.eyebrow">Rack inventory</p>
-              <h2 id="inventoryTitle" data-i18n="inventory.title">Battery details</h2>
+              <dt data-i18n="fleet.livePower">Live power</dt>
+              <dd><strong id="fleetPower">--</strong><small id="fleetPowerDetail" data-i18n="fleet.netPower">Net rack power</small></dd>
             </div>
-            <span id="inventoryStatus" class="inventory-summary" data-i18n="inventory.initialStatus">3 configured</span>
-          </div>
-          <div class="inventory-table">
-            <div class="inventory-head" aria-hidden="true">
-              <span data-i18n="inventory.battery">Battery</span>
-              <span data-i18n="inventory.network">Network</span>
-              <span>RS485</span>
-              <span data-i18n="inventory.hardware">Hardware</span>
-              <span data-i18n="inventory.state">State</span>
-            </div>
-            <div id="batteryInventory" class="inventory-body"></div>
-          </div>
-        </section>
-
-        <section class="panel detail-panel" aria-labelledby="selectedName">
-          <div class="panel-heading">
             <div>
-              <p class="eyebrow" data-i18n="details.selectedPack">Selected pack</p>
-              <h2 id="selectedName" data-i18n="details.rack">Rack</h2>
+              <dt data-i18n="fleet.rackCurrent">Rack current</dt>
+              <dd><strong id="fleetCurrent">--</strong><small data-i18n="fleet.netCurrentDetail">Net across all packs</small></dd>
             </div>
-            <span id="selectedState" class="status-pill status-pill--pending" data-i18n="status.pending">Pending</span>
-          </div>
-
-          <div class="cell-strip" id="cellStrip"></div>
-          <div class="temperature-row" id="temperatureRow"></div>
-          <dl class="detail-list" id="detailList"></dl>
+            <div>
+              <dt data-i18n="fleet.averageVoltage">Average voltage</dt>
+              <dd><strong id="fleetVoltage">--</strong><small data-i18n="fleet.averageVoltageDetail">Across reporting packs</small></dd>
+            </div>
+            <div>
+              <dt data-i18n="fleet.capacityLeft">Capacity left</dt>
+              <dd><strong id="fleetCapacity">--</strong><small id="fleetCapacityDetail" data-i18n="fleet.combinedCapacity">Combined capacity</small></dd>
+            </div>
+            <div>
+              <dt data-i18n="fleet.mosfetTemperature">MOSFET temperature</dt>
+              <dd><strong id="fleetMosfetTemp">--</strong><small id="fleetMosfetPeak" data-i18n="fleet.peakUnavailable">Peak unavailable</small></dd>
+            </div>
+            <div>
+              <dt data-i18n="fleet.ambientTemperature">Ambient temperature</dt>
+              <dd><strong id="fleetAmbientTemp">--</strong><small id="fleetAmbientPeak" data-i18n="fleet.peakUnavailable">Peak unavailable</small></dd>
+            </div>
+            <div id="fleetHealthMetric">
+              <dt data-i18n="fleet.rackHealth">Rack health</dt>
+              <dd><strong id="fleetHealth">--</strong><small id="fleetCellDelta" data-i18n="fleet.cellSpreadUnavailable">Cell spread unavailable</small></dd>
+            </div>
+          </dl>
         </section>
+
+        <section id="batteryPacks" class="battery-packs" aria-label="Battery packs" data-i18n-aria-label="battery.readings"></section>
 
         <section class="lower-grid" aria-label="Logs and status" data-i18n-aria-label="logs.aria">
           <div class="panel events-panel">
