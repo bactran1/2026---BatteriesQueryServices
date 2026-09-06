@@ -18,6 +18,9 @@ const NODE_COLORS = {
 const CAMERA_POSITION = new THREE.Vector3(7.8, 6.4, 9.6);
 const CAMERA_LOOK_AT = new THREE.Vector3(0, -0.05, 0);
 const HOUSE_SCENE_SCALE = 0.9;
+// UnrealBloomPass tuning. Threshold sits above the dark chassis albedo so only the
+// emissive conduits, LEDs, and glow puddles bloom; small screens ease off for GPU cost.
+const BLOOM = { strength: 0.95, radius: 0.55, threshold: 0.58, mobileStrength: 0.62 };
 const POWER_PORTS = {
   solar: new THREE.Vector3(0.4, 1.4, 0.75),
   inverterSolar: new THREE.Vector3(0.4, 0.42, 2.2),
@@ -78,6 +81,9 @@ function startEnergyFlowScene() {
   ground.rotation.x = -Math.PI / 2;
   root.add(ground);
 
+  const grounding = createGrounding();
+  root.add(grounding.group);
+
   const ambient = new THREE.HemisphereLight(0xf4f7ff, 0x111215, 1.75);
   const keyLight = new THREE.DirectionalLight(0xffffff, 3.8);
   keyLight.position.set(-4.5, 7.2, 6.8);
@@ -122,6 +128,8 @@ function startEnergyFlowScene() {
   let isIntersecting = true;
   let isDocumentVisible = !document.hidden;
   let disposed = false;
+  let composer = null;
+  let bloomPass = null;
 
   function readSectionState(detail = {}) {
     return {
@@ -286,7 +294,7 @@ function startEnergyFlowScene() {
       });
 
       route.particleMaterial.opacity = active ? 0.96 : 0;
-      route.particleGlowMaterial.opacity = active ? 0.14 : 0;
+      route.particleGlowMaterial.opacity = active ? 0.07 : 0;
     });
 
     pulseSignal(energySystem.gridSignalMaterial, network.grid.active, time, 0);
@@ -308,6 +316,13 @@ function startEnergyFlowScene() {
         module.signalMaterial.emissiveIntensity = 1.1 + Math.sin(time * 0.004 + index * 0.85) * 0.38;
       }
     });
+
+    // The ground catches the conduit glow beneath each cluster of live equipment.
+    const flowColor = FLOW_COLORS[flowState.mode];
+    updatePuddle(grounding.puddles[0], network.routes.some(isRouteActive),
+      network.battery.active ? flowColor : NODE_COLORS.inverter, time, 0.6);
+    updatePuddle(grounding.puddles[1], network.load.active, NODE_COLORS.load, time, 1.15);
+    updatePuddle(grounding.puddles[2], network.backup.active, NODE_COLORS.backup, time, 1.6);
   }
 
   function renderOnce(time) {
@@ -326,7 +341,8 @@ function startEnergyFlowScene() {
       CAMERA_LOOK_AT.z,
     );
     root.rotation.y = parallax.x * 0.025;
-    renderer.render(scene, camera);
+    if (composer) composer.render();
+    else renderer.render(scene, camera);
     frameCount += 1;
     if (frameCount === 1 || frameCount % 10 === 0) canvas.dataset.frame = String(frameCount);
     if (needsPixelAudit) auditCanvasPixels();
@@ -365,6 +381,37 @@ function startEnergyFlowScene() {
     if (!frameRequest && shouldAnimate()) frameRequest = window.requestAnimationFrame(animate);
   }
 
+  async function setupPostProcessing() {
+    try {
+      const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] =
+        await Promise.all([
+          import("three/addons/postprocessing/EffectComposer.js"),
+          import("three/addons/postprocessing/RenderPass.js"),
+          import("three/addons/postprocessing/UnrealBloomPass.js"),
+          import("three/addons/postprocessing/OutputPass.js"),
+        ]);
+      if (disposed) return;
+      const size = renderer.getSize(new THREE.Vector2());
+      const nextComposer = new EffectComposer(renderer);
+      nextComposer.setPixelRatio(renderer.getPixelRatio());
+      nextComposer.addPass(new RenderPass(scene, camera));
+      const bloom = new UnrealBloomPass(size, BLOOM.strength, BLOOM.radius, BLOOM.threshold);
+      nextComposer.addPass(bloom);
+      // OutputPass carries the scene's ACES tone mapping + sRGB now that RenderPass
+      // renders into the composer's linear HDR buffer instead of straight to screen.
+      nextComposer.addPass(new OutputPass());
+      composer = nextComposer;
+      bloomPass = bloom;
+      canvas.dataset.bloom = "on";
+      resize();
+    } catch (error) {
+      composer = null;
+      bloomPass = null;
+      canvas.dataset.bloom = "off";
+      console.warn("Energy-flow bloom unavailable; rendering without post-processing.", error);
+    }
+  }
+
   function resize() {
     if (disposed) return;
     const bounds = stage.getBoundingClientRect();
@@ -381,6 +428,11 @@ function startEnergyFlowScene() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width <= 600 ? 1.5 : 2));
     renderer.setSize(width, height, false);
     renderer.shadowMap.enabled = width > 480;
+    if (composer) {
+      composer.setPixelRatio(renderer.getPixelRatio());
+      composer.setSize(width, height);
+    }
+    if (bloomPass) bloomPass.strength = width <= 600 ? BLOOM.mobileStrength : BLOOM.strength;
     camera.updateProjectionMatrix();
     needsPixelAudit = true;
     renderOnce(performance.now());
@@ -476,6 +528,8 @@ function startEnergyFlowScene() {
   canvas.addEventListener("webglcontextlost", (event) => {
     event.preventDefault();
     disposed = true;
+    composer = null;
+    bloomPass = null;
     if (frameRequest) window.cancelAnimationFrame(frameRequest);
     showFallback(section, canvas, new Error("WebGL context lost"));
   });
@@ -488,6 +542,7 @@ function startEnergyFlowScene() {
   resize();
   updateTheme();
   applyFlowState();
+  setupPostProcessing();
 }
 
 function createMaterials() {
@@ -542,6 +597,80 @@ function createMaterials() {
       depthWrite: false,
     }),
   };
+}
+
+function createGrounding() {
+  const group = new THREE.Group();
+  const shadowTexture = radialGradientTexture([
+    [0, "rgba(0,0,0,0.5)"],
+    [0.6, "rgba(0,0,0,0.22)"],
+    [1, "rgba(0,0,0,0)"],
+  ]);
+  const glowTexture = radialGradientTexture([
+    [0, "rgba(255,255,255,0.95)"],
+    [0.45, "rgba(255,255,255,0.4)"],
+    [1, "rgba(255,255,255,0)"],
+  ]);
+
+  const addPlane = (width, depth, position, material) => {
+    const plane = mesh(new THREE.PlaneGeometry(width, depth), material);
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.copy(position);
+    plane.renderOrder = -1;
+    group.add(plane);
+    return plane;
+  };
+
+  // Soft contact-shadow pools ground the house and equipment so they read as placed.
+  [
+    [6.6, 3.7, new THREE.Vector3(-0.7, -1.28, 0.15)],
+    [3.1, 1.5, new THREE.Vector3(1.25, -1.275, 1.85)],
+    [1.25, 0.95, new THREE.Vector3(-0.8, -1.275, 1.95)],
+  ].forEach(([width, depth, position]) => {
+    addPlane(width, depth, position, new THREE.MeshBasicMaterial({
+      map: shadowTexture, transparent: true, depthWrite: false, opacity: 0.92,
+    }));
+  });
+
+  // Additive glow puddles that catch the conduit light beneath each equipment cluster.
+  const puddles = [
+    [2.7, 1.5, new THREE.Vector3(1.25, -1.265, 1.95), 0.62],
+    [1.9, 1.2, new THREE.Vector3(-2.15, -1.265, 1.95), 0.5],
+    [1.15, 0.85, new THREE.Vector3(-0.8, -1.265, 1.98), 0.42],
+  ].map(([width, depth, position, intensity]) => {
+    const material = new THREE.MeshBasicMaterial({
+      map: glowTexture, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, opacity: 0,
+    });
+    addPlane(width, depth, position, material);
+    return { material, intensity };
+  });
+
+  return { group, puddles };
+}
+
+function radialGradientTexture(stops) {
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  stops.forEach(([offset, color]) => gradient.addColorStop(offset, color));
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function updatePuddle(puddle, active, colorHex, time, phase) {
+  if (!puddle) return;
+  puddle.material.color.setHex(colorHex);
+  puddle.material.opacity = active
+    ? puddle.intensity * (0.72 + Math.sin(time * 0.0038 + phase) * 0.22)
+    : 0;
 }
 
 function addBox(group, size, position, material, shadow = false) {
@@ -829,10 +958,12 @@ function configureRoute(route, mode, magnitude, active, direction, reporting, ac
   const color = route.active ? activeColor ?? FLOW_COLORS[route.mode] : FLOW_COLORS.stale;
   route.lineMaterial.color.setHex(color);
   route.lineMaterial.emissive.setHex(color);
-  route.lineMaterial.emissiveIntensity = route.active ? 0.55 : 0.04;
+  // Active conduits sit above BLOOM.threshold so UnrealBloomPass halos them; the fake
+  // additive tube is trimmed to a hint that only matters on the no-bloom fallback path.
+  route.lineMaterial.emissiveIntensity = route.active ? 1.15 : 0.04;
   route.lineMaterial.opacity = route.active ? 0.82 : route.reporting ? 0.16 : 0.1;
   route.glowMaterial.color.setHex(color);
-  route.glowMaterial.opacity = route.active ? 0.07 : 0.01;
+  route.glowMaterial.opacity = route.active ? 0.035 : 0.01;
   route.particleMaterial.color.setHex(color);
   route.particleGlowMaterial.color.setHex(color);
 }
