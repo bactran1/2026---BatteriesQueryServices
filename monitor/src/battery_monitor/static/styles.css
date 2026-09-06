@@ -466,23 +466,26 @@ button {
 .rack-overview__identity {
   display: flex;
   min-width: 0;
-  padding: 14px 16px;
-  flex-direction: column;
-  justify-content: center;
+  padding: 8px 14px;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   border-right: 1px solid var(--line);
 }
 
 .rack-overview__identity .eyebrow {
-  margin-bottom: 4px;
+  margin-bottom: 0;
 }
 
 .rack-overview__identity > p:last-child {
-  max-width: 480px;
+  min-width: 0;
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
-  line-height: 1.3;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .rack-facts {
@@ -491,9 +494,14 @@ button {
   min-width: 0;
 }
 
+/* Absolute-minimal strip: each fact is one tight inline line. */
 .rack-facts > div {
+  display: flex;
   min-width: 0;
-  padding: 13px 14px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+  padding: 7px 12px;
   border-right: 1px solid var(--line);
 }
 
@@ -510,27 +518,34 @@ button {
 }
 
 .rack-facts span {
-  display: block;
-  font-size: 11px;
+  display: inline;
+  font-size: 10px;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .rack-facts strong {
-  display: block;
+  display: inline;
   min-width: 0;
-  margin-top: 4px;
   overflow-wrap: anywhere;
-  font-size: 14px;
-  line-height: 1.25;
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1.2;
 }
 
 .rack-facts small {
-  display: block;
-  margin-top: 3px;
+  display: inline;
   color: var(--muted);
   font-size: 10px;
-  line-height: 1.25;
+  line-height: 1.2;
   overflow-wrap: anywhere;
+}
+
+.rack-facts small::before {
+  margin-right: 4px;
+  color: var(--line-strong, var(--muted));
+  content: "·";
 }
 
 .energy-flow {
@@ -1556,8 +1571,8 @@ button {
 .battery-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin: 18px 0;
+  gap: 12px;
+  margin: 14px 0;
 }
 
 .battery-card,
@@ -1577,11 +1592,11 @@ button {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: 10px;
   overflow: hidden;
   width: 100%;
-  min-height: 244px;
-  padding: 18px;
+  min-height: 150px;
+  padding: 13px 14px;
   color: inherit;
   text-align: left;
   transition:
@@ -1635,7 +1650,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 760;
 }
 
@@ -1650,7 +1665,7 @@ button {
 }
 
 .battery-card__top small {
-  margin-top: 4px;
+  margin-top: 2px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 650;
@@ -1683,7 +1698,7 @@ button {
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 9px;
+  margin-bottom: 6px;
 }
 
 .battery-card__soc-heading span {
@@ -1693,7 +1708,7 @@ button {
 }
 
 .battery-card__soc-heading strong {
-  font-size: 26px;
+  font-size: 20px;
   line-height: 1;
   font-weight: 780;
 }
@@ -1701,16 +1716,16 @@ button {
 .battery-card__metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 13px 16px;
+  gap: 8px 14px;
   align-self: center;
-  padding-top: 15px;
+  padding-top: 10px;
   border-top: 1px solid var(--line);
 }
 
 .battery-card__metrics strong {
   display: block;
-  margin-top: 5px;
-  font-size: 20px;
+  margin-top: 3px;
+  font-size: 15px;
   font-weight: 740;
   word-break: break-word;
 }
@@ -1731,7 +1746,7 @@ button {
 .inventory-heading {
   align-items: center;
   margin: 0;
-  padding: 18px 20px;
+  padding: 11px 16px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1757,7 +1772,7 @@ button {
 }
 
 .inventory-head {
-  padding: 10px 20px;
+  padding: 7px 16px;
   border-bottom: 1px solid var(--line);
   background: var(--soft-bg);
   font-weight: 700;
@@ -1765,8 +1780,8 @@ button {
 
 .inventory-row {
   width: 100%;
-  min-height: 78px;
-  padding: 13px 20px;
+  min-height: 52px;
+  padding: 9px 16px;
   border: 0;
   border-bottom: 1px solid var(--line);
   color: var(--ink);
@@ -1806,13 +1821,13 @@ button {
 }
 
 .inventory-cell > strong {
-  font-size: 14px;
-  line-height: 1.3;
+  font-size: 13px;
+  line-height: 1.25;
 }
 
 .inventory-cell > small {
-  margin-top: 5px;
-  line-height: 1.3;
+  margin-top: 2px;
+  line-height: 1.25;
 }
 
 .inventory-cell--state .status-pill {
@@ -2159,48 +2174,72 @@ select {
   border-radius: 50%;
 }
 
+/* Compact numeric grid — cell voltages read as values, not a bar graph. */
 .cell-strip {
   display: grid;
-  grid-template-columns: repeat(16, minmax(8px, 1fr));
-  align-items: end;
-  gap: 6px;
-  min-height: 118px;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 5px;
   margin-top: 8px;
-  padding: 12px;
+  padding: 8px;
   border-radius: 8px;
   background: var(--soft-bg);
   transition: background 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.cell-bar {
-  position: relative;
-  min-height: 28px;
-  border-radius: 6px 6px 3px 3px;
-  background: linear-gradient(180deg, var(--accent-warm), var(--accent));
+.cell-chip {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 3px;
+  border-radius: 6px;
+  background: var(--tile-bg);
+  transition:
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.cell-bar span {
-  position: absolute;
-  right: 0;
-  bottom: -18px;
-  left: 0;
+.cell-chip span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  text-align: center;
+}
+
+.cell-chip strong {
+  font-size: 12px;
+  font-weight: 730;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-chip--max {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 55%, transparent);
+}
+
+.cell-chip--max strong {
+  color: var(--green);
+}
+
+.cell-chip--min {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 55%, transparent);
+}
+
+.cell-chip--min strong {
+  color: var(--red);
 }
 
 .temperature-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  margin: 26px 0 16px;
+  margin: 14px 0 12px;
 }
 
 .temp-chip {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 10px;
+  padding: 8px 10px;
   background: var(--tile-bg);
   transition:
     background 420ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -2215,13 +2254,13 @@ select {
 
 .temp-chip strong {
   display: block;
-  margin-top: 4px;
-  font-size: 18px;
+  margin-top: 2px;
+  font-size: 16px;
 }
 
 .detail-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   margin: 0;
@@ -2232,13 +2271,13 @@ select {
 
 .detail-list div {
   min-width: 0;
-  padding: 12px;
+  padding: 8px 10px;
   background: var(--tile-bg);
   transition: background 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .detail-list dd {
-  margin: 5px 0 0;
+  margin: 2px 0 0;
   font-weight: 730;
   word-break: break-word;
 }

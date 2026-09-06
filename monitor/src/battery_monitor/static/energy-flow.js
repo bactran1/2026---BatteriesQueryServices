@@ -20,7 +20,7 @@ const CAMERA_LOOK_AT = new THREE.Vector3(0, -0.05, 0);
 const HOUSE_SCENE_SCALE = 0.9;
 // UnrealBloomPass tuning. Threshold sits above the dark chassis albedo so only the
 // emissive conduits, LEDs, and glow puddles bloom; small screens ease off for GPU cost.
-const BLOOM = { strength: 0.95, radius: 0.55, threshold: 0.58, mobileStrength: 0.62 };
+const BLOOM = { strength: 0.05, radius: 0.55, threshold: 0.58, mobileStrength: 0.05 };
 const POWER_PORTS = {
   solar: new THREE.Vector3(0.4, 1.4, 0.75),
   inverterSolar: new THREE.Vector3(0.4, 0.42, 2.2),

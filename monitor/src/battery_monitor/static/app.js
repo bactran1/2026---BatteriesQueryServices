@@ -1827,15 +1827,19 @@ function renderCells(cells) {
   const min = Math.min(...cells);
   const max = Math.max(...cells);
   for (const [index, voltage] of cells.entries()) {
-    const height = 28 + ((voltage - min) / Math.max(max - min, 0.001)) * 58;
     const cell = document.createElement("div");
-    cell.className = "cell-bar";
-    cell.style.height = `${height}px`;
+    cell.className = "cell-chip";
+    // Flag the weakest/strongest cell so spread is still readable at a glance,
+    // now that the values are shown numerically instead of as a bar graph.
+    if (max - min > 0.0005) {
+      if (voltage === max) cell.classList.add("cell-chip--max");
+      else if (voltage === min) cell.classList.add("cell-chip--min");
+    }
     cell.title = t("details.cellTitle", {
       number: index + 1,
       voltage: formatValue(voltage, "V", 3),
     });
-    cell.innerHTML = `<span>${index + 1}</span>`;
+    cell.innerHTML = `<span>${index + 1}</span><strong>${voltage.toFixed(3)}</strong>`;
     strip.appendChild(cell);
   }
 }
