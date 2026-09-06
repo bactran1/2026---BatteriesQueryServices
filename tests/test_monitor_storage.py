@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import tempfile
 import time
 import unittest
@@ -189,11 +190,15 @@ class RetentionStoreTests(unittest.TestCase):
 
             hourly = store.energy_history("hour")
             self.assertEqual(hourly["window_days"], 7)
-            self.assertEqual(len(hourly["points"]), 3)
-            self.assertEqual(hourly["points"][0]["consumption_kwh"], 0.4)
+            # The leading bucket has no earlier sample to difference against, and
+            # the counters reset at the inverter's local midnight rather than at
+            # 00:00 UTC, so it is skipped instead of being credited with whatever
+            # total the counter happened to be showing.
+            self.assertEqual(len(hourly["points"]), 2)
+            self.assertEqual(hourly["points"][0]["consumption_kwh"], 0.8)
+            self.assertEqual(hourly["points"][0]["solar_generation_kwh"], 0.5)
+            self.assertEqual(hourly["points"][0]["grid_import_kwh"], 0.4)
             self.assertEqual(hourly["points"][1]["consumption_kwh"], 0.8)
-            self.assertEqual(hourly["points"][1]["solar_generation_kwh"], 0.5)
-            self.assertEqual(hourly["points"][1]["grid_import_kwh"], 0.4)
 
             selected_date = store.energy_history("date", day.date().isoformat())
             self.assertEqual(selected_date["view"], "date")
@@ -322,6 +327,83 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertIsNone(points[0]["home_load_power_w"])
             self.assertEqual(store.energy_history("month")["points"][0]["consumption_kwh"], 1)
             store.close()
+
+
+class HourlyEnergyResetTests(unittest.TestCase):
+    """The inverter's *_energy_today_kwh counters reset at its LOCAL midnight.
+
+    The hourly view must not assume that happens at 00:00 UTC, or the midnight
+    bucket absorbs a whole day of generation and consumption.
+    """
+
+    RESET_HOUR_UTC = 7  # local midnight for America/Los_Angeles (UTC-7)
+    LOAD_KW = 1.0
+    SOLAR_KW = 2.0
+    SOLAR_LOCAL_HOURS = range(8, 18)  # 10 h * 2 kW = 20 kWh/day
+
+    def _cumulative(self, hours_since_reset: float) -> tuple[float, float]:
+        load = self.LOAD_KW * hours_since_reset
+        solar = self.SOLAR_KW * sum(
+            max(0.0, min(hours_since_reset, hour + 1) - hour)
+            for hour in self.SOLAR_LOCAL_HOURS
+        )
+        return load, solar
+
+    def _make_store(self) -> RetentionStore:
+        directory = tempfile.mkdtemp()
+        # LIFO cleanup: close the connection before the temp dir is removed, so
+        # a failed assertion reports itself instead of a Windows unlink error.
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        store = RetentionStore(Path(directory) / "monitor.sqlite3")
+        store.initialize()
+        self.addCleanup(store.close)
+        return store
+
+    def test_hourly_view_has_no_midnight_spike(self) -> None:
+        store = self._make_store()
+
+        now = int(time.time())
+        start = (now // 3600) * 3600 - 48 * 3600
+        while datetime.fromtimestamp(start, timezone.utc).hour != self.RESET_HOUR_UTC:
+            start += 3600
+
+        for index in range(48):
+            bucket = start + index * 3600
+            if bucket > now:
+                break
+            # Sample mid-hour, so the reset hour holds a partial reading.
+            load, solar = self._cumulative((index % 24) + 0.5)
+            sampled_at = datetime.fromtimestamp(bucket + 1800, timezone.utc)
+            store.insert_snapshot(
+                _energy_snapshot(
+                    sampled_at.isoformat().replace("+00:00", "Z"),
+                    consumption_kwh=round(load, 3),
+                    solar_generation_kwh=round(solar, 3),
+                    grid_import_kwh=0.0,
+                )
+            )
+
+        points = store.energy_history("hour")["points"]
+        self.assertGreater(len(points), 24)
+
+        by_hour = {
+            datetime.fromtimestamp(point["unix"], timezone.utc).hour: point
+            for point in points
+        }
+
+        # No hour may exceed what the simulated system can physically produce.
+        for point in points:
+            self.assertLessEqual((point["solar_generation_kwh"] or 0), self.SOLAR_KW)
+            self.assertLessEqual((point["consumption_kwh"] or 0), self.LOAD_KW)
+
+        # The 00:00 UTC bucket is an ordinary hour, not a whole day's worth.
+        self.assertAlmostEqual(by_hour[0]["consumption_kwh"], self.LOAD_KW, places=3)
+
+        # The hour containing the local-midnight reset keeps its partial energy
+        # instead of being dropped.
+        self.assertAlmostEqual(
+            by_hour[self.RESET_HOUR_UTC]["consumption_kwh"], 0.5, places=3
+        )
 
 
 def _sample_snapshot() -> dict:

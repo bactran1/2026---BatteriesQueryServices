@@ -513,14 +513,17 @@ class RetentionStore:
             params: tuple[object, ...] = ()
             window_start_unix = int(time.time()) - 7 * 24 * 60 * 60
             window_end_unix = int(time.time())
-            window_partition = "inverter_id, date(bucket_unix, 'unixepoch')"
+            # One partition per inverter across the whole window: the counters
+            # reset at the inverter's *local* midnight, not at 00:00 UTC, so a
+            # per-UTC-day partition would hand the 00:00 bucket a whole day of
+            # accumulation. Resets are detected from the values instead.
+            window_partition = "inverter_id"
             bucket_expression = (
                 "CAST(captured_at_unix / 3600 AS INTEGER) * 3600"
             )
-            first_bucket_condition = """
-                previous_bucket_unix IS NULL
-                AND strftime('%H', bucket_unix, 'unixepoch') = '00'
-            """
+            # No earlier sample in the window, so how much of the counter belongs
+            # to this hour is unknowable; contribute nothing rather than a spike.
+            first_bucket_condition = "1 = 0"
         else:
             selected_zone = ZoneInfo(energy_timezone)
             selected_day = datetime.strptime(energy_date, "%Y-%m-%d").replace(
@@ -535,10 +538,23 @@ class RetentionStore:
                 CAST((captured_at_unix - {window_start_unix}) / 3600 AS INTEGER)
                     * 3600 + {window_start_unix}
             """
+            # This window already starts at local midnight, which is when the
+            # inverter's "today" counters reset, so the first hour's reading is
+            # entirely energy accumulated inside that hour.
             first_bucket_condition = f"""
                 previous_bucket_unix IS NULL
                 AND bucket_unix - {window_start_unix} < 3600
             """
+
+        consumption_expression = _hourly_energy_expression(
+            "consumption_meter_kwh", "previous_consumption_kwh", first_bucket_condition
+        )
+        solar_expression = _hourly_energy_expression(
+            "solar_generation_meter_kwh", "previous_solar_kwh", first_bucket_condition
+        )
+        grid_expression = _hourly_energy_expression(
+            "grid_import_meter_kwh", "previous_grid_kwh", first_bucket_condition
+        )
 
         with self._lock:
             rows = self.connection.execute(
@@ -573,33 +589,9 @@ class RetentionStore:
                 )
                 SELECT
                     bucket_unix,
-                    SUM(
-                        CASE
-                            WHEN {first_bucket_condition}
-                            THEN consumption_meter_kwh
-                            WHEN bucket_unix - previous_bucket_unix = 3600
-                                 AND consumption_meter_kwh >= previous_consumption_kwh
-                            THEN consumption_meter_kwh - previous_consumption_kwh
-                        END
-                    ) AS consumption_kwh,
-                    SUM(
-                        CASE
-                            WHEN {first_bucket_condition}
-                            THEN solar_generation_meter_kwh
-                            WHEN bucket_unix - previous_bucket_unix = 3600
-                                 AND solar_generation_meter_kwh >= previous_solar_kwh
-                            THEN solar_generation_meter_kwh - previous_solar_kwh
-                        END
-                    ) AS solar_generation_kwh,
-                    SUM(
-                        CASE
-                            WHEN {first_bucket_condition}
-                            THEN grid_import_meter_kwh
-                            WHEN bucket_unix - previous_bucket_unix = 3600
-                                 AND grid_import_meter_kwh >= previous_grid_kwh
-                            THEN grid_import_meter_kwh - previous_grid_kwh
-                        END
-                    ) AS grid_import_kwh
+                    SUM({consumption_expression}) AS consumption_kwh,
+                    SUM({solar_expression}) AS solar_generation_kwh,
+                    SUM({grid_expression}) AS grid_import_kwh
                 FROM deltas
                 GROUP BY bucket_unix
                 HAVING consumption_kwh IS NOT NULL
@@ -1126,6 +1118,32 @@ def _energy_sample_time(
         except ValueError:
             continue
     return _snapshot_time(snapshot)
+
+
+def _hourly_energy_expression(
+    meter: str, previous: str, first_bucket_condition: str
+) -> str:
+    """SQL for one hour of energy from a counter that resets every local day.
+
+    The inverter's ``*_energy_today_kwh`` counters restart at its local midnight,
+    which is not 00:00 UTC. Rather than assume when that happens, a reset is
+    detected from the data: if the counter reads *lower* than the previous hour
+    it restarted inside this bucket, so everything it now reads accumulated
+    during this hour. Non-adjacent buckets contribute nothing, because the
+    energy between them cannot be attributed to a single hour.
+    """
+    return f"""
+        CASE
+            WHEN {first_bucket_condition}
+            THEN {meter}
+            WHEN bucket_unix - previous_bucket_unix = 3600
+                 AND {meter} < {previous}
+            THEN {meter}
+            WHEN bucket_unix - previous_bucket_unix = 3600
+                 AND {meter} >= {previous}
+            THEN {meter} - {previous}
+        END
+    """
 
 
 def _energy_period_time(period: str, view: EnergyView) -> tuple[str, int]:
