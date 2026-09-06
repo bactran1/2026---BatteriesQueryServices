@@ -231,6 +231,59 @@ class RetentionStore:
                 + int(inverter_cursor.rowcount or 0)
             )
 
+    def integrity_check(self) -> dict[str, Any]:
+        with self._lock:
+            quick_row = self.connection.execute("PRAGMA quick_check").fetchone()
+            integrity_row = self.connection.execute("PRAGMA integrity_check(1)").fetchone()
+        quick = str(quick_row[0]) if quick_row else "unknown"
+        integrity = str(integrity_row[0]) if integrity_row else "unknown"
+        return {
+            "quick_check": quick,
+            "integrity_check": integrity,
+            "ok": quick == "ok" and integrity == "ok",
+        }
+
+    def purge_all(self) -> dict[str, int]:
+        """Delete every stored reading. Metadata (sequence markers, admin
+        settings) is intentionally preserved so live writes keep flowing."""
+        with self._lock:
+            readings = self.connection.execute("DELETE FROM readings")
+            inverter = self.connection.execute("DELETE FROM inverter_readings")
+            energy = self.connection.execute("DELETE FROM daily_energy")
+            self.connection.commit()
+            try:
+                self.connection.execute("VACUUM")
+                self.connection.commit()
+            except sqlite3.Error:
+                pass  # reclaiming disk is best-effort; the delete already committed
+            return {
+                "readings": int(readings.rowcount or 0),
+                "inverter_readings": int(inverter.rowcount or 0),
+                "daily_energy": int(energy.rowcount or 0),
+            }
+
+    def backup_bytes(self) -> bytes:
+        """Return a consistent copy of the database (WAL included) as bytes."""
+        import os
+        import tempfile
+
+        with self._lock:
+            handle, temp_path = tempfile.mkstemp(suffix=".sqlite3")
+            os.close(handle)
+            try:
+                target = sqlite3.connect(temp_path)
+                try:
+                    self.connection.backup(target)
+                finally:
+                    target.close()
+                with open(temp_path, "rb") as backup_file:
+                    return backup_file.read()
+            finally:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+
     def latest_states(self) -> list[dict[str, Any]]:
         with self._lock:
             rows = self.connection.execute(

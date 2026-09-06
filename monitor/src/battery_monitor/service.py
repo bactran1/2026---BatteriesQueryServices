@@ -5,7 +5,7 @@ import logging
 import sqlite3
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from .collector import CollectorClient, CollectorError
 from .config import Settings
@@ -15,10 +15,18 @@ logger = logging.getLogger(__name__)
 
 
 class MonitorService:
-    def __init__(self, settings: Settings, store: RetentionStore, collector: CollectorClient):
+    def __init__(
+        self,
+        settings: Settings,
+        store: RetentionStore,
+        collector: CollectorClient,
+        retention_provider: Callable[[], int] | None = None,
+    ):
         self.settings = settings
         self.store = store
         self.collector = collector
+        self._retention_provider = retention_provider
+        self._paused = False
         self.started_at = _utc_now()
         self.last_attempt_at: str | None = None
         self.last_success_at: str | None = None
@@ -44,15 +52,16 @@ class MonitorService:
         next_prune_at = 0.0
         while not self._stop.is_set():
             cycle_started = time.monotonic()
-            await self.poll_once()
+            if not self._paused:
+                await self.poll_once()
 
-            now = time.monotonic()
-            if now >= next_log_at:
-                await self.persist_once()
-                next_log_at = now + self.settings.log_interval_seconds
-            if now >= next_prune_at:
-                await self.prune_once()
-                next_prune_at = now + 60 * 60
+                now = time.monotonic()
+                if now >= next_log_at:
+                    await self.persist_once()
+                    next_log_at = now + self.settings.log_interval_seconds
+                if now >= next_prune_at:
+                    await self.prune_once()
+                    next_prune_at = now + 60 * 60
 
             elapsed = time.monotonic() - cycle_started
             wait_seconds = max(
@@ -65,6 +74,38 @@ class MonitorService:
 
     async def stop(self) -> None:
         self._stop.set()
+
+    def pause(self) -> None:
+        self._paused = True
+
+    def resume(self) -> None:
+        self._paused = False
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    async def force_cycle(self) -> dict[str, Any]:
+        """Run one poll + persist immediately, regardless of the timer."""
+        polled = await self.poll_once()
+        inserted = await self.persist_once() if polled else 0
+        return {
+            "polled": polled,
+            "inserted": inserted,
+            "collector_status": self.connection_state(),
+            "last_error": self.last_error,
+            "last_data_at": self.last_data_at,
+        }
+
+    def _retention_days(self) -> int:
+        if self._retention_provider is not None:
+            try:
+                value = int(self._retention_provider())
+            except Exception:  # noqa: BLE001 - never let a bad hook break pruning
+                value = 0
+            if value >= 1:
+                return value
+        return self.settings.retention_days
 
     async def poll_once(self) -> bool:
         self.last_attempt_at = _utc_now()
@@ -120,7 +161,7 @@ class MonitorService:
     async def prune_once(self) -> int:
         try:
             deleted = await asyncio.to_thread(
-                self.store.prune_older_than_days, self.settings.retention_days
+                self.store.prune_older_than_days, self._retention_days()
             )
             self.last_prune_at = _utc_now()
             self.last_prune_error = None
@@ -197,6 +238,7 @@ class MonitorService:
     def status(self) -> dict[str, Any]:
         return {
             "started_at": self.started_at,
+            "paused": self._paused,
             "collector_status": self.connection_state(),
             "last_attempt_at": self.last_attempt_at,
             "last_success_at": self.last_success_at,

@@ -130,6 +130,13 @@ function startEnergyFlowScene() {
   let disposed = false;
   let composer = null;
   let bloomPass = null;
+  let glowStrength = resolveGlowStrength(section.dataset.glowStrength);
+
+  function resolveGlowStrength(raw) {
+    if (raw === undefined || raw === null || raw === "") return BLOOM.strength;
+    const value = Number(raw);
+    return Number.isFinite(value) ? clamp(value, 0, 1.5) : BLOOM.strength;
+  }
 
   function readSectionState(detail = {}) {
     return {
@@ -395,7 +402,7 @@ function startEnergyFlowScene() {
       const nextComposer = new EffectComposer(renderer);
       nextComposer.setPixelRatio(renderer.getPixelRatio());
       nextComposer.addPass(new RenderPass(scene, camera));
-      const bloom = new UnrealBloomPass(size, BLOOM.strength, BLOOM.radius, BLOOM.threshold);
+      const bloom = new UnrealBloomPass(size, glowStrength, BLOOM.radius, BLOOM.threshold);
       nextComposer.addPass(bloom);
       // OutputPass carries the scene's ACES tone mapping + sRGB now that RenderPass
       // renders into the composer's linear HDR buffer instead of straight to screen.
@@ -432,7 +439,7 @@ function startEnergyFlowScene() {
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(width, height);
     }
-    if (bloomPass) bloomPass.strength = width <= 600 ? BLOOM.mobileStrength : BLOOM.strength;
+    if (bloomPass) bloomPass.strength = glowStrength;
     camera.updateProjectionMatrix();
     needsPixelAudit = true;
     renderOnce(performance.now());
@@ -500,6 +507,13 @@ function startEnergyFlowScene() {
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   window.addEventListener("battery-energy-flow", (event) => applyFlowState(event.detail));
+  window.addEventListener("energy-glow-change", (event) => {
+    const next = Number(event.detail);
+    if (!Number.isFinite(next)) return;
+    glowStrength = clamp(next, 0, 1.5);
+    if (bloomPass) bloomPass.strength = glowStrength;
+    renderOnce(performance.now());
+  });
   document.addEventListener("visibilitychange", () => {
     isDocumentVisible = !document.hidden;
     if (!isDocumentVisible && frameRequest) {

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hmac
 import io
 import logging
+import time
 from contextlib import asynccontextmanager, suppress
-from datetime import date as calendar_date, datetime, timedelta
+from datetime import date as calendar_date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -14,8 +16,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .admin import SESSION_COOKIE, SESSION_TTL_SECONDS, AdminAuth, AdminSettings
 from .assets import asset_version, cache_control_for, render_index
-from .collector import CollectorClient
+from .collector import CollectorClient, CollectorError
 from .config import Settings, load_settings, rack_details
 from .service import MonitorService
 from .storage import EnergyView, HistoryMetric, RetentionStore
@@ -33,7 +36,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         base_url=settings.collector_url,
         timeout_seconds=settings.collector_timeout_seconds,
     )
-    monitor = MonitorService(settings=settings, store=store, collector=collector)
+    admin_settings = AdminSettings(store)
+    admin_auth = AdminAuth(store)
+    monitor = MonitorService(
+        settings=settings,
+        store=store,
+        collector=collector,
+        retention_provider=lambda: admin_settings.effective_retention(settings),
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -108,9 +118,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/live")
     async def live():
+        effective = admin_settings.effective_settings(settings)
         snapshot, storage = await asyncio.gather(
             asyncio.to_thread(monitor.cached_snapshot),
-            asyncio.to_thread(store.stats, settings.retention_days),
+            asyncio.to_thread(store.stats, effective.retention_days),
         )
         collector_status = monitor.connection_state()
         batteries = snapshot.get("batteries", [])
@@ -125,10 +136,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "storage": storage,
             "summary": _summary(batteries),
             "rack": rack_details(
-                settings,
+                effective,
                 batteries,
                 collector_online=collector_status in {"online", "degraded"},
             ),
+            "ui": {"energy_glow_strength": admin_settings.glow_strength()},
             "snapshot": snapshot,
         }
 
@@ -259,6 +271,226 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             media_type="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+    # ---- Admin -----------------------------------------------------------
+    def _require_admin(request: Request) -> dict:
+        payload = admin_auth.verify_token(request.cookies.get(SESSION_COOKIE))
+        if payload is None:
+            raise HTTPException(status_code=401, detail="Admin authentication required")
+        return payload
+
+    def _require_csrf(request: Request, payload: dict) -> None:
+        header = request.headers.get("X-CSRF-Token", "")
+        expected = str(payload.get("csrf", ""))
+        if not header or not hmac.compare_digest(
+            header.encode("utf-8"), expected.encode("utf-8")
+        ):
+            raise HTTPException(status_code=403, detail="Invalid or missing CSRF token")
+
+    async def _json_body(request: Request) -> dict:
+        try:
+            body = await request.json()
+        except Exception as exc:  # noqa: BLE001 - any parse failure is a bad request
+            raise HTTPException(status_code=400, detail="Expected a JSON body") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Expected a JSON object")
+        return body
+
+    def _set_session_cookie(response: Response, token: str) -> None:
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            max_age=SESSION_TTL_SECONDS,
+            httponly=True,
+            samesite="strict",
+            path="/",
+        )
+
+    @app.get("/admin")
+    async def admin_page():
+        return HTMLResponse(
+            render_index(STATIC_DIR / "admin.html", static_version),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/admin/session")
+    async def admin_session(request: Request):
+        payload = admin_auth.verify_token(request.cookies.get(SESSION_COOKIE))
+        return {
+            "authenticated": payload is not None,
+            "configured": admin_auth.is_configured(),
+            "csrf": payload.get("csrf") if payload else None,
+        }
+
+    @app.post("/api/admin/login")
+    async def admin_login(request: Request):
+        body = await _json_body(request)
+        if not admin_auth.is_configured():
+            raise HTTPException(
+                status_code=503,
+                detail="Admin access is not configured (set BQM_ADMIN_PASSWORD).",
+            )
+        if not admin_auth.verify_login(str(body.get("password") or "")):
+            raise HTTPException(status_code=401, detail="Incorrect password")
+        token, csrf = admin_auth.issue_token()
+        response = JSONResponse({"ok": True, "csrf": csrf})
+        _set_session_cookie(response, token)
+        return response
+
+    @app.post("/api/admin/logout")
+    async def admin_logout():
+        response = JSONResponse({"ok": True})
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return response
+
+    @app.get("/api/admin/storage")
+    async def admin_storage(request: Request):
+        _require_admin(request)
+        effective = admin_settings.effective_settings(settings)
+        stats, health, integrity = await asyncio.gather(
+            asyncio.to_thread(store.stats, effective.retention_days),
+            asyncio.to_thread(store.health),
+            asyncio.to_thread(store.integrity_check),
+        )
+        return {"stats": stats, "health": health, "integrity": integrity}
+
+    @app.post("/api/admin/prune")
+    async def admin_prune(request: Request):
+        payload = _require_admin(request)
+        _require_csrf(request, payload)
+        effective = admin_settings.effective_settings(settings)
+        deleted = await asyncio.to_thread(
+            store.prune_older_than_days, effective.retention_days
+        )
+        return {"deleted": deleted, "retention_days": effective.retention_days}
+
+    @app.get("/api/admin/backup.sqlite")
+    async def admin_backup(request: Request):
+        _require_admin(request)
+        data = await asyncio.to_thread(store.backup_bytes)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        filename = f"battery-monitor-backup-{stamp}.sqlite3"
+        return Response(
+            data,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.post("/api/admin/reset")
+    async def admin_reset(request: Request):
+        payload = _require_admin(request)
+        _require_csrf(request, payload)
+        body = await _json_body(request)
+        if str(body.get("confirm") or "") != "DELETE":
+            raise HTTPException(
+                status_code=400,
+                detail='Send {"confirm": "DELETE"} to erase all stored history.',
+            )
+        deleted = await asyncio.to_thread(store.purge_all)
+        return {"ok": True, "deleted": deleted}
+
+    @app.post("/api/admin/poll")
+    async def admin_poll(request: Request):
+        payload = _require_admin(request)
+        _require_csrf(request, payload)
+        return await monitor.force_cycle()
+
+    @app.post("/api/admin/polling")
+    async def admin_polling(request: Request):
+        payload = _require_admin(request)
+        _require_csrf(request, payload)
+        body = await _json_body(request)
+        if bool(body.get("paused")):
+            monitor.pause()
+        else:
+            monitor.resume()
+        return {"paused": monitor.paused}
+
+    @app.get("/api/admin/collector-test")
+    async def admin_collector_test(request: Request):
+        _require_admin(request)
+        started = time.monotonic()
+        try:
+            snapshot = await asyncio.to_thread(collector.fetch_snapshot)
+        except CollectorError as exc:
+            return {
+                "reachable": False,
+                "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                "collector_url": collector.base_url,
+                "error": str(exc),
+                "status_code": exc.status_code,
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "reachable": False,
+                "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                "collector_url": collector.base_url,
+                "error": str(exc),
+            }
+        batteries = snapshot.get("batteries", []) if isinstance(snapshot, dict) else []
+        return {
+            "reachable": True,
+            "latency_ms": round((time.monotonic() - started) * 1000, 1),
+            "collector_url": collector.base_url,
+            "battery_count": len(batteries),
+        }
+
+    @app.get("/api/admin/diagnostics")
+    async def admin_diagnostics(request: Request):
+        _require_admin(request)
+        return {
+            "monitor": monitor.status(),
+            "collector_status": monitor.connection_state(),
+            "collector_reachable": monitor.collector_reachable(),
+            "collector_url": collector.base_url,
+            "paused": monitor.paused,
+        }
+
+    @app.get("/api/admin/config")
+    async def admin_get_config(request: Request):
+        _require_admin(request)
+        return admin_settings.public_config(settings)
+
+    @app.put("/api/admin/config")
+    async def admin_put_config(request: Request):
+        payload = _require_admin(request)
+        _require_csrf(request, payload)
+        body = await _json_body(request)
+        try:
+            return await asyncio.to_thread(admin_settings.update, body, settings)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/admin/app-info")
+    async def admin_app_info(request: Request):
+        _require_admin(request)
+        effective = admin_settings.effective_settings(settings)
+        return {
+            "version": __version__,
+            "build_commit": settings.build_commit,
+            "started_at": monitor.started_at,
+            "paused": monitor.paused,
+            "host": settings.host,
+            "port": settings.port,
+            "collector_url": settings.collector_url,
+            "database_path": str(settings.database_path),
+            "retention_days": effective.retention_days,
+            "live_poll_interval_seconds": settings.live_poll_interval_seconds,
+            "log_interval_seconds": settings.log_interval_seconds,
+        }
+
+    @app.post("/api/admin/password")
+    async def admin_password(request: Request):
+        payload = _require_admin(request)
+        _require_csrf(request, payload)
+        body = await _json_body(request)
+        if not admin_auth.verify_login(str(body.get("current_password") or "")):
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+        try:
+            admin_auth.set_password(str(body.get("new_password") or ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True}
 
     return app
 

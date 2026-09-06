@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Battery Monitor · Admin</title>
+    <link rel="icon" href="/static/assets/tran-t-icon.png?v=__BUILD_COMMIT__" />
+    <link rel="stylesheet" href="/static/styles.css?v=__BUILD_COMMIT__" />
+    <link rel="stylesheet" href="/static/admin.css?v=__BUILD_COMMIT__" />
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("battery-monitor-theme");
+          var prefersDark = window.matchMedia
+            && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = stored || (prefersDark ? "dark" : "light");
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+  </head>
+  <body class="admin-body">
+    <div class="admin-shell">
+      <header class="admin-topbar">
+        <div>
+          <p class="eyebrow">Battery Monitor</p>
+          <h1>Admin console</h1>
+        </div>
+        <div class="admin-topbar__actions">
+          <a class="admin-link" href="/">← Dashboard</a>
+          <button id="adminLogout" class="admin-btn admin-btn--ghost" type="button" hidden>Sign out</button>
+        </div>
+      </header>
+
+      <!-- Login -->
+      <section id="adminLogin" class="admin-login" hidden>
+        <form id="adminLoginForm" class="admin-card admin-login__card" autocomplete="off">
+          <h2>Sign in</h2>
+          <p id="adminLoginHint" class="admin-muted">Enter the admin password to continue.</p>
+          <label class="admin-field">
+            <span>Password</span>
+            <input id="adminPassword" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="admin-btn admin-btn--primary" type="submit">Sign in</button>
+          <p id="adminLoginError" class="admin-error" role="alert" hidden></p>
+        </form>
+      </section>
+
+      <!-- Panel -->
+      <main id="adminPanel" class="admin-panel" hidden>
+        <div id="adminToast" class="admin-toast" role="status" aria-live="polite" hidden></div>
+
+        <section class="admin-card">
+          <div class="admin-card__head"><h2>Application</h2>
+            <button class="admin-btn admin-btn--ghost" data-action="refresh-info" type="button">Refresh</button>
+          </div>
+          <dl id="adminAppInfo" class="admin-kv"></dl>
+        </section>
+
+        <section class="admin-card">
+          <div class="admin-card__head"><h2>Storage &amp; database</h2>
+            <button class="admin-btn admin-btn--ghost" data-action="refresh-storage" type="button">Refresh</button>
+          </div>
+          <dl id="adminStorage" class="admin-kv"></dl>
+          <div class="admin-actions">
+            <button class="admin-btn" data-action="prune" type="button">Prune old data now</button>
+            <button class="admin-btn" data-action="backup" type="button">Download backup (.sqlite)</button>
+            <button class="admin-btn admin-btn--danger" data-action="reset" type="button">Reset all history…</button>
+          </div>
+        </section>
+
+        <section class="admin-card">
+          <div class="admin-card__head"><h2>Monitoring</h2>
+            <button class="admin-btn admin-btn--ghost" data-action="refresh-diagnostics" type="button">Refresh</button>
+          </div>
+          <dl id="adminDiagnostics" class="admin-kv"></dl>
+          <div class="admin-actions">
+            <button class="admin-btn" data-action="poll" type="button">Force poll now</button>
+            <button id="adminPauseBtn" class="admin-btn" data-action="toggle-polling" type="button">Pause polling</button>
+            <button class="admin-btn" data-action="collector-test" type="button">Test collector</button>
+          </div>
+          <p id="adminCollectorResult" class="admin-muted admin-inline-result" hidden></p>
+        </section>
+
+        <section class="admin-card">
+          <div class="admin-card__head"><h2>Configuration</h2></div>
+          <form id="adminConfigForm" class="admin-config">
+            <div class="admin-grid">
+              <label class="admin-field"><span>Rack name</span><input name="rack_name" type="text" /></label>
+              <label class="admin-field"><span>Builder</span><input name="rack_builder" type="text" /></label>
+              <label class="admin-field"><span>Location</span><input name="rack_location" type="text" /></label>
+              <label class="admin-field"><span>Collector name</span><input name="collector_name" type="text" /></label>
+              <label class="admin-field"><span>Retention (days)</span><input name="retention_days" type="number" min="1" max="3650" /></label>
+              <label class="admin-field">
+                <span>Live Home Energy glow: <b id="adminGlowValue">0.05</b></span>
+                <input name="energy_glow_strength" id="adminGlow" type="range" min="0" max="1.5" step="0.01" />
+              </label>
+            </div>
+            <h3>Battery inventory</h3>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>Name</th><th>RS485</th><th>IP address</th><th>Model</th></tr></thead>
+                <tbody id="adminBatteries"></tbody>
+              </table>
+            </div>
+            <div class="admin-actions">
+              <button class="admin-btn admin-btn--primary" type="submit">Save configuration</button>
+              <button class="admin-btn admin-btn--ghost" data-action="reload-config" type="button">Reload</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="admin-card">
+          <div class="admin-card__head"><h2>Change password</h2></div>
+          <form id="adminPasswordForm" class="admin-config" autocomplete="off">
+            <div class="admin-grid">
+              <label class="admin-field"><span>Current password</span><input name="current_password" type="password" autocomplete="off" required /></label>
+              <label class="admin-field"><span>New password (min 8)</span><input name="new_password" type="password" autocomplete="new-password" minlength="8" required /></label>
+            </div>
+            <div class="admin-actions">
+              <button class="admin-btn admin-btn--primary" type="submit">Update password</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+    <script src="/static/admin.js?v=__BUILD_COMMIT__"></script>
+  </body>
+</html>

@@ -1,7 +1,6 @@
 const state = {
   batteries: [],
   inverter: null,
-  selectedBatteryId: null,
   range: "date",
   powerDate: localCalendarDateValue(new Date()),
   powerTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -71,7 +70,6 @@ const translations = {
     "status.lastDashboardUpdate": "Last dashboard update {relative}",
     "status.noDashboardResponse": "No dashboard response",
     "status.refreshError": "Refresh error: {message}",
-    "status.pending": "Pending",
     "status.online": "Online",
     "status.needsAttention": "Needs attention",
     "status.disabled": "Disabled",
@@ -268,26 +266,8 @@ const translations = {
     "battery.voltage": "Voltage",
     "battery.current": "Current",
     "battery.power": "Power",
-    "battery.cellDelta": "Cell Δ",
-    "inventory.eyebrow": "Rack inventory",
-    "inventory.title": "Battery details",
-    "inventory.initialStatus": "3 configured",
-    "inventory.battery": "Battery",
-    "inventory.network": "Network",
-    "inventory.hardware": "Hardware",
-    "inventory.state": "State",
-    "inventory.batteries": "batteries",
-    "inventory.batterySingular": "battery",
-    "inventory.noneConfigured": "No batteries configured",
-    "inventory.wifiAddress": "Battery Wi-Fi address",
-    "inventory.noDirectIp": "No direct IP recorded",
-    "inventory.address": "Address {address}",
     "inventory.defaultHardware": "Eco-worthy battery",
     "inventory.defaultModel": "Eco-worthy server rack battery",
-    "inventory.firmware": "Firmware {version}",
-    "inventory.firmwarePending": "Firmware pending",
-    "inventory.seen": "Seen {relative}",
-    "inventory.notSeen": "Not seen yet",
     "workbench.aria": "Monitoring workbench",
     "history.eyebrow": "History",
     "history.powerTitle": "Power history",
@@ -327,8 +307,6 @@ const translations = {
     "metric.powerShort": "Power",
     "metric.mosfetShort": "MOSFET temp",
     "metric.ambientShort": "Ambient temp",
-    "details.selectedPack": "Selected pack",
-    "details.rack": "Rack",
     "details.noCellData": "No cell data",
     "details.cellTitle": "Cell {number}: {voltage}",
     "details.noTemperatureData": "No temperature data",
@@ -337,11 +315,8 @@ const translations = {
     "details.temperatures": "Temperatures",
     "details.specs": "Specifications",
     "details.moreLabel": "Cells, temps & specs",
-    "details.batteryId": "Battery ID",
     "details.ipAddress": "IP address",
     "details.model": "Model",
-    "details.address": "Address",
-    "details.state": "State",
     "details.soh": "SOH",
     "details.cycles": "Cycles",
     "details.remaining": "Remaining",
@@ -366,12 +341,6 @@ const translations = {
     "error.unknownRefresh": "Unknown refresh error",
     "error.requestTimeout": "Request timed out after {seconds} seconds",
     "error.browserOffline": "Browser network is offline",
-    "operation.charging": "Charging",
-    "operation.discharging": "Discharging",
-    "operation.idle": "Idle",
-    "operation.standby": "Standby",
-    "operation.fault": "Fault",
-    "operation.unknown": "Unknown",
   },
   vi: {
     "page.title": "Giám sát hệ thống pin",
@@ -401,7 +370,6 @@ const translations = {
     "status.lastDashboardUpdate": "Bảng điều khiển cập nhật lần cuối {relative}",
     "status.noDashboardResponse": "Bảng điều khiển không phản hồi",
     "status.refreshError": "Lỗi cập nhật: {message}",
-    "status.pending": "Đang chờ",
     "status.online": "Trực tuyến",
     "status.needsAttention": "Cần kiểm tra",
     "status.disabled": "Đã tắt",
@@ -598,26 +566,8 @@ const translations = {
     "battery.voltage": "Điện áp",
     "battery.current": "Dòng điện",
     "battery.power": "Công suất",
-    "battery.cellDelta": "Độ lệch cell",
-    "inventory.eyebrow": "Danh sách tủ pin",
-    "inventory.title": "Chi tiết pin",
-    "inventory.initialStatus": "Đã cấu hình 3 pin",
-    "inventory.battery": "Pin",
-    "inventory.network": "Mạng",
-    "inventory.hardware": "Phần cứng",
-    "inventory.state": "Trạng thái",
-    "inventory.batteries": "pin",
-    "inventory.batterySingular": "pin",
-    "inventory.noneConfigured": "Chưa cấu hình pin",
-    "inventory.wifiAddress": "Địa chỉ Wi-Fi của pin",
-    "inventory.noDirectIp": "Chưa ghi nhận IP trực tiếp",
-    "inventory.address": "Địa chỉ {address}",
     "inventory.defaultHardware": "Pin Eco-worthy",
     "inventory.defaultModel": "Pin tủ máy chủ Eco-worthy",
-    "inventory.firmware": "Firmware {version}",
-    "inventory.firmwarePending": "Đang chờ firmware",
-    "inventory.seen": "Ghi nhận {relative}",
-    "inventory.notSeen": "Chưa ghi nhận",
     "workbench.aria": "Bảng điều khiển giám sát",
     "history.eyebrow": "Lịch sử",
     "history.powerTitle": "Lịch sử công suất",
@@ -657,8 +607,6 @@ const translations = {
     "metric.powerShort": "Công suất",
     "metric.mosfetShort": "Nhiệt độ MOSFET",
     "metric.ambientShort": "Nhiệt độ môi trường",
-    "details.selectedPack": "Bộ pin đang chọn",
-    "details.rack": "Toàn tủ",
     "details.noCellData": "Chưa có dữ liệu cell",
     "details.cellTitle": "Cell {number}: {voltage}",
     "details.noTemperatureData": "Chưa có dữ liệu nhiệt độ",
@@ -667,11 +615,8 @@ const translations = {
     "details.temperatures": "Nhiệt độ",
     "details.specs": "Thông số kỹ thuật",
     "details.moreLabel": "Cell, nhiệt độ & thông số",
-    "details.batteryId": "Mã pin",
     "details.ipAddress": "Địa chỉ IP",
     "details.model": "Model",
-    "details.address": "Địa chỉ",
-    "details.state": "Trạng thái",
     "details.soh": "SOH",
     "details.cycles": "Chu kỳ",
     "details.remaining": "Còn lại",
@@ -696,12 +641,6 @@ const translations = {
     "error.unknownRefresh": "Lỗi cập nhật không xác định",
     "error.requestTimeout": "Yêu cầu hết thời gian sau {seconds} giây",
     "error.browserOffline": "Trình duyệt đang mất kết nối mạng",
-    "operation.charging": "Đang sạc",
-    "operation.discharging": "Đang xả",
-    "operation.idle": "Không tải",
-    "operation.standby": "Đang chờ",
-    "operation.fault": "Lỗi",
-    "operation.unknown": "Không xác định",
   },
 };
 
@@ -814,6 +753,17 @@ async function refreshLive() {
   renderInverterTelemetry();
   renderBatteryPacks();
   renderStorage();
+  applyEnergyGlow(payload.ui && payload.ui.energy_glow_strength);
+}
+
+function applyEnergyGlow(value) {
+  const section = document.getElementById("energyFlowSection");
+  if (!section) return;
+  const strength = Number(value);
+  if (!Number.isFinite(strength)) return;
+  if (section.dataset.glowStrength === String(strength)) return;
+  section.dataset.glowStrength = String(strength);
+  window.dispatchEvent(new CustomEvent("energy-glow-change", { detail: strength }));
 }
 
 async function refreshHistory() {
@@ -1626,9 +1576,26 @@ function renderRackOverview() {
   $("rackConnection").textContent = localizedConnectionName(rack.connection);
 }
 
+// Live snapshot packs plus any configured pack the collector did not report, so
+// a battery that drops off the bus stays visible instead of disappearing.
+function packBatteryList() {
+  const live = state.batteries || [];
+  const seen = new Set(live.map((battery) => String(battery.id)));
+  const missing = (state.rack.batteries || [])
+    .filter((profile) => !seen.has(String(profile.id)))
+    .map((profile) => ({
+      id: profile.id,
+      address: profile.address,
+      status: profile.status || "not_seen",
+      last_reading: null,
+    }));
+  return live.concat(missing);
+}
+
 function renderBatteryPacks() {
   const container = $("batteryPacks");
-  if (!state.batteries.length) {
+  const batteries = packBatteryList();
+  if (!batteries.length) {
     container.innerHTML = `<div class="empty-state">${escapeHtml(t("battery.awaitingReadings"))}</div>`;
     return;
   }
@@ -1640,9 +1607,9 @@ function renderBatteryPacks() {
       .map((pack) => pack.dataset.batteryId),
   );
 
-  const activeIds = new Set(state.batteries.map((battery) => battery.id));
+  const activeIds = new Set(batteries.map((battery) => battery.id));
 
-  container.innerHTML = state.batteries
+  container.innerHTML = batteries
     .map((battery) => {
       const reading = battery.last_reading || {};
       const profile = batteryProfile(battery);
@@ -1819,6 +1786,11 @@ function renderStorage() {
   $("newestReading").textContent = state.storage.newest_reading_at
     ? shortDate(state.storage.newest_reading_at)
     : "--";
+  // Raw payload viewer lives in this panel; without the old selected-pack
+  // renderer it has no other writer, so fill it with the live rack payload.
+  $("payloadView").textContent = state.batteries.length
+    ? JSON.stringify(state.batteries, null, 2)
+    : "";
 }
 
 function renderEnergyHistory() {
@@ -2716,10 +2688,6 @@ function formatChartTimestamp(value) {
   }).format(new Date(value));
 }
 
-function selectedBattery() {
-  return state.batteries.find((battery) => battery.id === state.selectedBatteryId) || state.batteries[0];
-}
-
 function batteryProfile(battery) {
   return (state.rack.batteries || []).find(
     (profile) => profile.id === battery.id || profile.address === battery.address,
@@ -2795,18 +2763,6 @@ function connectionPresentation(status) {
     className: "status-pill--error",
     description: t("status.collectorOfflineDescription"),
   };
-}
-
-function operationLabel(value) {
-  if (!value) return null;
-  const operation = String(value).toLowerCase();
-  if (operation.includes("discharg")) return t("operation.discharging");
-  if (operation.includes("charg")) return t("operation.charging");
-  if (operation.includes("idle")) return t("operation.idle");
-  if (operation.includes("standby") || operation.includes("stand by")) return t("operation.standby");
-  if (operation.includes("fault") || operation.includes("error")) return t("operation.fault");
-  if (operation === "unknown") return t("operation.unknown");
-  return value;
 }
 
 function batteryDotClass(status) {
@@ -3153,8 +3109,8 @@ function bindControls() {
   });
 
   $("exportButton").addEventListener("click", () => {
-    const batteryId = state.selectedBatteryId || "all";
-    window.location.href = `/api/export.csv?battery_id=${encodeURIComponent(batteryId)}&days=30`;
+    // The dashboard shows every pack at once, so the export covers the whole rack.
+    window.location.href = "/api/export.csv?battery_id=all&days=30";
   });
 
   const chart = $("historyChart");
