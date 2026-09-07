@@ -1,0 +1,8 @@
+# The Xcode project is generated from project.yml — never commit it.
+BatteryMonitor.xcodeproj/
+*.xcworkspace/
+build/
+DerivedData/
+*.ipa
+*.app.zip
+.DS_Store

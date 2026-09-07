@@ -1,0 +1,62 @@
+name: iOS build
+
+# Automatically builds the iOS wrapper on macOS whenever the app changes, so a
+# broken project or Swift error is caught without anyone opening Xcode. The build
+# is unsigned for the Simulator, so it needs no Apple account or secrets.
+on:
+  push:
+    branches: [ios-app]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest stable Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Regenerate app icon
+        run: python3 scripts/make-appicon.py
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (unsigned, Simulator SDK)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project BatteryMonitor.xcodeproj \
+            -scheme BatteryMonitor \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package .app
+        run: |
+          APP_PATH="$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)"
+          test -n "$APP_PATH"
+          ditto -c -k --keepParent "$APP_PATH" BatteryMonitor-simulator.app.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BatteryMonitor-simulator-app
+          path: ios/BatteryMonitor-simulator.app.zip
+          if-no-files-found: error
