@@ -82,6 +82,21 @@ class AdminAuthTests(_AdminTestCase):
         other = AdminAuth(store, env_secret="secret-b")
         self.assertIsNone(other.verify_token(token, now=1000))
 
+    def test_custom_ttl_and_csrf_preserving_slide(self) -> None:
+        auth = AdminAuth(self.make_store(), env_password="env", env_secret="fixed")
+        # A short TTL expires exactly when configured.
+        token, csrf = auth.issue_token(now=1000, ttl_seconds=120)
+        self.assertIsNotNone(auth.verify_token(token, now=1000 + 119))
+        self.assertIsNone(auth.verify_token(token, now=1000 + 121))
+
+        # Sliding the session forward keeps the same CSRF but extends expiry.
+        slid, slid_csrf = auth.issue_token(now=1200, ttl_seconds=120, csrf=csrf)
+        self.assertEqual(slid_csrf, csrf)
+        slid_payload = auth.verify_token(slid, now=1200 + 119)
+        self.assertEqual(slid_payload["csrf"], csrf)
+        # ...and the original token is unaffected by the slide.
+        self.assertIsNone(auth.verify_token(token, now=1200 + 1))
+
 
 class AdminSettingsTests(_AdminTestCase):
     def test_defaults_and_glow_clamp(self) -> None:
@@ -101,6 +116,26 @@ class AdminSettingsTests(_AdminTestCase):
         # glow_strength() still clamps defensively if a stored value is out of range.
         store.set_metadata("admin_settings", json.dumps({"energy_glow_strength": 99}))
         self.assertEqual(admin.glow_strength(), 1.5)
+
+    def test_session_minutes_override_and_validation(self) -> None:
+        from battery_monitor.admin import DEFAULT_SESSION_MINUTES
+
+        base = load_settings()
+        store = self.make_store()
+        admin = AdminSettings(store)
+        self.assertEqual(admin.session_minutes(), DEFAULT_SESSION_MINUTES)
+
+        admin.update({"session_minutes": 15}, base)
+        self.assertEqual(admin.session_minutes(), 15)
+        self.assertEqual(admin.public_config(base)["session_minutes"], 15)
+
+        # Out-of-range values are rejected at write time...
+        for bad in (0, 1441, -5):
+            with self.assertRaises(ValueError):
+                admin.update({"session_minutes": bad}, base)
+        # ...but the getter clamps a corrupt stored value defensively.
+        store.set_metadata("admin_settings", json.dumps({"session_minutes": 99999}))
+        self.assertEqual(admin.session_minutes(), 1440)
 
     def test_rack_and_retention_overrides(self) -> None:
         base = load_settings()

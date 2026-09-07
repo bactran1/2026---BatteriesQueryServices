@@ -3,6 +3,11 @@
 const $ = (id) => document.getElementById(id);
 let csrf = null;
 let paused = false;
+let sessionMinutes = 30;
+let idleTimer = 0;
+let lastSlideAt = 0;
+let activityBound = false;
+const ACTIVITY_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,9 +68,84 @@ function renderKv(el, entries) {
 }
 
 // ---------------------------------------------------------------------------
+// Idle auto-logout (timeout is configurable on the admin page)
+// ---------------------------------------------------------------------------
+function resetIdle() {
+  if (!activityBound) return;
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(autoLogout, Math.max(1, sessionMinutes) * 60_000);
+}
+
+function onActivity() {
+  resetIdle();
+  // Slide the server-side session too, but no more than once a minute.
+  const now = Date.now();
+  if (now - lastSlideAt > 60_000) {
+    lastSlideAt = now;
+    slideSession();
+  }
+}
+
+function onVisibility() {
+  // A background tab's timers get throttled, so re-check the server session
+  // whenever the tab is shown again in case it lapsed while hidden.
+  if (!document.hidden) slideSession();
+}
+
+async function slideSession() {
+  try {
+    const session = await api("GET", "/api/admin/session");
+    if (!session.authenticated) {
+      autoLogout();
+      return;
+    }
+    if (session.csrf) csrf = session.csrf;
+    if (Number.isFinite(session.session_minutes)) {
+      sessionMinutes = session.session_minutes;
+      resetIdle();
+    }
+  } catch (error) {
+    /* transient network error — leave the local timer running */
+  }
+}
+
+function startIdleWatch() {
+  if (!activityBound) {
+    ACTIVITY_EVENTS.forEach((type) =>
+      document.addEventListener(type, onActivity, { passive: true }));
+    document.addEventListener("visibilitychange", onVisibility);
+    activityBound = true;
+  }
+  lastSlideAt = Date.now();
+  resetIdle();
+}
+
+function stopIdleWatch() {
+  clearTimeout(idleTimer);
+  idleTimer = 0;
+  if (activityBound) {
+    ACTIVITY_EVENTS.forEach((type) => document.removeEventListener(type, onActivity));
+    document.removeEventListener("visibilitychange", onVisibility);
+    activityBound = false;
+  }
+}
+
+let autoLogoutInFlight = false;
+async function autoLogout() {
+  if (autoLogoutInFlight) return;
+  autoLogoutInFlight = true;
+  stopIdleWatch();
+  try { await api("POST", "/api/admin/logout", {}); } catch (error) { /* ignore */ }
+  showLogin();
+  toast(`Signed out after ${sessionMinutes} minute(s) of inactivity.`, "bad");
+  autoLogoutInFlight = false;
+}
+
+// ---------------------------------------------------------------------------
 // View switching
 // ---------------------------------------------------------------------------
 function showLogin(notConfigured = false) {
+  stopIdleWatch();
   csrf = null;
   $("adminPanel").hidden = true;
   $("adminLogin").hidden = false;
@@ -88,6 +168,7 @@ function showPanel() {
   $("adminLogin").hidden = true;
   $("adminPanel").hidden = false;
   $("adminLogout").hidden = false;
+  startIdleWatch();
   loadAll();
 }
 
@@ -108,6 +189,7 @@ async function loadAppInfo() {
     ["Started", formatWhen(info.started_at)],
     ["Polling", paused ? "Paused" : "Active", paused ? "is-bad" : "is-ok"],
     ["Retention", `${info.retention_days} days`],
+    ["Auto-logout", `${info.session_minutes} min idle`],
     ["Poll interval", `${info.live_poll_interval_seconds}s`],
     ["Collector URL", info.collector_url],
     ["Database", info.database_path],
@@ -157,6 +239,11 @@ async function loadConfig() {
   form.rack_location.value = config.rack_location || "";
   form.collector_name.value = config.collector_name || "";
   form.retention_days.value = config.retention_days ?? "";
+  form.session_minutes.value = config.session_minutes ?? 30;
+  if (Number.isFinite(config.session_minutes)) {
+    sessionMinutes = config.session_minutes;
+    resetIdle();
+  }
   const glow = Number(config.energy_glow_strength ?? 0.05);
   $("adminGlow").value = String(glow);
   $("adminGlowValue").textContent = glow.toFixed(2);
@@ -288,6 +375,7 @@ function bind() {
     try {
       const result = await api("POST", "/api/admin/login", { password: $("adminPassword").value });
       csrf = result.csrf;
+      if (Number.isFinite(result.session_minutes)) sessionMinutes = result.session_minutes;
       $("adminPassword").value = "";
       showPanel();
     } catch (err) {
@@ -318,6 +406,7 @@ function bind() {
       rack_location: form.rack_location.value.trim(),
       collector_name: form.collector_name.value.trim(),
       retention_days: Number(form.retention_days.value),
+      session_minutes: Number(form.session_minutes.value),
       energy_glow_strength: Number(form.energy_glow_strength.value),
       batteries: readBatteryRows(),
     };
@@ -358,6 +447,7 @@ async function boot() {
   bind();
   try {
     const session = await api("GET", "/api/admin/session");
+    if (Number.isFinite(session.session_minutes)) sessionMinutes = session.session_minutes;
     if (session.authenticated) {
       csrf = session.csrf;
       showPanel();

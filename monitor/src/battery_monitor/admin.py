@@ -42,6 +42,10 @@ _SETTINGS_KEY = "admin_settings"
 DEFAULT_GLOW_STRENGTH = 0.05
 MAX_GLOW_STRENGTH = 1.5
 
+DEFAULT_SESSION_MINUTES = 30
+MIN_SESSION_MINUTES = 1
+MAX_SESSION_MINUTES = 24 * 60
+
 
 # ---------------------------------------------------------------------------
 # Password hashing
@@ -127,11 +131,22 @@ class AdminAuth:
             raise ValueError("Password must be at least 8 characters")
         self._store.set_metadata(_PASSWORD_KEY, hash_password(new_password))
 
-    def issue_token(self, now: float | None = None) -> tuple[str, str]:
-        """Return ``(cookie_token, csrf_token)`` for a fresh session."""
+    def issue_token(
+        self,
+        now: float | None = None,
+        ttl_seconds: int | None = None,
+        csrf: str | None = None,
+    ) -> tuple[str, str]:
+        """Return ``(cookie_token, csrf_token)`` for a session.
+
+        ``ttl_seconds`` sets how long the token is valid (defaults to the
+        8-hour cap). Pass an existing ``csrf`` to slide an active session
+        forward without rotating its CSRF token.
+        """
         issued = int(now if now is not None else time.time())
-        csrf = secrets.token_hex(16)
-        payload = {"exp": issued + SESSION_TTL_SECONDS, "csrf": csrf}
+        ttl = int(ttl_seconds) if ttl_seconds is not None else SESSION_TTL_SECONDS
+        csrf = csrf or secrets.token_hex(16)
+        payload = {"exp": issued + ttl, "csrf": csrf}
         body = _b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
         signature = hmac.new(self._secret(), body.encode("ascii"), hashlib.sha256).digest()
         return f"{body}.{_b64encode(signature)}", csrf
@@ -187,6 +202,12 @@ class AdminSettings:
             return base.retention_days
         return min(value, 3650)
 
+    def session_minutes(self) -> int:
+        value = self._raw().get("session_minutes")
+        if not isinstance(value, int) or isinstance(value, bool):
+            return DEFAULT_SESSION_MINUTES
+        return max(MIN_SESSION_MINUTES, min(MAX_SESSION_MINUTES, value))
+
     def _effective_profiles(self, base: Settings) -> tuple[BatteryProfile, ...]:
         batteries = self._raw().get("batteries")
         if not isinstance(batteries, list) or not batteries:
@@ -238,6 +259,7 @@ class AdminSettings:
             "collector_name": effective.collector_name,
             "retention_days": effective.retention_days,
             "energy_glow_strength": self.glow_strength(),
+            "session_minutes": self.session_minutes(),
             "batteries": [
                 {
                     "id": profile.id,
@@ -267,6 +289,15 @@ class AdminSettings:
             if days < 1 or days > 3650:
                 raise ValueError("retention_days must be between 1 and 3650")
             overrides["retention_days"] = days
+
+        if "session_minutes" in patch:
+            minutes = _coerce_int(patch["session_minutes"], 0)
+            if minutes < MIN_SESSION_MINUTES or minutes > MAX_SESSION_MINUTES:
+                raise ValueError(
+                    f"session_minutes must be between {MIN_SESSION_MINUTES} "
+                    f"and {MAX_SESSION_MINUTES}"
+                )
+            overrides["session_minutes"] = minutes
 
         if "energy_glow_strength" in patch:
             try:

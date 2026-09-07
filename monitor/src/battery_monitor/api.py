@@ -296,11 +296,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="Expected a JSON object")
         return body
 
-    def _set_session_cookie(response: Response, token: str) -> None:
+    def _set_session_cookie(response: Response, token: str, max_age: int) -> None:
         response.set_cookie(
             SESSION_COOKIE,
             token,
-            max_age=SESSION_TTL_SECONDS,
+            max_age=max_age,
             httponly=True,
             samesite="strict",
             path="/",
@@ -316,11 +316,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/admin/session")
     async def admin_session(request: Request):
         payload = admin_auth.verify_token(request.cookies.get(SESSION_COOKIE))
-        return {
+        session_minutes = admin_settings.session_minutes()
+        body = {
             "authenticated": payload is not None,
             "configured": admin_auth.is_configured(),
             "csrf": payload.get("csrf") if payload else None,
+            "session_minutes": session_minutes,
         }
+        if payload is None:
+            return body
+        # The dashboard calls this on user activity, so slide the idle window
+        # forward (keeping the same CSRF token) each time it does.
+        ttl = session_minutes * 60
+        token, _ = admin_auth.issue_token(ttl_seconds=ttl, csrf=str(payload.get("csrf")))
+        response = JSONResponse(body)
+        _set_session_cookie(response, token, ttl)
+        return response
 
     @app.post("/api/admin/login")
     async def admin_login(request: Request):
@@ -332,9 +343,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         if not admin_auth.verify_login(str(body.get("password") or "")):
             raise HTTPException(status_code=401, detail="Incorrect password")
-        token, csrf = admin_auth.issue_token()
-        response = JSONResponse({"ok": True, "csrf": csrf})
-        _set_session_cookie(response, token)
+        session_minutes = admin_settings.session_minutes()
+        ttl = session_minutes * 60
+        token, csrf = admin_auth.issue_token(ttl_seconds=ttl)
+        response = JSONResponse(
+            {"ok": True, "csrf": csrf, "session_minutes": session_minutes}
+        )
+        _set_session_cookie(response, token, ttl)
         return response
 
     @app.post("/api/admin/logout")
@@ -475,6 +490,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "collector_url": settings.collector_url,
             "database_path": str(settings.database_path),
             "retention_days": effective.retention_days,
+            "session_minutes": admin_settings.session_minutes(),
             "live_poll_interval_seconds": settings.live_poll_interval_seconds,
             "log_interval_seconds": settings.log_interval_seconds,
         }
