@@ -41,7 +41,7 @@ struct RootView: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
             .tint(.primary)
-            .opacity(0.5)
+            .opacity(0.75)
             .padding(.top, 4)
             .padding(.trailing, 10)
             .accessibilityLabel("Server settings")

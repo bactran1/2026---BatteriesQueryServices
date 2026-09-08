@@ -22,9 +22,9 @@ struct ErrorView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             HStack(spacing: 12) {
-                Button("Retry", action: onRetry)
+                Button("Change server URL", action: onEditServer)
                     .buttonStyle(.borderedProminent)
-                Button("Server URL", action: onEditServer)
+                Button("Retry", action: onRetry)
                     .buttonStyle(.bordered)
             }
             .padding(.top, 4)
