@@ -156,7 +156,7 @@ const translations = {
     "inverter.waiting": "Waiting for inverter telemetry",
     "inverter.identity": "{serial} · Protocol {protocol}",
     "inverter.solar": "Solar array",
-    "inverter.solarToday": "{count} MPPT · {energy} today",
+    "inverter.solarToday": "{voltage} · {current} · {energy} today",
     "inverter.grid": "Grid",
     "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
     "inverter.load": "Backup load",
@@ -456,7 +456,7 @@ const translations = {
     "inverter.waiting": "Đang chờ dữ liệu biến tần",
     "inverter.identity": "{serial} · Giao thức {protocol}",
     "inverter.solar": "Hệ thống điện mặt trời",
-    "inverter.solarToday": "{count} MPPT · hôm nay {energy}",
+    "inverter.solarToday": "{voltage} · {current} · hôm nay {energy}",
     "inverter.grid": "Điện lưới",
     "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
     "inverter.load": "Phụ tải dự phòng",
@@ -1225,7 +1225,8 @@ function renderInverterTelemetry() {
   $("inverterSolarPower").textContent = formatPower(telemetry.solarPower);
   $("inverterSolarDetail").textContent = hasReading
     ? t("inverter.solarToday", {
-        count: formatNumber(Array.isArray(reading.pv_inputs) ? reading.pv_inputs.length : 0),
+        voltage: formatValue(telemetry.solarVoltage, "V"),
+        current: formatValue(telemetry.solarCurrent, "A"),
         energy: formatEnergy(reading.pv_energy_today_kwh),
       })
     : t("inverter.waiting");
@@ -1300,6 +1301,8 @@ function inverterTelemetry(inverter = state.inverter) {
     ? homeLoadPower - gridPower
     : null;
 
+  const pv = pvSummary(reading);
+
   return {
     available,
     hasReading,
@@ -1307,10 +1310,27 @@ function inverterTelemetry(inverter = state.inverter) {
     reading,
     gridPower,
     solarPower: finiteNumber(reading.pv_total_power_w),
+    solarVoltage: pv.voltage,
+    solarCurrent: pv.current,
     backupLoadPower: finiteNumber(reading.load_total_power_w),
     homeLoadPower,
     acLinkPower,
   };
+}
+
+// Aggregate the inverter's per-MPPT PV inputs into one array voltage/current:
+// current is summed across strings; voltage is the highest string voltage.
+function pvSummary(reading) {
+  const inputs = Array.isArray(reading.pv_inputs) ? reading.pv_inputs : [];
+  let voltage = null;
+  let current = null;
+  for (const input of inputs) {
+    const v = finiteNumber(input?.voltage_v);
+    const a = finiteNumber(input?.current_a);
+    if (v !== null) voltage = voltage === null ? v : Math.max(voltage, v);
+    if (a !== null) current = (current ?? 0) + a;
+  }
+  return { voltage, current };
 }
 
 function rackBatteryTelemetry(batteries = state.batteries) {
