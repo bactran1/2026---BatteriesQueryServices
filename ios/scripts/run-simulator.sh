@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # One command to see the app running: generate the project, build for the
-# Simulator (no signing/Apple account needed), install, and launch.
-#   ./scripts/run-simulator.sh ["iPhone 15"]
+# Simulator (no signing/Apple account needed), then install + launch on an
+# available iPhone simulator.
+#   ./scripts/run-simulator.sh                 # auto-pick an iPhone simulator
+#   ./scripts/run-simulator.sh "iPhone 16 Pro" # prefer a specific one
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-SIM_NAME="${1:-iPhone 15}"
+REQUESTED="${1:-}"
 PROJECT="BatteryMonitor.xcodeproj"
 SCHEME="BatteryMonitor"
 
@@ -32,13 +34,15 @@ fi
 ./scripts/bootstrap.sh
 xcodegen generate
 
-echo "Building for Simulator ($SIM_NAME)…"
+# Build with a device-agnostic destination so it never depends on which named
+# simulators happen to exist on this machine.
+echo "Building for the iOS Simulator…"
 xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -configuration Debug \
   -sdk iphonesimulator \
-  -destination "platform=iOS Simulator,name=${SIM_NAME}" \
+  -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath build \
   CODE_SIGNING_ALLOWED=NO \
   build
@@ -50,8 +54,24 @@ if [[ -z "$APP_PATH" ]]; then
 fi
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist")"
 
+# Choose a simulator: a booted one first, then the requested name, then any iPhone.
+udid_of() { awk -F '[()]' "$1{print \$2; exit}"; }
+DEVICE_ID="$(xcrun simctl list devices booted 2>/dev/null | udid_of '/iPhone/')"
+if [[ -z "$DEVICE_ID" && -n "$REQUESTED" ]]; then
+  DEVICE_ID="$(xcrun simctl list devices available | grep -F "$REQUESTED" | udid_of '1')"
+  [[ -z "$DEVICE_ID" ]] && echo "Simulator '$REQUESTED' not found; using the first available iPhone." >&2
+fi
+if [[ -z "$DEVICE_ID" ]]; then
+  DEVICE_ID="$(xcrun simctl list devices available | udid_of '/iPhone/')"
+fi
+if [[ -z "$DEVICE_ID" ]]; then
+  echo "No iOS Simulator is installed. Open Xcode → Settings → Components and add an iOS runtime." >&2
+  exit 1
+fi
+
 open -a Simulator
-xcrun simctl boot "$SIM_NAME" >/dev/null 2>&1 || true
-xcrun simctl install booted "$APP_PATH"
-xcrun simctl launch booted "$BUNDLE_ID"
-echo "Launched $BUNDLE_ID in the $SIM_NAME simulator."
+xcrun simctl boot "$DEVICE_ID" >/dev/null 2>&1 || true
+xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+DEVICE_NAME="$(xcrun simctl list devices | grep -F "$DEVICE_ID" | sed -E 's/ *\(.*//' | head -1)"
+echo "Launched $BUNDLE_ID on:${DEVICE_NAME}"

@@ -1,6 +1,7 @@
 # Battery Monitor iOS wrapper — automation entry points.
-# Requires macOS with Xcode command-line tools. XcodeGen is installed on demand.
-SIM ?= iPhone 15
+# Requires macOS with Xcode installed. XcodeGen is installed on demand.
+# SIM is optional; empty means "auto-pick an available iPhone simulator".
+SIM ?=
 PROJECT = BatteryMonitor.xcodeproj
 SCHEME = BatteryMonitor
 
@@ -13,7 +14,7 @@ help:
 	@echo "make build     Build for the Simulator (unsigned)"
 	@echo "make icon      Regenerate the app icon from the dashboard icon"
 	@echo "make clean     Remove generated project + build output"
-	@echo "Override the simulator with: make run SIM='iPhone 15 Pro'"
+	@echo "Pick a specific simulator with: make run SIM='iPhone 16 Pro'"
 
 bootstrap:
 	./scripts/bootstrap.sh
