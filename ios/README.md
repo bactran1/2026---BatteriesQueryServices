@@ -46,29 +46,62 @@ launches it in the Simulator. To work in Xcode instead: `make open`.
 
 ## Point it at your server
 
-The app defaults to `http://raspberrypi.local:8080` (the monitor's default port).
-Change it two ways:
-
-- **In the app:** tap the ⚙︎ (top-right) → enter the address → Save.
-- **Build-time default:** edit `MonitorBaseURL` in
-  [`App/Resources/Info.plist`](App/Resources/Info.plist).
+The default address is `http://192.168.1.114:8080` — the constant
+`AppConfig.defaultURLString` in [`Shared/AppConfig.swift`](Shared/AppConfig.swift).
+Change the address at runtime in the app: tap the ⚙︎ (top-right) → type it → Save
+(there's a clear ✕ and a one-tap "Use default"). The value is stored in an App
+Group so the widget uses the same address.
 
 HTTP to `.local`/private-range hosts is allowed via `NSAllowsLocalNetworking`
 (App Store–acceptable); no need to disable App Transport Security wholesale.
 
-## Ship to a device / TestFlight (one-time signing setup)
+## Home Screen widget
 
-1. Open the project: `make open`.
-2. Select the **BatteryMonitor** target → *Signing & Capabilities* → pick your
-   Team. Xcode manages the provisioning profile automatically.
-3. Run on a connected device (▶), or *Product → Archive* → *Distribute App*.
+A WidgetKit extension (`BatteryWidgetExtension`) adds small/medium widgets showing
+**rack SOC, live power, and online packs**, refreshed ~every 15 minutes. It fetches
+`/api/live` itself (the web view can't drive a widget) and reads the server address
+from the shared App Group, so it follows whatever you set in the app.
 
-To automate a **signed** build in CI later, add repository secrets for an Apple
-API key (`APP_STORE_CONNECT_KEY_ID`, `ISSUER_ID`, the `.p8`) and set
-`DEVELOPMENT_TEAM` in `project.yml`; a `fastlane` lane or
-`xcodebuild -exportArchive` step can then produce and upload an `.ipa`. The
-current CI intentionally stops at an unsigned Simulator build so it stays green
-with no secrets.
+Add it on device: long-press the Home Screen → **+** → search "Battery Monitor".
+Notes:
+- The widget needs local-network access, which iOS grants once you've opened the
+  app on that device.
+- The App Group (`group.com.trant.batterymonitor`) is pre-wired in the
+  entitlements; automatic signing registers it when you pick a Team.
+
+## Ship to the App Store
+
+Prerequisites: enrollment in the **Apple Developer Program** ($99/yr) and a Mac.
+
+**One-time setup**
+1. `make open`, then for **both** targets (BatteryMonitor and BatteryWidget) →
+   *Signing & Capabilities* → select your **Team**. Automatic signing creates the
+   certificates, provisioning profiles, and registers the App Group + bundle IDs
+   (`com.trant.batterymonitor` and `…​.widget`).
+2. In **App Store Connect** → *Apps* → **＋** → create an app for bundle ID
+   `com.trant.batterymonitor` (name, primary language, SKU).
+
+**Build & upload** — either:
+- *Xcode:* Product → **Archive** → **Distribute App** → *App Store Connect*. Easiest
+  for a first submission.
+- *Command line (scripted):*
+  ```bash
+  cd ios
+  make ipa DEVELOPMENT_TEAM=XXXXXXXXXX          # -> build/ipa/BatteryMonitor.ipa
+  xcrun altool --upload-app -f build/ipa/BatteryMonitor.ipa \
+    --apiKey <KEY_ID> --apiIssuer <ISSUER_ID>   # or drag the .ipa into Transporter
+  ```
+  (Find your 10-char Team ID in the Apple Developer portal → *Membership*.)
+
+Then in App Store Connect add screenshots + a privacy label (this app collects no
+data), attach the build, and **Submit for Review**. TestFlight builds are available
+to testers within minutes of upload without full review.
+
+**Fully automated releases (optional):** create an App Store Connect **API key**
+(.p8), store `ASC_KEY_ID` / `ASC_ISSUER_ID` / the key as GitHub secrets, and add a
+`workflow_dispatch` job that runs `make ipa` + `xcrun altool --upload-app` (or a
+`fastlane` lane). The default CI stays at an unsigned Simulator build so it needs
+no secrets.
 
 ## Requirements
 
@@ -83,9 +116,13 @@ with no secrets.
 ios/
   project.yml                     XcodeGen spec (source of truth)
   App/Sources/*.swift             @main app, WKWebView, settings, error view
-  App/Resources/Info.plist        ATS, launch, default server URL
-  App/Resources/Assets.xcassets/  app icon + launch color
+  App/Resources/                  Info.plist (ATS/launch), Assets, App.entitlements
+  Widget/Sources/BatteryWidget.swift   WidgetKit extension (SOC / power / packs)
+  Widget/Resources/Info.plist          widget extension point + ATS
+  Widget/Widget.entitlements           App Group
+  Shared/                         AppConfig + MonitorSummary (app + widget)
+  ExportOptions.plist             App Store export settings for `make ipa`
   scripts/                        bootstrap, run-simulator, icon generator
-  Makefile                        make run / open / build / icon / clean
+  Makefile                        run / open / build / icon / archive / ipa / clean
 .github/workflows/ios.yml         CI build on macOS
 ```

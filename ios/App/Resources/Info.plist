@@ -23,10 +23,6 @@
   <key>LSRequiresIPhoneOS</key>
   <true/>
 
-  <!-- Default dashboard address. Override at runtime in the app's Settings. -->
-  <key>MonitorBaseURL</key>
-  <string>http://192.168.1.114:8080</string>
-
   <!-- The monitor is served over HTTP on the local network. NSAllowsLocalNetworking
        permits loopback / .local / private-range hosts without disabling ATS wholesale. -->
   <key>NSAppTransportSecurity</key>
