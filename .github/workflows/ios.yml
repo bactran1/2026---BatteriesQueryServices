@@ -30,8 +30,9 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Regenerate app icon
-        run: python3 scripts/make-appicon.py
+      # The app icon is committed (icon-1024.png); scripts/make-appicon.py only
+      # needs to run locally when the source icon changes, so CI doesn't
+      # regenerate it (and doesn't need Pillow installed).
 
       - name: Generate Xcode project
         run: xcodegen generate
