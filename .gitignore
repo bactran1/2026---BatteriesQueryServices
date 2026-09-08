@@ -18,4 +18,5 @@ ios/DerivedData/
 ios/BatteryMonitor.xcodeproj/
 ios/*.xcworkspace/
 ios/.DS_Store
+.DS_Store
 *.xcuserstate

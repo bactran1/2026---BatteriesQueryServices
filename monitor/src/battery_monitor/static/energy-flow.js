@@ -389,11 +389,11 @@ function startEnergyFlowScene() {
   const leaderVec = new THREE.Vector3();
   const leaderTargets = [
     { cls: "energy-flow__callout--inverter", anchor: new THREE.Vector3(0.5, 0.2, 2.2), color: "#ffb24a", active: () => network.routes.some(isRouteActive) },
-    { cls: "energy-flow__callout--solar", anchor: new THREE.Vector3(0.4, 1.4, 0.75), color: "#f2ef50", active: () => network.solar.active },
+    { cls: "energy-flow__callout--solar", anchor: new THREE.Vector3(0.6, 1.4, 0.75), color: "#f2ef50", active: () => network.solar.active },
     { cls: "energy-flow__callout--grid", anchor: new THREE.Vector3(3.8, 0.9, 0.15), color: "#72d7ff", active: () => network.grid.active },
     { cls: "energy-flow__callout--load", anchor: new THREE.Vector3(-2.35, -0.25, 2.2), color: "#ffdf87", active: () => network.load.active },
     { cls: "energy-flow__callout--backup", anchor: new THREE.Vector3(-0.8, -0.42, 2.2), color: "#f07bac", active: () => network.backup.active },
-    { cls: "energy-flow__callout--battery", anchor: new THREE.Vector3(1.2, -0.42, 2.2), flowColor: true, active: () => network.battery.active },
+    { cls: "energy-flow__callout--battery", anchor: new THREE.Vector3(2.3, -0.42, 2.2), flowColor: true, active: () => network.battery.active },
   ];
   let leaders = [];
 
