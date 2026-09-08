@@ -37,10 +37,13 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: List schemes (diagnostic)
+        run: xcodebuild -project BatteryMonitor.xcodeproj -list
+
       - name: Build (unsigned, Simulator SDK)
         run: |
           set -o pipefail
-          xcodebuild \
+          if ! xcodebuild \
             -project BatteryMonitor.xcodeproj \
             -scheme BatteryMonitor \
             -configuration Debug \
@@ -48,7 +51,13 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | tee build.log; then
+            echo "Build failed — surfacing errors as annotations:"
+            grep -aE "error:|The following build commands failed|not found|Unable to find" build.log \
+              | sort -u | tail -40 \
+              | while IFS= read -r line; do echo "::error::${line}"; done
+            exit 1
+          fi
 
       - name: Package .app
         run: |

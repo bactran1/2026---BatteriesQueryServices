@@ -19,6 +19,16 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: ""
 
+schemes:
+  BatteryMonitor:
+    build:
+      targets:
+        BatteryMonitor: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
 targets:
   BatteryMonitor:
     type: application
