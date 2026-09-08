@@ -100,30 +100,6 @@
       </header>
 
       <main>
-        <section class="rack-overview" aria-label="Rack overview" data-i18n-aria-label="rack.overview">
-          <div class="rack-overview__identity">
-            <p class="eyebrow" data-i18n="rack.overview">Rack overview</p>
-            <p id="rackDescription" data-i18n="rack.waitingStatus">Waiting for rack status</p>
-          </div>
-          <div class="rack-facts">
-            <div>
-              <span data-i18n="rack.batteries">Batteries</span>
-              <strong id="rackBatteryCount">3 packs</strong>
-              <small id="rackObservedCount" data-i18n="common.waitingData">Waiting for data</small>
-            </div>
-            <div>
-              <span data-i18n="rack.collector">Collector</span>
-              <strong id="rackCollectorName" data-i18n="rack.defaultCollector">Raspberry Pi collector</strong>
-              <small id="rackCollectorAddress">raspberrypi.local</small>
-            </div>
-            <div>
-              <span data-i18n="rack.bus">Bus</span>
-              <strong>RS485</strong>
-              <small id="rackConnection">Modbus RTU</small>
-            </div>
-          </div>
-        </section>
-
         <section
           id="energyFlowSection"
           class="energy-flow"
@@ -386,6 +362,29 @@
         </section>
 
         <section class="rack-summary" aria-label="Rack summary" data-i18n-aria-label="fleet.summary">
+          <div class="rack-summary__meta">
+            <div class="rack-summary__meta-status">
+              <p class="eyebrow" data-i18n="rack.overview">Rack overview</p>
+              <p id="rackDescription" data-i18n="rack.waitingStatus">Waiting for rack status</p>
+            </div>
+            <div class="rack-facts">
+              <div>
+                <span data-i18n="rack.batteries">Batteries</span>
+                <strong id="rackBatteryCount">3 packs</strong>
+                <small id="rackObservedCount" data-i18n="common.waitingData">Waiting for data</small>
+              </div>
+              <div>
+                <span data-i18n="rack.collector">Collector</span>
+                <strong id="rackCollectorName" data-i18n="rack.defaultCollector">Raspberry Pi collector</strong>
+                <small id="rackCollectorAddress">raspberrypi.local</small>
+              </div>
+              <div>
+                <span data-i18n="rack.bus">Bus</span>
+                <strong>RS485</strong>
+                <small id="rackConnection">Modbus RTU</small>
+              </div>
+            </div>
+          </div>
           <div class="rack-summary__soc">
             <div class="rack-summary__soc-heading">
               <span data-i18n="fleet.rackSoc">Rack SOC</span>

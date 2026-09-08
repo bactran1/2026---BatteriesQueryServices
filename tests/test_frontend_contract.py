@@ -93,7 +93,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('<details id="payloadDetails"', html)
         self.assertNotIn('<details id="payloadDetails" open', html)
         self.assertNotIn('<h2 id="rackName">Eco-worthy Rack</h2>', html)
-        self.assertIn("grid-template-columns: minmax(190px, 0.5fr)", css)
+        self.assertIn("grid-template-columns: minmax(210px, 0.85fr)", css)
+        # Rack identity/status was folded into the Rack summary card.
+        self.assertIn('class="rack-summary__meta"', html)
+        self.assertNotIn('class="rack-overview"', html)
         self.assertIn('id="rackDescription"', html)
         self.assertIn('data-i18n="rack.waitingStatus">Waiting for rack status', html)
         self.assertIn('"All batteries online"', (STATIC / "app.js").read_text(encoding="utf-8"))
@@ -318,7 +321,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('data-power-series="solar_power_w"', html)
         self.assertIn('data-power-series="load_power_w"', html)
         self.assertIn('data-power-series="home_load_power_w"', html)
-        self.assertLess(html.index('id="powerHistorySection"'), html.index('id="energyFlowSection"'))
+        # Live energy flow leads, with the power-history chart below it.
+        self.assertLess(html.index('id="energyFlowSection"'), html.index('id="powerHistorySection"'))
         self.assertNotIn('id="metricSelect"', html)
         self.assertIn('getJson(`/api/power-history?${params}`, "history")', javascript)
         self.assertIn('params.set("date", requestedDate)', javascript)
