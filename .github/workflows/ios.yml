@@ -17,15 +17,19 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     defaults:
       run:
         working-directory: ios
     steps:
       - uses: actions/checkout@v4
 
+      # XcodeGen (latest) emits an Xcode 16 project format, so build with a
+      # matching toolchain (Xcode 15.x cannot read it -> "Unable to read project").
       - name: Select latest stable Xcode
-        run: sudo xcode-select -switch /Applications/Xcode.app
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: Install XcodeGen
         run: brew install xcodegen
