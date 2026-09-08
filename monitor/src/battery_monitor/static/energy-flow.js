@@ -130,6 +130,7 @@ function startEnergyFlowScene() {
   let disposed = false;
   let composer = null;
   let bloomPass = null;
+  let leaderFrame = null;
   let glowStrength = resolveGlowStrength(section.dataset.glowStrength);
 
   function resolveGlowStrength(raw) {
@@ -350,6 +351,7 @@ function startEnergyFlowScene() {
     root.rotation.y = parallax.x * 0.025;
     if (composer) composer.render();
     else renderer.render(scene, camera);
+    updateLeaders();
     frameCount += 1;
     if (frameCount === 1 || frameCount % 10 === 0) canvas.dataset.frame = String(frameCount);
     if (needsPixelAudit) auditCanvasPixels();
@@ -375,6 +377,99 @@ function startEnergyFlowScene() {
       canvas.dataset.pixelCheck = visible >= 24 ? "nonblank" : "blank";
     } catch {
       canvas.dataset.pixelCheck = "unavailable";
+    }
+  }
+
+  // Each callout label points a thin leader line at its device's real position in
+  // the 3D scene: we project a representative port of each device to screen space
+  // every frame, so the leaders track the house as it scales, shifts, or parallaxes.
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const calloutsLayer = section.querySelector(".energy-flow__callouts");
+  const leaderSvg = document.getElementById("energyFlowLeaders");
+  const leaderVec = new THREE.Vector3();
+  const leaderTargets = [
+    { cls: "energy-flow__callout--inverter", anchor: new THREE.Vector3(0.5, 0.2, 2.2), color: "#ffb24a", active: () => network.routes.some(isRouteActive) },
+    { cls: "energy-flow__callout--solar", anchor: new THREE.Vector3(0.4, 1.4, 0.75), color: "#f2ef50", active: () => network.solar.active },
+    { cls: "energy-flow__callout--grid", anchor: new THREE.Vector3(3.8, 0.9, 0.15), color: "#72d7ff", active: () => network.grid.active },
+    { cls: "energy-flow__callout--load", anchor: new THREE.Vector3(-2.35, -0.25, 2.2), color: "#ffdf87", active: () => network.load.active },
+    { cls: "energy-flow__callout--backup", anchor: new THREE.Vector3(-0.8, -0.42, 2.2), color: "#f07bac", active: () => network.backup.active },
+    { cls: "energy-flow__callout--battery", anchor: new THREE.Vector3(1.2, -0.42, 2.2), flowColor: true, active: () => network.battery.active },
+  ];
+  let leaders = [];
+
+  function setupLeaders() {
+    if (!calloutsLayer || !leaderSvg) return;
+    leaders = leaderTargets
+      .map((target) => {
+        const box = calloutsLayer.querySelector(`.${target.cls}`);
+        if (!box) return null;
+        const line = document.createElementNS(SVGNS, "line");
+        line.setAttribute("class", "energy-flow__leader-line");
+        const dot = document.createElementNS(SVGNS, "circle");
+        dot.setAttribute("class", "energy-flow__leader-dot");
+        dot.setAttribute("r", "3");
+        if (target.color) {
+          line.style.stroke = target.color;
+          dot.style.fill = target.color;
+        }
+        leaderSvg.append(line, dot);
+        return { ...target, box, line, dot, geom: null };
+      })
+      .filter(Boolean);
+  }
+
+  // Cache each label box's centre and half-extents (relative to the callouts layer)
+  // plus the stage offset, so the per-frame update only re-projects the anchors.
+  function measureLeaders() {
+    if (!leaders.length || !calloutsLayer) return;
+    const cRect = calloutsLayer.getBoundingClientRect();
+    const sRect = stage.getBoundingClientRect();
+    if (!cRect.width || !sRect.width) return;
+    leaderFrame = { offX: sRect.left - cRect.left, offY: sRect.top - cRect.top, sw: sRect.width, sh: sRect.height };
+    for (const leader of leaders) {
+      const b = leader.box.getBoundingClientRect();
+      leader.geom = {
+        cx: b.left - cRect.left + b.width / 2,
+        cy: b.top - cRect.top + b.height / 2,
+        hw: b.width / 2 + 1.5,
+        hh: b.height / 2 + 1.5,
+      };
+    }
+  }
+
+  function updateLeaders() {
+    if (!leaders.length || !leaderFrame) return;
+    const { offX, offY, sw, sh } = leaderFrame;
+    for (const leader of leaders) {
+      if (!leader.geom) continue;
+      leaderVec.copy(leader.anchor);
+      root.localToWorld(leaderVec);
+      leaderVec.project(camera);
+      const dx = offX + (leaderVec.x * 0.5 + 0.5) * sw;
+      const dy = offY + (-leaderVec.y * 0.5 + 0.5) * sh;
+      const { cx, cy, hw, hh } = leader.geom;
+      const ex = dx - cx;
+      const ey = dy - cy;
+      // Anchor the line on the box border facing the device rather than its centre.
+      let t = 1;
+      if (Math.abs(ex) > 0.001) t = Math.min(t, hw / Math.abs(ex));
+      if (Math.abs(ey) > 0.001) t = Math.min(t, hh / Math.abs(ey));
+      const sx = cx + ex * t;
+      const sy = cy + ey * t;
+      leader.line.setAttribute("x1", sx.toFixed(1));
+      leader.line.setAttribute("y1", sy.toFixed(1));
+      leader.line.setAttribute("x2", dx.toFixed(1));
+      leader.line.setAttribute("y2", dy.toFixed(1));
+      leader.dot.setAttribute("cx", dx.toFixed(1));
+      leader.dot.setAttribute("cy", dy.toFixed(1));
+      if (leader.flowColor) {
+        const hex = `#${FLOW_COLORS[flowState.mode].toString(16).padStart(6, "0")}`;
+        leader.line.style.stroke = hex;
+        leader.dot.style.fill = hex;
+      }
+      const state = leader.active() ? "true" : "false";
+      leader.line.dataset.active = state;
+      leader.dot.dataset.active = state;
     }
   }
 
@@ -441,6 +536,7 @@ function startEnergyFlowScene() {
     }
     if (bloomPass) bloomPass.strength = glowStrength;
     camera.updateProjectionMatrix();
+    measureLeaders();
     needsPixelAudit = true;
     renderOnce(performance.now());
   }
@@ -553,6 +649,7 @@ function startEnergyFlowScene() {
   canvas.dataset.sceneReady = "true";
   canvas.dataset.sceneScale = String(HOUSE_SCENE_SCALE);
   section.dataset.renderMode = "webgl";
+  setupLeaders();
   resize();
   updateTheme();
   applyFlowState();

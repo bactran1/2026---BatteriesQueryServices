@@ -196,6 +196,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("--callout-color: #ffdf87", css)
         self.assertIn("@keyframes energy-flow-leader-pulse", css)
         self.assertIn("text-shadow: 0 1px 2px rgba(0, 0, 0, 0.94)", css)
+        # Callout leaders are projected onto the 3D devices each frame, not fixed bars.
+        self.assertIn('id="energyFlowLeaders"', html)
+        self.assertIn(".energy-flow__leader-line", css)
+        self.assertIn("root.localToWorld(leaderVec)", scene)
+        self.assertIn("leaderVec.project(camera)", scene)
 
         self.assertTrue((STATIC / "vendor" / "three.module.min.js").is_file())
         self.assertTrue((STATIC / "vendor" / "three.core.min.js").is_file())
