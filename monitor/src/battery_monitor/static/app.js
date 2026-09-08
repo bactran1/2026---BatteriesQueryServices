@@ -1128,6 +1128,14 @@ function renderEnergyFlow(flow) {
   $("energySolarValue").textContent = inverter.available
     ? formatPower(inverter.solarPower)
     : t("energy.unmetered");
+  const solarDetail = $("energySolarDetail");
+  if (inverter.available && (inverter.solarVoltage !== null || inverter.solarCurrent !== null)) {
+    solarDetail.textContent = `${formatValue(inverter.solarVoltage, "V")} · ${formatValue(inverter.solarCurrent, "A")}`;
+    solarDetail.hidden = false;
+  } else {
+    solarDetail.textContent = "";
+    solarDetail.hidden = true;
+  }
   $("energyLoadValue").textContent = inverter.available && inverter.homeLoadPower !== null
     ? formatPower(inverter.homeLoadPower)
     : t("energy.unmetered");

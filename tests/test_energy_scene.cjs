@@ -41,7 +41,7 @@ test("Modern equipment contains three distinct battery modules and independent l
   const bounds = new THREE.Box3().setFromObject(system.group);
   assert.ok(bounds.getSize(new THREE.Vector3()).x < 9);
   assert.ok(Number.isFinite(bounds.max.y));
-  assert.equal(run("HOUSE_SCENE_SCALE"), 0.9);
+  assert.equal(run("HOUSE_SCENE_SCALE"), 0.8);
 });
 
 test("Unmetered service link stays inactive; supported direction reverses with power", async () => {

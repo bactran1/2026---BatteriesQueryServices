@@ -158,7 +158,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('canvas.dataset.sceneStyle = "modern-home-energy"', scene)
         self.assertIn('id="energyBackupValue"', html)
         self.assertIn('canvas.dataset.camera = "orthographic"', scene)
-        self.assertIn("const HOUSE_SCENE_SCALE = 0.9", scene)
+        self.assertIn("const HOUSE_SCENE_SCALE = 0.8", scene)
         self.assertIn("root.scale.setScalar(HOUSE_SCENE_SCALE)", scene)
         self.assertIn("canvas.dataset.sourceTelemetry = inverterMetered", scene)
         self.assertIn("canvas.dataset.energyDirection = inverterMetered", scene)
@@ -180,6 +180,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("border-radius: 50%", css)
         self.assertIn('id="energyGridValue"', html)
         self.assertIn('id="energySolarValue"', html)
+        self.assertIn('id="energySolarDetail"', html)
+        self.assertIn(
+            '`${formatValue(inverter.solarVoltage, "V")} · '
+            '${formatValue(inverter.solarCurrent, "A")}`',
+            javascript,
+        )
         self.assertIn('id="energyInverterValue"', html)
         self.assertIn('id="energyBatteryValue"', html)
         self.assertIn('id="energyLoadValue"', html)

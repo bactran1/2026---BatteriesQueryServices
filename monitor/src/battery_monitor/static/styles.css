@@ -665,8 +665,14 @@ button {
   position: absolute;
   width: 132px;
   min-width: 0;
-  padding-left: 11px;
+  padding: 5px 10px 6px 11px;
   border-left: 2px solid color-mix(in srgb, var(--callout-color) 72%, transparent);
+  border-radius: 4px 8px 8px 4px;
+  /* Scrim so the labels stay legible over the bright 3D scene (e.g. the solar
+     panels sitting behind the Solar callout). */
+  background: color-mix(in srgb, #06070a 50%, transparent);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   color: #fff;
 }
 

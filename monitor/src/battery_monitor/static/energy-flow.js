@@ -17,7 +17,7 @@ const NODE_COLORS = {
 
 const CAMERA_POSITION = new THREE.Vector3(7.8, 6.4, 9.6);
 const CAMERA_LOOK_AT = new THREE.Vector3(0, -0.05, 0);
-const HOUSE_SCENE_SCALE = 0.9;
+const HOUSE_SCENE_SCALE = 0.8;
 // UnrealBloomPass tuning. Threshold sits above the dark chassis albedo so only the
 // emissive conduits, LEDs, and glow puddles bloom; small screens ease off for GPU cost.
 const BLOOM = { strength: 0.05, radius: 0.55, threshold: 0.58, mobileStrength: 0.05 };
@@ -431,7 +431,7 @@ function startEnergyFlowScene() {
     camera.right = viewWidth / 2;
     camera.top = viewHeight / 2;
     camera.bottom = -viewHeight / 2;
-    root.position.set(width <= 480 ? -0.12 : -0.05, width <= 480 ? -0.58 : -0.25, 0);
+    root.position.set(width <= 480 ? 0.2 : 0.55, width <= 480 ? -0.58 : -0.25, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width <= 600 ? 1.5 : 2));
     renderer.setSize(width, height, false);
     renderer.shadowMap.enabled = width > 480;
