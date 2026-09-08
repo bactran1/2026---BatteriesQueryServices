@@ -37,13 +37,14 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: List schemes (diagnostic)
-        run: xcodebuild -project BatteryMonitor.xcodeproj -list
-
       - name: Build (unsigned, Simulator SDK)
         run: |
-          set -o pipefail
-          if ! xcodebuild \
+          set +e
+          echo "toolchain: $(xcode-select -p)"
+          xcodebuild -version 2>&1 | sed 's/^/::error::ver: /'
+          xcodebuild -project BatteryMonitor.xcodeproj -list 2>&1 | tee list.log
+          sed 's/^/::error::list: /' list.log
+          xcodebuild \
             -project BatteryMonitor.xcodeproj \
             -scheme BatteryMonitor \
             -configuration Debug \
@@ -51,11 +52,12 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee build.log; then
-            echo "Build failed — surfacing errors as annotations:"
-            grep -aE "error:|The following build commands failed|not found|Unable to find" build.log \
-              | sort -u | tail -40 \
-              | while IFS= read -r line; do echo "::error::${line}"; done
+            build 2>&1 | tee build.log
+          CODE=${PIPESTATUS[0]}
+          if [ "$CODE" -ne 0 ]; then
+            echo "Build failed (exit $CODE) — surfacing output as annotations:"
+            grep -aE "error:|xcodebuild:|build commands failed|does not contain|Unable to|No such|SDK|Signing|provisioning" build.log | sort -u | tail -30 | while IFS= read -r l; do echo "::error::$l"; done
+            tail -25 build.log | while IFS= read -r l; do echo "::error::tail: $l"; done
             exit 1
           fi
 
