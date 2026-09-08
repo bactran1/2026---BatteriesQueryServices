@@ -27,7 +27,7 @@ Apple's toolchain cannot be run off a Mac, so these are irreducible:
 
 ## Run it (Simulator — the zero-setup path)
 
-On a Mac with Xcode installed:
+On a Mac with **Xcode** installed (the full app, not just the Command Line Tools):
 
 ```bash
 cd ios
@@ -36,6 +36,13 @@ make run            # or: make run SIM='iPhone 15 Pro'
 
 This installs XcodeGen if missing, generates the project, builds it unsigned, and
 launches it in the Simulator. To work in Xcode instead: `make open`.
+
+> If you see `xcodebuild requires Xcode, but active developer directory is a
+> command line tools instance`, point the tools at Xcode once:
+> ```bash
+> sudo xcode-select -s /Applications/Xcode.app
+> ```
+> (`make run` now detects this and prints the exact command for your setup.)
 
 ## Point it at your server
 
