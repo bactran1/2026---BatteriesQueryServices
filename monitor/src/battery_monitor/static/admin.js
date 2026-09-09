@@ -240,6 +240,7 @@ async function loadConfig() {
   form.collector_name.value = config.collector_name || "";
   form.retention_days.value = config.retention_days ?? "";
   form.session_minutes.value = config.session_minutes ?? 30;
+  form.battery_reserve_percent.value = config.battery_reserve_percent ?? 20;
   if (Number.isFinite(config.session_minutes)) {
     sessionMinutes = config.session_minutes;
     resetIdle();
@@ -407,6 +408,7 @@ function bind() {
       collector_name: form.collector_name.value.trim(),
       retention_days: Number(form.retention_days.value),
       session_minutes: Number(form.session_minutes.value),
+      battery_reserve_percent: Number(form.battery_reserve_percent.value),
       energy_glow_strength: Number(form.energy_glow_strength.value),
       batteries: readBatteryRows(),
     };
