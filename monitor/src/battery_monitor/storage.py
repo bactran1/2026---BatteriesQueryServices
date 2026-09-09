@@ -508,6 +508,8 @@ class RetentionStore:
     def _hourly_energy_history(
         self, energy_date: str | None = None, energy_timezone: str = "UTC"
     ) -> dict[str, Any]:
+        seed_sql = ""
+        emit_filter = ""
         if energy_date is None:
             time_filter = "captured_at_unix >= strftime('%s', 'now', '-7 days')"
             params: tuple[object, ...] = ()
@@ -538,13 +540,34 @@ class RetentionStore:
                 CAST((captured_at_unix - {window_start_unix}) / 3600 AS INTEGER)
                     * 3600 + {window_start_unix}
             """
-            # This window already starts at local midnight, which is when the
-            # inverter's "today" counters reset, so the first hour's reading is
-            # entirely energy accumulated inside that hour.
+            # The window starts at this timezone's local midnight, but the inverter
+            # resets its "today" counters at *its own* clock's midnight, which may be
+            # set to a different zone. Seed the first hour with the reading captured
+            # just before the window (placed one hour ahead of it so it becomes the
+            # 00:00 bucket's LAG predecessor): the delta logic then measures only the
+            # energy inside the first hour whether or not the reset lines up with the
+            # window edge. The seed row is filtered back out of the emitted buckets.
+            # When there is no earlier reading the seed is empty and the first hour
+            # falls back to reporting its counter directly.
             first_bucket_condition = f"""
                 previous_bucket_unix IS NULL
                 AND bucket_unix - {window_start_unix} < 3600
             """
+            seed_sql = f"""
+                UNION ALL
+                SELECT
+                    {window_start_unix - 3600} AS bucket_unix,
+                    inverter_id,
+                    MAX(captured_at_unix) AS last_captured_unix,
+                    consumption_meter_kwh AS consumption_meter_kwh,
+                    solar_generation_meter_kwh AS solar_generation_meter_kwh,
+                    grid_import_meter_kwh AS grid_import_meter_kwh
+                FROM inverter_readings
+                WHERE captured_at_unix >= {window_start_unix - 6 * 3600}
+                    AND captured_at_unix < {window_start_unix}
+                GROUP BY inverter_id
+            """
+            emit_filter = f"WHERE bucket_unix >= {window_start_unix}"
 
         consumption_expression = _hourly_energy_expression(
             "consumption_meter_kwh", "previous_consumption_kwh", first_bucket_condition
@@ -580,6 +603,7 @@ class RetentionStore:
                     FROM inverter_readings
                     WHERE {time_filter}
                     GROUP BY bucket_unix, inverter_id
+                    {seed_sql}
                 ),
                 deltas AS (
                     SELECT
@@ -603,6 +627,7 @@ class RetentionStore:
                     SUM({solar_expression}) AS solar_generation_kwh,
                     SUM({grid_expression}) AS grid_import_kwh
                 FROM deltas
+                {emit_filter}
                 GROUP BY bucket_unix
                 HAVING consumption_kwh IS NOT NULL
                     OR solar_generation_kwh IS NOT NULL
@@ -611,10 +636,10 @@ class RetentionStore:
                 """,
                 params,
             ).fetchall()
+            # The date window's total is the sum of its own hourly bars, so it always
+            # matches the chart and stays correct across a mid-window counter reset.
             totals = (
-                self._energy_totals_for_window_locked(
-                    window_start_unix, window_end_unix
-                )
+                _sum_energy_rows(rows)
                 if energy_date is not None
                 else self._energy_totals_locked()
             )
@@ -655,42 +680,6 @@ class RetentionStore:
             FROM daily_energy
             WHERE energy_date >= date('now', '-3 years')
             """
-        ).fetchone()
-        return {
-            "consumption_kwh": _rounded_number(row["consumption_kwh"]),
-            "solar_generation_kwh": _rounded_number(
-                row["solar_generation_kwh"]
-            ),
-            "grid_import_kwh": _rounded_number(row["grid_import_kwh"]),
-        }
-
-    def _energy_totals_for_window_locked(
-        self, window_start_unix: int, window_end_unix: int
-    ) -> dict[str, float | None]:
-        row = self.connection.execute(
-            """
-            SELECT
-                SUM(consumption_kwh) AS consumption_kwh,
-                SUM(solar_generation_kwh) AS solar_generation_kwh,
-                SUM(grid_import_kwh) AS grid_import_kwh
-            FROM (
-                -- End-of-day counter per inverter: the value from the window's
-                -- latest reading, not MAX. A reading captured just before the
-                -- local-midnight reset holds yesterday's whole-day total, which
-                -- MAX would report as today's total; the counter only climbs
-                -- within a day, so the last reading is the day's true total.
-                SELECT
-                    inverter_id,
-                    MAX(captured_at_unix) AS last_captured_unix,
-                    consumption_meter_kwh AS consumption_kwh,
-                    solar_generation_meter_kwh AS solar_generation_kwh,
-                    grid_import_meter_kwh AS grid_import_kwh
-                FROM inverter_readings
-                WHERE captured_at_unix >= ? AND captured_at_unix < ?
-                GROUP BY inverter_id
-            )
-            """,
-            (window_start_unix, window_end_unix),
         ).fetchone()
         return {
             "consumption_kwh": _rounded_number(row["consumption_kwh"]),
@@ -1134,6 +1123,27 @@ def _energy_sample_time(
         except ValueError:
             continue
     return _snapshot_time(snapshot)
+
+
+def _sum_energy_rows(rows: list[Any]) -> dict[str, float | None]:
+    """Total a window as the sum of its emitted hourly bars.
+
+    Keeping the total in step with the bars means it stays correct even when the
+    counter's daily reset lands inside the window (an inverter clock set to a
+    different zone than the viewer): each bar already measures just its own hour,
+    so their sum is the real window energy, not a single end-of-window counter
+    reading that would miss everything before a mid-window reset.
+    """
+
+    def total(field: str) -> float | None:
+        values = [row[field] for row in rows if row[field] is not None]
+        return sum(values) if values else None
+
+    return {
+        "consumption_kwh": _rounded_number(total("consumption_kwh")),
+        "solar_generation_kwh": _rounded_number(total("solar_generation_kwh")),
+        "grid_import_kwh": _rounded_number(total("grid_import_kwh")),
+    }
 
 
 def _hourly_energy_expression(
