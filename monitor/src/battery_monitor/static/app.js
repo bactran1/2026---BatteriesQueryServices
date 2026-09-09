@@ -40,6 +40,7 @@ const state = {
 };
 
 const BATTERY_RESERVE_PERCENT = 20;
+const BATTERY_CHARGE_CEILING_PERCENT = 100;
 
 const translations = {
   en: {
@@ -139,6 +140,8 @@ const translations = {
     "energy.batteryUnavailablePhrase": "Battery telemetry unavailable",
     "energy.runtimeRemaining": "~{time} until the 20% battery reserve at this discharge rate",
     "energy.runtimeCallout": "~{time} to 20% reserve",
+    "energy.chargeFullRemaining": "~{time} until full at this charge rate",
+    "energy.chargeFullCallout": "~{time} to full",
     "energy.liveDescription": "{sources} · {load} · {battery}",
     "energy.importing": "{value} import",
     "energy.exporting": "{value} export",
@@ -439,6 +442,8 @@ const translations = {
     "energy.batteryUnavailablePhrase": "Chưa có dữ liệu trực tiếp từ pin",
     "energy.runtimeRemaining": "còn khoảng {time} đến mức dự trữ pin 20% ở mức xả hiện tại",
     "energy.runtimeCallout": "còn khoảng {time} đến mức 20%",
+    "energy.chargeFullRemaining": "còn khoảng {time} đến khi đầy ở mức sạc hiện tại",
+    "energy.chargeFullCallout": "còn khoảng {time} đến khi đầy",
     "energy.liveDescription": "{sources} · {load} · {battery}",
     "energy.importing": "nhập {value}",
     "energy.exporting": "xuất {value}",
@@ -1023,7 +1028,7 @@ function renderEnergyFlow(flow) {
   const current = battery.current;
   const power = battery.power;
   const soc = battery.soc;
-  const runtime = formatBatteryRuntime(battery.runtimeHours);
+  const batteryEstimate = batteryTimeEstimate(mode, battery);
   const batteryCount = battery.count;
   const packTelemetry = state.batteries.slice(0, 3).map((battery) => {
     const reading = battery.last_reading || {};
@@ -1106,6 +1111,8 @@ function renderEnergyFlow(flow) {
   section.dataset.backupActive = String(inverter.available && (inverter.backupLoadPower ?? 0) > 25);
   section.dataset.batteryPower = String(power ?? 0);
   section.dataset.batteryRuntimeHours = String(battery.runtimeHours ?? 0);
+  section.dataset.batteryChargeToFullHours = String(battery.chargeToFullHours ?? 0);
+  section.dataset.batteryDepthOfDischarge = String(battery.depthOfDischarge ?? 0);
   section.dataset.gridActive = String(inverter.available && Math.abs(inverter.gridPower ?? 0) > 25);
   section.dataset.gridDirection = (inverter.gridPower ?? 0) < 0 ? "export" : "import";
   section.dataset.solarActive = String(inverter.available && (inverter.solarPower ?? 0) > 25);
@@ -1115,12 +1122,9 @@ function renderEnergyFlow(flow) {
   );
   $("energyFlowTitle").textContent = t("energy.title");
   $("energyFlowState").textContent = t(titleKey);
-  const runtimeText = runtime
-    ? t("energy.runtimeRemaining", { time: runtime })
-    : null;
   $("energyFlowDescription").textContent = [
     t(descriptionKey, descriptionValues),
-    runtimeText,
+    batteryEstimate.description,
   ].filter(Boolean).join(" · ");
   $("energyGridValue").textContent = inverter.available
     ? formatGridPower(inverter.gridPower)
@@ -1156,10 +1160,8 @@ function renderEnergyFlow(flow) {
         .filter(Boolean)
         .join(" · ");
   const energyRuntime = $("energyBatteryRuntime");
-  energyRuntime.hidden = !runtimeText;
-  energyRuntime.textContent = runtime
-    ? t("energy.runtimeCallout", { time: runtime })
-    : "";
+  energyRuntime.hidden = !batteryEstimate.callout;
+  energyRuntime.textContent = batteryEstimate.callout ?? "";
 
   window.dispatchEvent(new CustomEvent("battery-energy-flow", {
     detail: {
@@ -1369,9 +1371,25 @@ function rackBatteryTelemetry(batteries = state.batteries) {
   const usableEnergyWh = usableEnergyValues.length === readings.length
     ? usableEnergyValues.reduce((sum, value) => sum + value, 0)
     : null;
+  const chargeDeficitValues = readings
+    .map((reading) => chargeDeficitEnergyWh(reading))
+    .filter((value) => value !== null);
+  const chargeDeficitWh = chargeDeficitValues.length === readings.length
+    ? chargeDeficitValues.reduce((sum, value) => sum + value, 0)
+    : null;
+  const dodValues = readings
+    .map((reading) => depthOfDischargePercent(reading))
+    .filter((value) => value !== null);
+  const depthOfDischarge = dodValues.length
+    ? dodValues.reduce((sum, value) => sum + value, 0) / dodValues.length
+    : null;
   const power = total("power_w");
   const runtimeHours = power !== null && power < -25 && usableEnergyWh !== null
     ? usableEnergyWh / Math.abs(power)
+    : null;
+  // Charging counterpart: energy still owed to the pack ÷ the current charge rate.
+  const chargeToFullHours = power !== null && power > 25 && chargeDeficitWh !== null && chargeDeficitWh > 0
+    ? chargeDeficitWh / power
     : null;
 
   return {
@@ -1384,7 +1402,27 @@ function rackBatteryTelemetry(batteries = state.batteries) {
     temperature: average("mosfet_temperature_c"),
     usableEnergyWh,
     runtimeHours,
+    chargeDeficitWh,
+    chargeToFullHours,
+    depthOfDischarge,
   };
+}
+
+// The BMS reports the pack's present full-charge capacity; fall back to the rated
+// capacity, then to reconstructing it from remaining capacity and SOC.
+function resolveFullCapacityAh(reading) {
+  let fullCapacity = finiteNumber(reading.full_capacity_ah);
+  if (fullCapacity === null || fullCapacity <= 0) {
+    fullCapacity = finiteNumber(reading.rated_capacity_ah);
+  }
+  if (fullCapacity === null || fullCapacity <= 0) {
+    const remainingCapacity = finiteNumber(reading.remaining_capacity_ah);
+    const soc = finiteNumber(reading.soc_percent);
+    if (remainingCapacity !== null && soc !== null && soc > 0) {
+      fullCapacity = remainingCapacity / (soc / 100);
+    }
+  }
+  return fullCapacity !== null && fullCapacity > 0 ? fullCapacity : null;
 }
 
 function usableBatteryEnergyWh(reading, reservePercent = BATTERY_RESERVE_PERCENT) {
@@ -1394,18 +1432,38 @@ function usableBatteryEnergyWh(reading, reservePercent = BATTERY_RESERVE_PERCENT
   if (remainingCapacity === null || voltage === null) return null;
   if (soc !== null && soc <= reservePercent) return 0;
 
-  let fullCapacity = finiteNumber(reading.full_capacity_ah);
-  if (fullCapacity === null || fullCapacity <= 0) {
-    fullCapacity = finiteNumber(reading.rated_capacity_ah);
-  }
-  if ((fullCapacity === null || fullCapacity <= 0) && soc !== null && soc > 0) {
-    fullCapacity = remainingCapacity / (soc / 100);
-  }
-  if (fullCapacity === null || fullCapacity <= 0) return null;
+  const fullCapacity = resolveFullCapacityAh(reading);
+  if (fullCapacity === null) return null;
 
   const reserveCapacity = (fullCapacity * reservePercent) / 100;
   const usableCapacityAh = Math.max(0, remainingCapacity - reserveCapacity);
   return usableCapacityAh * voltage;
+}
+
+// Energy still needed to reach a full charge, in Wh — the depth of discharge
+// expressed as work: (full-charge capacity − remaining capacity) × pack voltage.
+function chargeDeficitEnergyWh(reading, ceilingPercent = BATTERY_CHARGE_CEILING_PERCENT) {
+  const remainingCapacity = finiteNumber(reading.remaining_capacity_ah);
+  const voltage = finiteNumber(reading.voltage_v);
+  if (remainingCapacity === null || voltage === null) return null;
+
+  const fullCapacity = resolveFullCapacityAh(reading);
+  if (fullCapacity === null) return null;
+
+  const ceilingCapacity = (fullCapacity * ceilingPercent) / 100;
+  const deficitCapacityAh = Math.max(0, ceilingCapacity - remainingCapacity);
+  return deficitCapacityAh * voltage;
+}
+
+// Depth of discharge for one pack as a percentage: how far below full it sits.
+function depthOfDischargePercent(reading) {
+  const remainingCapacity = finiteNumber(reading.remaining_capacity_ah);
+  const fullCapacity = resolveFullCapacityAh(reading);
+  if (remainingCapacity === null || fullCapacity === null) {
+    const soc = finiteNumber(reading.soc_percent);
+    return soc === null ? null : clamp(100 - soc, 0, 100);
+  }
+  return clamp((1 - remainingCapacity / fullCapacity) * 100, 0, 100);
 }
 
 function batteryPowerMode(power, fallback = "idle") {
@@ -1465,6 +1523,30 @@ function formatBatteryRuntime(value) {
     days: formatNumber(Math.floor(wholeHours / 24)),
     hours: formatNumber(wholeHours % 24),
   });
+}
+
+// Battery time estimate for the live energy view: time left to the reserve when
+// discharging, or time to a full charge when charging. Both derive from the pack's
+// depth of discharge (remaining vs. full capacity) and the present power.
+function batteryTimeEstimate(mode, battery) {
+  if (mode === "discharging") {
+    const time = formatBatteryRuntime(battery.runtimeHours);
+    if (time) {
+      return {
+        description: t("energy.runtimeRemaining", { time }),
+        callout: t("energy.runtimeCallout", { time }),
+      };
+    }
+  } else if (mode === "charging") {
+    const time = formatBatteryRuntime(battery.chargeToFullHours);
+    if (time) {
+      return {
+        description: t("energy.chargeFullRemaining", { time }),
+        callout: t("energy.chargeFullCallout", { time }),
+      };
+    }
+  }
+  return { description: null, callout: null };
 }
 
 function formatEnergy(value) {

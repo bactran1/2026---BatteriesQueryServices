@@ -151,7 +151,13 @@ The Pi collector stores one sequenced replay snapshot every 60 seconds for 24 ho
 
 ## Raspberry Pi 4B deployment
 
-A Raspberry Pi 4B with 8 GB RAM is more than enough for the collector. Use Raspberry Pi OS Lite 64-bit if possible, install Docker Engine with the Compose plugin, and plug the battery USB-to-RS485 adapter into the Pi. The monitor/dashboard does not run on the Pi.
+A Raspberry Pi 4B with 8 GB RAM is more than enough for the collector. Use Raspberry Pi OS Lite 64-bit if possible, install Docker Engine with the Compose plugin, and plug the battery USB-to-RS485 adapter into the Pi. The monitor server does not run on the Pi.
+
+For a physical touchscreen dashboard, the Pi can also display the existing monitor
+in a dedicated Chromium kiosk session. Run `sudo bash kiosk/install-kiosk.sh --url http://YOUR-MONITOR-HOST:8080`
+on the Pi. This adds the graphical session and boot autologin without moving the
+monitor database or changing the collector. See [touchscreen kiosk setup](kiosk/README.md)
+for immediate activation, recovery behavior, and disabling the kiosk.
 
 On the Pi, identify the battery adapter:
 
