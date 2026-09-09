@@ -315,6 +315,14 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("until the 20% cutoff", javascript)
         self.assertIn("function formatBatteryRuntime", javascript)
         self.assertIn('"energy.runtimeRemaining"', javascript)
+        # Charging-side counterpart, derived from the pack's depth of discharge.
+        self.assertIn("const BATTERY_CHARGE_CEILING_PERCENT = 100", javascript)
+        self.assertIn("function chargeDeficitEnergyWh", javascript)
+        self.assertIn("function depthOfDischargePercent", javascript)
+        self.assertIn("function batteryTimeEstimate", javascript)
+        self.assertIn("chargeDeficitWh / power", javascript)
+        self.assertIn('"energy.chargeFullRemaining"', javascript)
+        self.assertIn("until full at this charge rate", javascript)
         self.assertIn(".energy-flow__runtime", css)
         self.assertIn(".inverter-runtime", css)
 
