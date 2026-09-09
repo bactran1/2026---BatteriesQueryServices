@@ -117,6 +117,27 @@ class AdminSettingsTests(_AdminTestCase):
         store.set_metadata("admin_settings", json.dumps({"energy_glow_strength": 99}))
         self.assertEqual(admin.glow_strength(), 1.5)
 
+    def test_battery_reserve_override_and_validation(self) -> None:
+        base = load_settings()
+        store = self.make_store()
+        admin = AdminSettings(store)
+        # Defaults to the env-configured discharge floor.
+        self.assertEqual(admin.effective_battery_reserve(base), base.battery_reserve_percent)
+
+        # A DoD-100% inverter is represented by a 0% reserve.
+        admin.update({"battery_reserve_percent": 0}, base)
+        self.assertEqual(admin.effective_battery_reserve(base), 0)
+        self.assertEqual(admin.public_config(base)["battery_reserve_percent"], 0)
+        self.assertEqual(admin.effective_settings(base).battery_reserve_percent, 0)
+
+        # Out-of-range values are rejected at write time...
+        for bad in (-1, 91, 100):
+            with self.assertRaises(ValueError):
+                admin.update({"battery_reserve_percent": bad}, base)
+        # ...but the getter clamps a corrupt stored value defensively.
+        store.set_metadata("admin_settings", json.dumps({"battery_reserve_percent": 999}))
+        self.assertEqual(admin.effective_battery_reserve(base), 90)
+
     def test_session_minutes_override_and_validation(self) -> None:
         from battery_monitor.admin import DEFAULT_SESSION_MINUTES
 

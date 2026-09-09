@@ -128,6 +128,7 @@ Environment overrides:
 - `BQM_DATABASE_PATH`
 - `BQM_LOG_INTERVAL_SECONDS`
 - `BQM_RETENTION_DAYS`
+- `BQM_BATTERY_RESERVE_PERCENT`, the SOC floor (0–90, default 20) the live runtime estimate counts down to; set it to match the inverter's depth-of-discharge setting (DoD 100% → `0`)
 - `BQM_HOST`
 - `BQM_PORT`
 - `BQM_LOG_LEVEL`

@@ -46,6 +46,8 @@ DEFAULT_SESSION_MINUTES = 30
 MIN_SESSION_MINUTES = 1
 MAX_SESSION_MINUTES = 24 * 60
 
+MAX_BATTERY_RESERVE_PERCENT = 90
+
 
 # ---------------------------------------------------------------------------
 # Password hashing
@@ -202,6 +204,12 @@ class AdminSettings:
             return base.retention_days
         return min(value, 3650)
 
+    def effective_battery_reserve(self, base: Settings) -> int:
+        value = self._raw().get("battery_reserve_percent")
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return base.battery_reserve_percent
+        return min(value, MAX_BATTERY_RESERVE_PERCENT)
+
     def session_minutes(self) -> int:
         value = self._raw().get("session_minutes")
         if not isinstance(value, int) or isinstance(value, bool):
@@ -247,6 +255,7 @@ class AdminSettings:
             rack_location=str(overrides.get("rack_location") or base.rack_location),
             collector_name=str(overrides.get("collector_name") or base.collector_name),
             retention_days=self.effective_retention(base),
+            battery_reserve_percent=self.effective_battery_reserve(base),
             battery_profiles=self._effective_profiles(base),
         )
 
@@ -258,6 +267,7 @@ class AdminSettings:
             "rack_location": effective.rack_location,
             "collector_name": effective.collector_name,
             "retention_days": effective.retention_days,
+            "battery_reserve_percent": effective.battery_reserve_percent,
             "energy_glow_strength": self.glow_strength(),
             "session_minutes": self.session_minutes(),
             "batteries": [
@@ -289,6 +299,14 @@ class AdminSettings:
             if days < 1 or days > 3650:
                 raise ValueError("retention_days must be between 1 and 3650")
             overrides["retention_days"] = days
+
+        if "battery_reserve_percent" in patch:
+            reserve = _coerce_int(patch["battery_reserve_percent"], -1)
+            if reserve < 0 or reserve > MAX_BATTERY_RESERVE_PERCENT:
+                raise ValueError(
+                    f"battery_reserve_percent must be between 0 and {MAX_BATTERY_RESERVE_PERCENT}"
+                )
+            overrides["battery_reserve_percent"] = reserve
 
         if "session_minutes" in patch:
             minutes = _coerce_int(patch["session_minutes"], 0)

@@ -140,7 +140,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 batteries,
                 collector_online=collector_status in {"online", "degraded"},
             ),
-            "ui": {"energy_glow_strength": admin_settings.glow_strength()},
+            "ui": {
+                "energy_glow_strength": admin_settings.glow_strength(),
+                "battery_reserve_percent": effective.battery_reserve_percent,
+            },
             "snapshot": snapshot,
         }
 
