@@ -29,6 +29,7 @@ class Settings:
     database_path: Path
     log_interval_seconds: float
     retention_days: int
+    battery_reserve_percent: int
     log_level: str
     build_commit: str
     rack_name: str
@@ -76,6 +77,11 @@ def load_settings() -> Settings:
             1.0, float(os.getenv("BQM_LOG_INTERVAL_SECONDS", "60"))
         ),
         retention_days=max(1, int(os.getenv("BQM_RETENTION_DAYS", "1095"))),
+        # Discharge floor (SOC %) the runtime estimate counts down to. Match the
+        # inverter's configured depth of discharge: e.g. DoD 100% -> reserve 0.
+        battery_reserve_percent=min(
+            90, max(0, int(os.getenv("BQM_BATTERY_RESERVE_PERCENT", "20")))
+        ),
         log_level=os.getenv("BQM_LOG_LEVEL", "INFO"),
         build_commit=os.getenv("BQM_BUILD_COMMIT", "unknown"),
         rack_name=os.getenv("BQM_RACK_NAME", "Eco-worthy Rack"),

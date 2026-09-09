@@ -20,6 +20,7 @@ const state = {
   rack: {},
   collectorState: "offline",
   collectorOnline: false,
+  batteryReservePercent: null,
   lastLiveReceivedAt: 0,
   lastHistoryRefreshAt: 0,
   lastEnergyRefreshAt: 0,
@@ -138,8 +139,8 @@ const translations = {
     "energy.batteryDischargingPhrase": "{value} from battery",
     "energy.batteryIdlePhrase": "Battery idle",
     "energy.batteryUnavailablePhrase": "Battery telemetry unavailable",
-    "energy.runtimeRemaining": "~{time} until the 20% battery reserve at this discharge rate",
-    "energy.runtimeCallout": "~{time} to 20% reserve",
+    "energy.runtimeRemaining": "~{time} to {reserve}% charge at this discharge rate",
+    "energy.runtimeCallout": "~{time} to {reserve}%",
     "energy.chargeFullRemaining": "~{time} until full at this charge rate",
     "energy.chargeFullCallout": "~{time} to full",
     "energy.liveDescription": "{sources} · {load} · {battery}",
@@ -167,7 +168,7 @@ const translations = {
     "inverter.battery": "Battery rack",
     "inverter.batteryElectrical": "Direct RS485 · {voltage} · {current} · {soc} · {temperature}",
     "inverter.batteryWaiting": "Waiting for direct battery telemetry",
-    "inverter.runtimeRemaining": "Estimated support · {time} until the 20% cutoff",
+    "inverter.runtimeRemaining": "Estimated support · {time} to {reserve}% charge",
     "inverter.thermal": "Inverter thermal",
     "inverter.internalTemperature": "{value} internal",
     "inverter.thermalDetail": "Inverter {inverter} · DC/DC {dcdc}",
@@ -440,8 +441,8 @@ const translations = {
     "energy.batteryDischargingPhrase": "{value} từ pin",
     "energy.batteryIdlePhrase": "Pin đang nghỉ",
     "energy.batteryUnavailablePhrase": "Chưa có dữ liệu trực tiếp từ pin",
-    "energy.runtimeRemaining": "còn khoảng {time} đến mức dự trữ pin 20% ở mức xả hiện tại",
-    "energy.runtimeCallout": "còn khoảng {time} đến mức 20%",
+    "energy.runtimeRemaining": "còn khoảng {time} đến mức {reserve}% ở tốc độ xả hiện tại",
+    "energy.runtimeCallout": "còn khoảng {time} đến mức {reserve}%",
     "energy.chargeFullRemaining": "còn khoảng {time} đến khi đầy ở mức sạc hiện tại",
     "energy.chargeFullCallout": "còn khoảng {time} đến khi đầy",
     "energy.liveDescription": "{sources} · {load} · {battery}",
@@ -469,7 +470,7 @@ const translations = {
     "inverter.battery": "Tủ pin",
     "inverter.batteryElectrical": "RS485 trực tiếp · {voltage} · {current} · {soc} · {temperature}",
     "inverter.batteryWaiting": "Đang chờ dữ liệu trực tiếp từ pin",
-    "inverter.runtimeRemaining": "Thời gian cấp điện ước tính · {time} đến ngưỡng cắt 20%",
+    "inverter.runtimeRemaining": "Thời gian cấp điện ước tính · {time} đến mức {reserve}%",
     "inverter.thermal": "Nhiệt độ biến tần",
     "inverter.internalTemperature": "bên trong {value}",
     "inverter.thermalDetail": "Biến tần {inverter} · DC/DC {dcdc}",
@@ -750,6 +751,7 @@ async function refreshLive() {
   state.summary = payload.summary || {};
   state.collectorState = payload.collector_status || "offline";
   state.collectorOnline = ["online", "degraded"].includes(state.collectorState);
+  state.batteryReservePercent = finiteNumber(payload.ui?.battery_reserve_percent);
   state.lastLiveReceivedAt = Date.now();
   state.resourceErrors.live = null;
   renderStatus(payload);
@@ -1270,7 +1272,7 @@ function renderInverterTelemetry() {
   const inverterRuntime = $("inverterBatteryRuntime");
   inverterRuntime.hidden = !runtime;
   inverterRuntime.textContent = runtime
-    ? t("inverter.runtimeRemaining", { time: runtime })
+    ? t("inverter.runtimeRemaining", { time: runtime, reserve: battery.reservePercent ?? BATTERY_RESERVE_PERCENT })
     : "";
   $("inverterThermalValue").textContent = hasReading
     ? t("inverter.internalTemperature", {
@@ -1365,8 +1367,9 @@ function rackBatteryTelemetry(batteries = state.batteries) {
       ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length
       : null;
   };
+  const reservePercent = batteryReservePercent();
   const usableEnergyValues = readings
-    .map((reading) => usableBatteryEnergyWh(reading))
+    .map((reading) => usableBatteryEnergyWh(reading, reservePercent))
     .filter((value) => value !== null);
   const usableEnergyWh = usableEnergyValues.length === readings.length
     ? usableEnergyValues.reduce((sum, value) => sum + value, 0)
@@ -1405,7 +1408,15 @@ function rackBatteryTelemetry(batteries = state.batteries) {
     chargeDeficitWh,
     chargeToFullHours,
     depthOfDischarge,
+    reservePercent,
   };
+}
+
+// Discharge floor (SOC %) the runtime estimate counts down to, configured on the
+// monitor to match the inverter's depth of discharge (DoD 100% -> reserve 0).
+function batteryReservePercent() {
+  const value = finiteNumber(state.batteryReservePercent);
+  return value === null ? BATTERY_RESERVE_PERCENT : clamp(value, 0, 90);
 }
 
 // The BMS reports the pack's present full-charge capacity; fall back to the rated
@@ -1531,10 +1542,11 @@ function formatBatteryRuntime(value) {
 function batteryTimeEstimate(mode, battery) {
   if (mode === "discharging") {
     const time = formatBatteryRuntime(battery.runtimeHours);
+    const reserve = battery.reservePercent ?? BATTERY_RESERVE_PERCENT;
     if (time) {
       return {
-        description: t("energy.runtimeRemaining", { time }),
-        callout: t("energy.runtimeCallout", { time }),
+        description: t("energy.runtimeRemaining", { time, reserve }),
+        callout: t("energy.runtimeCallout", { time, reserve }),
       };
     }
   } else if (mode === "charging") {

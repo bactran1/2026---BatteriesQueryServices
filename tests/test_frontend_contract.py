@@ -311,8 +311,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function usableBatteryEnergyWh", javascript)
         self.assertIn("remainingCapacity - reserveCapacity", javascript)
         self.assertIn("usableEnergyWh / Math.abs(power)", javascript)
-        self.assertIn("until the 20% battery reserve", javascript)
-        self.assertIn("until the 20% cutoff", javascript)
+        # Discharge floor is configurable to match the inverter's depth of discharge.
+        self.assertIn("function batteryReservePercent", javascript)
+        self.assertIn("payload.ui?.battery_reserve_percent", javascript)
+        self.assertIn("to {reserve}% charge at this discharge rate", javascript)
         self.assertIn("function formatBatteryRuntime", javascript)
         self.assertIn('"energy.runtimeRemaining"', javascript)
         # Charging-side counterpart, derived from the pack's depth of discharge.
