@@ -310,6 +310,51 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(result["totals"]["grid_import_kwh"], 0.9)
             store.close()
 
+    def test_date_totals_survive_a_reset_that_falls_inside_the_window(self) -> None:
+        # The viewer's timezone need not match the inverter's clock, so the daily
+        # counter can reset partway through the requested day. The window total must
+        # still be the full day's energy (the sum of its bars), not just the slice
+        # of the counter after the mid-window reset.
+        from zoneinfo import ZoneInfo
+
+        vn = ZoneInfo("Asia/Ho_Chi_Minh")  # UTC+7; its midnight != 00:00 UTC
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            seq = 0
+            # Two consecutive VN days; the counter resets at each VN local midnight
+            # and climbs linearly to 24 / 15 / 8 kWh over the day.
+            for day_offset in (0, 1):
+                day = datetime(2026, 9, 8, tzinfo=vn) + timedelta(days=day_offset)
+                for i in range(24 * 6):  # every 10 minutes
+                    frac = (i + 1) / (24 * 6)
+                    snapshot = _energy_snapshot(
+                        (day + timedelta(minutes=10 * i)).isoformat(),
+                        consumption_kwh=round(24.0 * frac, 3),
+                        solar_generation_kwh=round(15.0 * frac, 3),
+                        grid_import_kwh=round(8.0 * frac, 3),
+                    )
+                    seq += 1
+                    snapshot["service"].update(
+                        {"buffer_stream_id": "stream-a", "sequence": seq}
+                    )
+                    store.insert_snapshot(snapshot)
+
+            # Query the VN day with a *misaligned* timezone so the reset lands mid
+            # -window; the total must still be the full ~24 kWh, not the ~7 kWh tail.
+            result = store.energy_history("date", "2026-09-08", "UTC")
+            totals = result["totals"]
+            self.assertGreater(totals["consumption_kwh"], 22.0)
+            self.assertGreater(totals["solar_generation_kwh"], 13.0)
+            self.assertGreater(totals["grid_import_kwh"], 7.0)
+            # And the totals equal the sum of the bars the chart shows.
+            for field in ("consumption_kwh", "solar_generation_kwh", "grid_import_kwh"):
+                bar_sum = round(
+                    sum(point[field] or 0 for point in result["points"]), 2
+                )
+                self.assertEqual(round(totals[field], 2), bar_sum)
+            store.close()
+
     def test_power_history_works_from_direct_batteries_without_an_inverter(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")
