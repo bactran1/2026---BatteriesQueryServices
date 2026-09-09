@@ -1,0 +1,3 @@
+kiosk/*.sh text eol=lf
+kiosk/*.py text eol=lf
+kiosk/*.xml text eol=lf
