@@ -1285,11 +1285,11 @@ button {
 }
 
 .energy-total--consumption {
-  --series-color: #ff7a00;
+  --series-color: #a855f7;
 }
 
 .energy-total--solar {
-  --series-color: #30b95f;
+  --series-color: #f5a623;
 }
 
 .energy-total--grid {
@@ -1404,11 +1404,11 @@ button {
 }
 
 .energy-key--consumption {
-  --series-color: #ff7a00;
+  --series-color: #a855f7;
 }
 
 .energy-key--solar {
-  --series-color: #30b95f;
+  --series-color: #f5a623;
 }
 
 .energy-key--grid {

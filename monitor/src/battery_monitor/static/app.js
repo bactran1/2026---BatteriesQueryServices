@@ -658,8 +658,8 @@ const powerHistorySeries = [
   { field: "load_power_w", labelKey: "history.load", color: "#e04b85", dash: [6, 4] },
 ];
 const energySeries = [
-  { field: "consumption_kwh", labelKey: "energyHistory.consumption", color: "#ff7a00" },
-  { field: "solar_generation_kwh", labelKey: "energyHistory.solar", color: "#30b95f" },
+  { field: "consumption_kwh", labelKey: "energyHistory.consumption", color: "#a855f7" },
+  { field: "solar_generation_kwh", labelKey: "energyHistory.solar", color: "#f5a623" },
   { field: "grid_import_kwh", labelKey: "energyHistory.grid", color: "#0a84ff" },
 ];
 
