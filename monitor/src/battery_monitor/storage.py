@@ -563,10 +563,20 @@ class RetentionStore:
                     SELECT
                         {bucket_expression} AS bucket_unix,
                         inverter_id,
-                        MAX(consumption_meter_kwh) AS consumption_meter_kwh,
-                        MAX(solar_generation_meter_kwh)
+                        -- Take each hour's counters from its *latest* reading, not
+                        -- the hour's MAX. The daily counters reset at the inverter's
+                        -- local midnight, so a reading captured just before the reset
+                        -- still holds yesterday's whole-day total; MAX would let that
+                        -- stale peak win the 00:00 bucket and report it as today's
+                        -- first hour. The counter only climbs within a day, so the
+                        -- last reading equals the MAX except across the reset, which
+                        -- is exactly the case we need to shed. SQLite fills the bare
+                        -- columns from the row holding MAX(captured_at_unix).
+                        MAX(captured_at_unix) AS last_captured_unix,
+                        consumption_meter_kwh AS consumption_meter_kwh,
+                        solar_generation_meter_kwh
                             AS solar_generation_meter_kwh,
-                        MAX(grid_import_meter_kwh) AS grid_import_meter_kwh
+                        grid_import_meter_kwh AS grid_import_meter_kwh
                     FROM inverter_readings
                     WHERE {time_filter}
                     GROUP BY bucket_unix, inverter_id
@@ -664,11 +674,17 @@ class RetentionStore:
                 SUM(solar_generation_kwh) AS solar_generation_kwh,
                 SUM(grid_import_kwh) AS grid_import_kwh
             FROM (
+                -- End-of-day counter per inverter: the value from the window's
+                -- latest reading, not MAX. A reading captured just before the
+                -- local-midnight reset holds yesterday's whole-day total, which
+                -- MAX would report as today's total; the counter only climbs
+                -- within a day, so the last reading is the day's true total.
                 SELECT
                     inverter_id,
-                    MAX(consumption_meter_kwh) AS consumption_kwh,
-                    MAX(solar_generation_meter_kwh) AS solar_generation_kwh,
-                    MAX(grid_import_meter_kwh) AS grid_import_kwh
+                    MAX(captured_at_unix) AS last_captured_unix,
+                    consumption_meter_kwh AS consumption_kwh,
+                    solar_generation_meter_kwh AS solar_generation_kwh,
+                    grid_import_meter_kwh AS grid_import_kwh
                 FROM inverter_readings
                 WHERE captured_at_unix >= ? AND captured_at_unix < ?
                 GROUP BY inverter_id

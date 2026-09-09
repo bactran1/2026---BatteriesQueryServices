@@ -260,6 +260,56 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(store.stats(retention_days=1095)["inverter_point_count"], 3)
             store.close()
 
+    def test_date_view_sheds_pre_reset_reading_at_local_midnight(self) -> None:
+        # The inverter's *_energy_today counters reset at local midnight, but a
+        # reading captured a moment before the reset still holds yesterday's whole
+        # -day total. It must not be reported as today's 00:00 bar (nor its total).
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            day = datetime.now(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            samples = [
+                # 00:00:05 — stale carry-over from yesterday, just before the reset.
+                (day + timedelta(seconds=5), 25.0, 18.0, 9.0),
+                (day + timedelta(minutes=20), 0.4, 0.1, 0.3),
+                (day + timedelta(hours=1, minutes=20), 1.2, 0.6, 0.7),
+                (day + timedelta(hours=2, minutes=20), 2.0, 1.5, 0.9),
+            ]
+            for sequence, (timestamp, consumption, solar, grid) in enumerate(
+                samples, start=1
+            ):
+                snapshot = _energy_snapshot(
+                    timestamp.isoformat(),
+                    consumption_kwh=consumption,
+                    solar_generation_kwh=solar,
+                    grid_import_kwh=grid,
+                )
+                snapshot["service"].update(
+                    {"buffer_stream_id": "stream-a", "sequence": sequence}
+                )
+                store.insert_snapshot(snapshot)
+
+            result = store.energy_history("date", day.date().isoformat(), "UTC")
+            points = result["points"]
+            self.assertEqual(len(points), 3)
+            # The 00:00 bar reflects only the hour's own accumulation (0.4), not the
+            # 25.0 kWh the counter was still showing from yesterday.
+            self.assertEqual(points[0]["unix"], result["window_start_unix"])
+            self.assertEqual(points[0]["consumption_kwh"], 0.4)
+            self.assertEqual(points[0]["solar_generation_kwh"], 0.1)
+            self.assertEqual(points[0]["grid_import_kwh"], 0.3)
+            self.assertEqual(points[1]["consumption_kwh"], 0.8)
+            self.assertEqual(points[1]["solar_generation_kwh"], 0.5)
+            self.assertEqual(points[2]["consumption_kwh"], 0.8)
+            self.assertEqual(points[2]["grid_import_kwh"], 0.2)
+            # The day total is the end-of-day counter, not the stale peak.
+            self.assertEqual(result["totals"]["consumption_kwh"], 2.0)
+            self.assertEqual(result["totals"]["solar_generation_kwh"], 1.5)
+            self.assertEqual(result["totals"]["grid_import_kwh"], 0.9)
+            store.close()
+
     def test_power_history_works_from_direct_batteries_without_an_inverter(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")
