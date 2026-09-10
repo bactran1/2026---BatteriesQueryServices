@@ -142,6 +142,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "ui": {
                 "energy_glow_strength": admin_settings.glow_strength(),
+                "energy_line_glow": admin_settings.line_glow(),
                 "battery_reserve_percent": effective.battery_reserve_percent,
             },
             "snapshot": snapshot,

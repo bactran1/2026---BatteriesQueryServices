@@ -132,11 +132,23 @@ function startEnergyFlowScene() {
   let bloomPass = null;
   let leaderFrame = null;
   let glowStrength = resolveGlowStrength(section.dataset.glowStrength);
+  let lineGlow = resolveLineGlow(section.dataset.lineGlow);
 
   function resolveGlowStrength(raw) {
     if (raw === undefined || raw === null || raw === "") return BLOOM.strength;
     const value = Number(raw);
     return Number.isFinite(value) ? clamp(value, 0, 1.5) : BLOOM.strength;
+  }
+
+  function resolveLineGlow(raw) {
+    if (raw === undefined || raw === null || raw === "") return true;
+    return raw !== "false" && raw !== "0";
+  }
+
+  // Restyle the conduit emissive/glow without a full telemetry pass; routes keep
+  // their last active state, so this can run on its own from the admin toggle.
+  function applyLineGlow() {
+    network.routes.forEach((route) => styleRouteGlow(route, lineGlow));
   }
 
   function readSectionState(detail = {}) {
@@ -262,6 +274,7 @@ function startEnergyFlowScene() {
     canvas.dataset.acLinkSource = flowState.acLinkAvailable ? "home-minus-grid" : "unavailable";
     canvas.dataset.routeStyle = "straight-conduits";
     canvas.dataset.backupActive = String(network.backup.active);
+    applyLineGlow();
     if (disposed) return;
     renderOnce(performance.now());
     scheduleFrame();
@@ -608,6 +621,11 @@ function startEnergyFlowScene() {
     if (!Number.isFinite(next)) return;
     glowStrength = clamp(next, 0, 1.5);
     if (bloomPass) bloomPass.strength = glowStrength;
+    renderOnce(performance.now());
+  });
+  window.addEventListener("energy-line-glow-change", (event) => {
+    lineGlow = Boolean(event.detail);
+    applyLineGlow();
     renderOnce(performance.now());
   });
   document.addEventListener("visibilitychange", () => {
@@ -1070,14 +1088,18 @@ function configureRoute(route, mode, magnitude, active, direction, reporting, ac
   const color = route.active ? activeColor ?? FLOW_COLORS[route.mode] : FLOW_COLORS.stale;
   route.lineMaterial.color.setHex(color);
   route.lineMaterial.emissive.setHex(color);
-  // Active conduits sit above BLOOM.threshold so UnrealBloomPass halos them; the fake
-  // additive tube is trimmed to a hint that only matters on the no-bloom fallback path.
-  route.lineMaterial.emissiveIntensity = route.active ? 1.15 : 0.04;
   route.lineMaterial.opacity = route.active ? 0.82 : route.reporting ? 0.16 : 0.1;
   route.glowMaterial.color.setHex(color);
-  route.glowMaterial.opacity = route.active ? 0.035 : 0.01;
   route.particleMaterial.color.setHex(color);
   route.particleGlowMaterial.color.setHex(color);
+}
+
+// The conduit lines glow only softly so the travelling pulses carry the bloom. When
+// line glow is disabled the conduit emissive stays below BLOOM.threshold, so only the
+// pulses halo; the fake additive tube is a hint that only matters on the no-bloom path.
+function styleRouteGlow(route, lineGlow) {
+  route.lineMaterial.emissiveIntensity = route.active ? (lineGlow ? 0.7 : 0.12) : 0.04;
+  route.glowMaterial.opacity = lineGlow ? (route.active ? 0.02 : 0.01) : 0;
 }
 
 function createSignalMaterial(color) {

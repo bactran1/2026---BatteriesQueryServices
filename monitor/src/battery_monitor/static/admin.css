@@ -129,6 +129,18 @@
   accent-color: var(--accent, var(--orange));
 }
 
+.admin-field--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-field--check input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent, var(--orange));
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
