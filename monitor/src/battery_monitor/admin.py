@@ -42,6 +42,7 @@ _SETTINGS_KEY = "admin_settings"
 DEFAULT_GLOW_STRENGTH = 0.05
 MAX_GLOW_STRENGTH = 1.5
 DEFAULT_LINE_GLOW = False
+DEFAULT_ACTIVE_OPACITY = 0.82
 
 DEFAULT_SESSION_MINUTES = 30
 MIN_SESSION_MINUTES = 1
@@ -205,6 +206,12 @@ class AdminSettings:
             return DEFAULT_LINE_GLOW
         return value
 
+    def active_opacity(self) -> float:
+        value = self._raw().get("energy_active_opacity")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return DEFAULT_ACTIVE_OPACITY
+        return max(0.0, min(1.0, float(value)))
+
     def effective_retention(self, base: Settings) -> int:
         value = self._raw().get("retention_days")
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -277,6 +284,7 @@ class AdminSettings:
             "battery_reserve_percent": effective.battery_reserve_percent,
             "energy_glow_strength": self.glow_strength(),
             "energy_line_glow": self.line_glow(),
+            "energy_active_opacity": self.active_opacity(),
             "session_minutes": self.session_minutes(),
             "batteries": [
                 {
@@ -342,6 +350,15 @@ class AdminSettings:
                 overrides["energy_line_glow"] = value in (1, "true", "1")
             else:
                 raise ValueError("energy_line_glow must be a boolean")
+
+        if "energy_active_opacity" in patch:
+            try:
+                opacity = float(patch["energy_active_opacity"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("energy_active_opacity must be a number") from exc
+            if opacity < 0 or opacity > 1:
+                raise ValueError("energy_active_opacity must be between 0 and 1")
+            overrides["energy_active_opacity"] = round(opacity, 3)
 
         if "batteries" in patch:
             overrides["batteries"] = _validate_batteries(patch["batteries"])

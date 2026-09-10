@@ -140,6 +140,34 @@ class AdminSettingsTests(_AdminTestCase):
         store.set_metadata("admin_settings", json.dumps({"energy_line_glow": "yes"}))
         self.assertFalse(admin.line_glow())
 
+    def test_active_opacity_override_and_validation(self) -> None:
+        base = load_settings()
+        store = self.make_store()
+        admin = AdminSettings(store)
+        # Defaults to the standard active conduit opacity.
+        self.assertAlmostEqual(admin.active_opacity(), 0.82)
+        self.assertAlmostEqual(admin.public_config(base)["energy_active_opacity"], 0.82)
+
+        admin.update({"energy_active_opacity": 0.3}, base)
+        self.assertAlmostEqual(admin.active_opacity(), 0.3)
+        self.assertAlmostEqual(admin.public_config(base)["energy_active_opacity"], 0.3)
+
+        # Fully transparent (pulses only) is allowed.
+        admin.update({"energy_active_opacity": 0}, base)
+        self.assertAlmostEqual(admin.active_opacity(), 0.0)
+
+        # Out-of-range values are rejected at write time...
+        for bad in (-0.1, 1.5):
+            with self.assertRaises(ValueError):
+                admin.update({"energy_active_opacity": bad}, base)
+        # ...and a non-number is rejected too.
+        with self.assertRaises(ValueError):
+            admin.update({"energy_active_opacity": "opaque"}, base)
+
+        # active_opacity() clamps a corrupt stored value defensively.
+        store.set_metadata("admin_settings", json.dumps({"energy_active_opacity": 9}))
+        self.assertAlmostEqual(admin.active_opacity(), 1.0)
+
     def test_battery_reserve_override_and_validation(self) -> None:
         base = load_settings()
         store = self.make_store()

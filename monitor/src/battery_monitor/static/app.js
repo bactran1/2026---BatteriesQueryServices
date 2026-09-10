@@ -762,6 +762,7 @@ async function refreshLive() {
   renderStorage();
   applyEnergyGlow(payload.ui && payload.ui.energy_glow_strength);
   applyEnergyLineGlow(payload.ui && payload.ui.energy_line_glow);
+  applyEnergyActiveOpacity(payload.ui && payload.ui.energy_active_opacity);
 }
 
 function applyEnergyGlow(value) {
@@ -782,6 +783,16 @@ function applyEnergyLineGlow(value) {
   if (section.dataset.lineGlow === String(enabled)) return;
   section.dataset.lineGlow = String(enabled);
   window.dispatchEvent(new CustomEvent("energy-line-glow-change", { detail: enabled }));
+}
+
+function applyEnergyActiveOpacity(value) {
+  const section = document.getElementById("energyFlowSection");
+  if (!section) return;
+  const opacity = Number(value);
+  if (!Number.isFinite(opacity)) return;
+  if (section.dataset.activeOpacity === String(opacity)) return;
+  section.dataset.activeOpacity = String(opacity);
+  window.dispatchEvent(new CustomEvent("energy-active-opacity-change", { detail: opacity }));
 }
 
 async function refreshHistory() {
