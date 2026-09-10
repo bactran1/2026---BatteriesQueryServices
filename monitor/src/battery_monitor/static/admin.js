@@ -248,7 +248,7 @@ async function loadConfig() {
   const glow = Number(config.energy_glow_strength ?? 0.05);
   $("adminGlow").value = String(glow);
   $("adminGlowValue").textContent = glow.toFixed(2);
-  $("adminLineGlow").checked = config.energy_line_glow !== false;
+  $("adminLineGlow").checked = config.energy_line_glow === true;
   renderBatteryRows(config.batteries || []);
 }
 

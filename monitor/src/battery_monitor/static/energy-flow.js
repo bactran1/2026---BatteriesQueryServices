@@ -141,8 +141,9 @@ function startEnergyFlowScene() {
   }
 
   function resolveLineGlow(raw) {
-    if (raw === undefined || raw === null || raw === "") return true;
-    return raw !== "false" && raw !== "0";
+    // Default off: the tubing/conduits stay glowless until an operator opts in.
+    if (raw === undefined || raw === null || raw === "") return false;
+    return raw === "true" || raw === "1";
   }
 
   // Restyle the conduit emissive/glow without a full telemetry pass; routes keep
@@ -1094,11 +1095,11 @@ function configureRoute(route, mode, magnitude, active, direction, reporting, ac
   route.particleGlowMaterial.color.setHex(color);
 }
 
-// The conduit lines glow only softly so the travelling pulses carry the bloom. When
-// line glow is disabled the conduit emissive stays below BLOOM.threshold, so only the
-// pulses halo; the fake additive tube is a hint that only matters on the no-bloom path.
+// By default the conduit lines and their glow tubing carry no glow at all -- only the
+// travelling pulses halo. When line glow is switched on, active conduits emit softly
+// above BLOOM.threshold and the fake additive tube adds a hint on the no-bloom path.
 function styleRouteGlow(route, lineGlow) {
-  route.lineMaterial.emissiveIntensity = route.active ? (lineGlow ? 0.7 : 0.12) : 0.04;
+  route.lineMaterial.emissiveIntensity = route.active && lineGlow ? 0.7 : 0.04;
   route.glowMaterial.opacity = lineGlow ? (route.active ? 0.02 : 0.01) : 0;
 }
 
