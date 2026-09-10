@@ -248,6 +248,7 @@ async function loadConfig() {
   const glow = Number(config.energy_glow_strength ?? 0.05);
   $("adminGlow").value = String(glow);
   $("adminGlowValue").textContent = glow.toFixed(2);
+  $("adminLineGlow").checked = config.energy_line_glow !== false;
   renderBatteryRows(config.batteries || []);
 }
 
@@ -410,6 +411,7 @@ function bind() {
       session_minutes: Number(form.session_minutes.value),
       battery_reserve_percent: Number(form.battery_reserve_percent.value),
       energy_glow_strength: Number(form.energy_glow_strength.value),
+      energy_line_glow: form.energy_line_glow.checked,
       batteries: readBatteryRows(),
     };
     const submit = form.querySelector("button[type=submit]");

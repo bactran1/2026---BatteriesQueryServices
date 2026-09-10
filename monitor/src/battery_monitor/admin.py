@@ -41,6 +41,7 @@ _SETTINGS_KEY = "admin_settings"
 
 DEFAULT_GLOW_STRENGTH = 0.05
 MAX_GLOW_STRENGTH = 1.5
+DEFAULT_LINE_GLOW = True
 
 DEFAULT_SESSION_MINUTES = 30
 MIN_SESSION_MINUTES = 1
@@ -198,6 +199,12 @@ class AdminSettings:
             return DEFAULT_GLOW_STRENGTH
         return max(0.0, min(MAX_GLOW_STRENGTH, float(value)))
 
+    def line_glow(self) -> bool:
+        value = self._raw().get("energy_line_glow")
+        if not isinstance(value, bool):
+            return DEFAULT_LINE_GLOW
+        return value
+
     def effective_retention(self, base: Settings) -> int:
         value = self._raw().get("retention_days")
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -269,6 +276,7 @@ class AdminSettings:
             "retention_days": effective.retention_days,
             "battery_reserve_percent": effective.battery_reserve_percent,
             "energy_glow_strength": self.glow_strength(),
+            "energy_line_glow": self.line_glow(),
             "session_minutes": self.session_minutes(),
             "batteries": [
                 {
@@ -325,6 +333,15 @@ class AdminSettings:
             if glow < 0 or glow > MAX_GLOW_STRENGTH:
                 raise ValueError(f"energy_glow_strength must be between 0 and {MAX_GLOW_STRENGTH}")
             overrides["energy_glow_strength"] = round(glow, 3)
+
+        if "energy_line_glow" in patch:
+            value = patch["energy_line_glow"]
+            if isinstance(value, bool):
+                overrides["energy_line_glow"] = value
+            elif value in (0, 1, "true", "false", "0", "1"):
+                overrides["energy_line_glow"] = value in (1, "true", "1")
+            else:
+                raise ValueError("energy_line_glow must be a boolean")
 
         if "batteries" in patch:
             overrides["batteries"] = _validate_batteries(patch["batteries"])

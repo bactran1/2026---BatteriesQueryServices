@@ -761,6 +761,7 @@ async function refreshLive() {
   renderBatteryPacks();
   renderStorage();
   applyEnergyGlow(payload.ui && payload.ui.energy_glow_strength);
+  applyEnergyLineGlow(payload.ui && payload.ui.energy_line_glow);
 }
 
 function applyEnergyGlow(value) {
@@ -771,6 +772,16 @@ function applyEnergyGlow(value) {
   if (section.dataset.glowStrength === String(strength)) return;
   section.dataset.glowStrength = String(strength);
   window.dispatchEvent(new CustomEvent("energy-glow-change", { detail: strength }));
+}
+
+function applyEnergyLineGlow(value) {
+  const section = document.getElementById("energyFlowSection");
+  if (!section) return;
+  // Default to enabled when the payload predates the setting.
+  const enabled = value === undefined || value === null ? true : Boolean(value);
+  if (section.dataset.lineGlow === String(enabled)) return;
+  section.dataset.lineGlow = String(enabled);
+  window.dispatchEvent(new CustomEvent("energy-line-glow-change", { detail: enabled }));
 }
 
 async function refreshHistory() {

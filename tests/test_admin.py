@@ -117,6 +117,29 @@ class AdminSettingsTests(_AdminTestCase):
         store.set_metadata("admin_settings", json.dumps({"energy_glow_strength": 99}))
         self.assertEqual(admin.glow_strength(), 1.5)
 
+    def test_line_glow_override_and_validation(self) -> None:
+        base = load_settings()
+        store = self.make_store()
+        admin = AdminSettings(store)
+        # Enabled by default and surfaced in the public config.
+        self.assertTrue(admin.line_glow())
+        self.assertTrue(admin.public_config(base)["energy_line_glow"])
+
+        admin.update({"energy_line_glow": False}, base)
+        self.assertFalse(admin.line_glow())
+        self.assertFalse(admin.public_config(base)["energy_line_glow"])
+
+        admin.update({"energy_line_glow": True}, base)
+        self.assertTrue(admin.line_glow())
+
+        # Non-boolean values are rejected.
+        with self.assertRaises(ValueError):
+            admin.update({"energy_line_glow": "sometimes"}, base)
+
+        # line_glow() falls back to the default if a stored value is the wrong type.
+        store.set_metadata("admin_settings", json.dumps({"energy_line_glow": "yes"}))
+        self.assertTrue(admin.line_glow())
+
     def test_battery_reserve_override_and_validation(self) -> None:
         base = load_settings()
         store = self.make_store()
