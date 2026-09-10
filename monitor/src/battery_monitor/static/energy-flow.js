@@ -21,6 +21,10 @@ const HOUSE_SCENE_SCALE = 0.8;
 // UnrealBloomPass tuning. Threshold sits above the dark chassis albedo so only the
 // emissive conduits, LEDs, and glow puddles bloom; small screens ease off for GPU cost.
 const BLOOM = { strength: 0.05, radius: 0.55, threshold: 0.58, mobileStrength: 0.05 };
+// Conduit/tubing opacity while a route is active. ACTIVE_LINE_OPACITY is the default the
+// admin control adjusts; the glow tube scales with it so both fade together.
+const ACTIVE_LINE_OPACITY = 0.82;
+const ACTIVE_GLOW_OPACITY = 0.02;
 const POWER_PORTS = {
   solar: new THREE.Vector3(0.4, 1.4, 0.75),
   inverterSolar: new THREE.Vector3(0.4, 0.42, 2.2),
@@ -133,6 +137,7 @@ function startEnergyFlowScene() {
   let leaderFrame = null;
   let glowStrength = resolveGlowStrength(section.dataset.glowStrength);
   let lineGlow = resolveLineGlow(section.dataset.lineGlow);
+  let activeOpacity = resolveActiveOpacity(section.dataset.activeOpacity);
 
   function resolveGlowStrength(raw) {
     if (raw === undefined || raw === null || raw === "") return BLOOM.strength;
@@ -146,10 +151,17 @@ function startEnergyFlowScene() {
     return raw === "true" || raw === "1";
   }
 
-  // Restyle the conduit emissive/glow without a full telemetry pass; routes keep
-  // their last active state, so this can run on its own from the admin toggle.
-  function applyLineGlow() {
-    network.routes.forEach((route) => styleRouteGlow(route, lineGlow));
+  function resolveActiveOpacity(raw) {
+    if (raw === undefined || raw === null || raw === "") return ACTIVE_LINE_OPACITY;
+    const value = Number(raw);
+    return Number.isFinite(value) ? clamp(value, 0, 1) : ACTIVE_LINE_OPACITY;
+  }
+
+  // Restyle the conduit line + glow tubing (opacity and glow) without a full telemetry
+  // pass; routes keep their last active state, so this can run on its own when an admin
+  // control changes.
+  function applyRouteStyle() {
+    network.routes.forEach((route) => styleRouteGlow(route, lineGlow, activeOpacity));
   }
 
   function readSectionState(detail = {}) {
@@ -275,7 +287,7 @@ function startEnergyFlowScene() {
     canvas.dataset.acLinkSource = flowState.acLinkAvailable ? "home-minus-grid" : "unavailable";
     canvas.dataset.routeStyle = "straight-conduits";
     canvas.dataset.backupActive = String(network.backup.active);
-    applyLineGlow();
+    applyRouteStyle();
     if (disposed) return;
     renderOnce(performance.now());
     scheduleFrame();
@@ -626,7 +638,14 @@ function startEnergyFlowScene() {
   });
   window.addEventListener("energy-line-glow-change", (event) => {
     lineGlow = Boolean(event.detail);
-    applyLineGlow();
+    applyRouteStyle();
+    renderOnce(performance.now());
+  });
+  window.addEventListener("energy-active-opacity-change", (event) => {
+    const next = Number(event.detail);
+    if (!Number.isFinite(next)) return;
+    activeOpacity = clamp(next, 0, 1);
+    applyRouteStyle();
     renderOnce(performance.now());
   });
   document.addEventListener("visibilitychange", () => {
@@ -1089,18 +1108,25 @@ function configureRoute(route, mode, magnitude, active, direction, reporting, ac
   const color = route.active ? activeColor ?? FLOW_COLORS[route.mode] : FLOW_COLORS.stale;
   route.lineMaterial.color.setHex(color);
   route.lineMaterial.emissive.setHex(color);
-  route.lineMaterial.opacity = route.active ? 0.82 : route.reporting ? 0.16 : 0.1;
   route.glowMaterial.color.setHex(color);
   route.particleMaterial.color.setHex(color);
   route.particleGlowMaterial.color.setHex(color);
 }
 
-// By default the conduit lines and their glow tubing carry no glow at all -- only the
-// travelling pulses halo. When line glow is switched on, active conduits emit softly
-// above BLOOM.threshold and the fake additive tube adds a hint on the no-bloom path.
-function styleRouteGlow(route, lineGlow) {
+// Owns the conduit line + glow-tubing opacity and glow. `activeOpacity` sets how solid
+// the conduit is while power is moving (admin-adjustable); the glow tube scales with it
+// so both fade together. By default the tubing/conduits carry no glow -- only the
+// travelling pulses halo -- until line glow is switched on, when active conduits emit
+// softly above BLOOM.threshold and the fake additive tube adds a hint on the no-bloom path.
+function styleRouteGlow(route, lineGlow, activeOpacity) {
+  route.lineMaterial.opacity = route.active
+    ? activeOpacity
+    : route.reporting ? 0.16 : 0.1;
   route.lineMaterial.emissiveIntensity = route.active && lineGlow ? 0.7 : 0.04;
-  route.glowMaterial.opacity = lineGlow ? (route.active ? 0.02 : 0.01) : 0;
+  const glowScale = activeOpacity / ACTIVE_LINE_OPACITY;
+  route.glowMaterial.opacity = lineGlow
+    ? (route.active ? ACTIVE_GLOW_OPACITY * glowScale : 0.01)
+    : 0;
 }
 
 function createSignalMaterial(color) {
