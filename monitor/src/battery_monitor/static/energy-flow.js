@@ -1034,8 +1034,9 @@ function createFlowRoute(curve, materials, particleCount, phaseOffset) {
     const particle = new THREE.Group();
     const halo = mesh(glowGeometry, particleGlowMaterial);
     const core = mesh(coreGeometry, particleMaterial);
-    halo.scale.set(0.85, 0.85, 1.85);
-    core.scale.set(0.75, 0.75, 1.7);
+    // Keep the pulse round so it reads as an energy sphere instead of a streak.
+    halo.scale.setScalar(0.85);
+    core.scale.setScalar(0.75);
     particle.add(halo, core);
     particle.visible = false;
     group.add(particle);
