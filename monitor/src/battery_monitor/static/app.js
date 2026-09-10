@@ -777,8 +777,8 @@ function applyEnergyGlow(value) {
 function applyEnergyLineGlow(value) {
   const section = document.getElementById("energyFlowSection");
   if (!section) return;
-  // Default to enabled when the payload predates the setting.
-  const enabled = value === undefined || value === null ? true : Boolean(value);
+  // Default to disabled (glowless tubing) when the payload predates the setting.
+  const enabled = value === undefined || value === null ? false : Boolean(value);
   if (section.dataset.lineGlow === String(enabled)) return;
   section.dataset.lineGlow = String(enabled);
   window.dispatchEvent(new CustomEvent("energy-line-glow-change", { detail: enabled }));
