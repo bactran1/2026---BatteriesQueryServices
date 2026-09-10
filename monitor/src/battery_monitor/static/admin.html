@@ -105,6 +105,10 @@
                 <input name="energy_line_glow" id="adminLineGlow" type="checkbox" />
                 <span>Glow the energy lines (off = pulses only)</span>
               </label>
+              <label class="admin-field" title="How solid the tubing and conduits look while power is moving (there is power moving through them). Lower is more transparent; 0 hides the lines and shows only the pulses.">
+                <span>Active tubing/conduit opacity: <b id="adminActiveOpacityValue">0.82</b></span>
+                <input name="energy_active_opacity" id="adminActiveOpacity" type="range" min="0" max="1" step="0.01" />
+              </label>
             </div>
             <h3>Battery inventory</h3>
             <div class="admin-table-wrap">
