@@ -14,6 +14,7 @@ FOLLOW_LOGS=0
 HEALTH_CHECK=1
 SKIP_GIT_UPDATE=0
 USE_CACHE=0
+IMAGE_RETENTION=10
 
 usage() {
   printf '%s\n' \
@@ -28,6 +29,7 @@ usage() {
 "  --no-health-check     Skip the post-restart health check" \
 "  --skip-git-update     Build the current local checkout without fetching Git" \
 "  --use-cache           Allow Docker to reuse cached build layers" \
+"  --keep-images N       Keep the newest N built images, prune older ones (default 10; 0 disables)" \
 "  -h, --help            Show this help" \
 "" \
 "Environment:" \
@@ -194,6 +196,31 @@ wait_for_health() {
   fail "${SERVICE_NAME} did not become healthy in time."
 }
 
+prune_old_images() {
+  local repo="${MONITOR_IMAGE_NAME}"
+  local keep="${IMAGE_RETENTION}"
+  local ids count stale
+
+  if [[ "${keep}" -le 0 ]]; then
+    return 0
+  fi
+
+  # Unique image IDs for this repo, newest first (docker images sorts by created desc).
+  ids="$(docker images "${repo}" --format '{{.ID}}' 2>/dev/null | awk '!seen[$0]++' || true)"
+  count="$(printf '%s' "${ids}" | grep -c . || true)"
+
+  if [[ "${count}" -le "${keep}" ]]; then
+    log "Image cleanup: ${count} ${repo} image(s) present; keeping newest ${keep}, nothing to prune."
+    return 0
+  fi
+
+  stale="$(printf '%s\n' "${ids}" | tail -n +"$((keep + 1))")"
+  log "Image cleanup: pruning $((count - keep)) old ${repo} image(s), keeping newest ${keep}..."
+  # Skip any image still referenced by a container (rm without -f fails harmlessly).
+  printf '%s\n' "${stale}" | xargs -r docker image rm >/dev/null 2>&1 || true
+  return 0
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --collector-url)
@@ -216,6 +243,12 @@ while [[ $# -gt 0 ]]; do
     --use-cache)
       USE_CACHE=1
       shift
+      ;;
+    --keep-images)
+      [[ $# -ge 2 ]] || fail "--keep-images requires a count"
+      [[ "$2" =~ ^[0-9]+$ ]] || fail "--keep-images requires a non-negative integer"
+      IMAGE_RETENTION="$2"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -261,6 +294,8 @@ RUNNING_IMAGE="$(docker inspect --format '{{.Config.Image}}' "${SERVICE_NAME}" 2
 if [[ -n "${RUNNING_IMAGE}" ]]; then
   log "Running image: ${RUNNING_IMAGE}"
 fi
+
+prune_old_images
 
 if [[ "${HEALTH_CHECK}" -eq 1 ]]; then
   wait_for_health
