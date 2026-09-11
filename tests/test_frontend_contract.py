@@ -338,6 +338,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('mosfet.includes("discharge")', javascript)
         self.assertIn('mosfet.includes("current_limiting")', javascript)
         self.assertIn("reading.balance_status_mask", javascript)
+        # This BMS reports 0 as the equalizing state, not non-zero.
+        self.assertIn("balanceMask === 0", javascript)
         self.assertIn('"battery.chargeMos": "Charge MOS"', javascript)
         self.assertIn('"battery.dischargeMos": "Discharge MOS"', javascript)
         self.assertIn('"battery.limiting": "Limiting"', javascript)
