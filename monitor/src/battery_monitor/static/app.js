@@ -1877,7 +1877,8 @@ function renderBatteryPacks() {
 }
 
 // Charge/discharge MOSFET, current limiting, and cell balancing state for a pack.
-// The BMS reports these as mosfet_state bit names and a balance_status_mask.
+// The BMS reports the switches as mosfet_state bit names. Its balance_status_mask
+// reads 0 while the pack is equalizing its cells and is non-zero otherwise.
 function packSwitchesHtml(reading, reporting) {
   const mosfet = reporting && Array.isArray(reading.mosfet_state)
     ? reading.mosfet_state
@@ -1891,7 +1892,7 @@ function packSwitchesHtml(reading, reporting) {
     packStateChip(
       t("battery.cellStatus"),
       equalizeKnown,
-      equalizeKnown && balanceMask > 0,
+      equalizeKnown && balanceMask === 0,
       t("battery.equalizing"),
       t("battery.notEqualizing"),
       "active",
