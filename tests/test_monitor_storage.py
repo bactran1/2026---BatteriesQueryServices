@@ -318,6 +318,37 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(result["totals"]["grid_import_kwh"], 0.9)
             store.close()
 
+    def test_month_view_buckets_by_local_day_not_utc(self) -> None:
+        # An evening reading in a west-of-UTC zone has already rolled past midnight
+        # in UTC, so it must be filed under the local day, not tomorrow's UTC date.
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("America/Los_Angeles")
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            now_local = datetime.now(tz)
+            evening = now_local.replace(hour=23, minute=30, second=0, microsecond=0)
+            local_date = evening.date().isoformat()
+            utc_date = evening.astimezone(timezone.utc).date().isoformat()
+            # The offset guarantees the reading lands on the next UTC day.
+            self.assertNotEqual(local_date, utc_date)
+
+            snapshot = _energy_snapshot(
+                evening.isoformat(),
+                consumption_kwh=20.0,
+                solar_generation_kwh=12.0,
+                grid_import_kwh=5.0,
+            )
+            store.insert_snapshot(snapshot)
+
+            by_month = store.energy_history("month", None, "America/Los_Angeles")
+            periods = [point["period"] for point in by_month["points"]]
+            self.assertIn(local_date, periods)
+            self.assertNotIn(utc_date, periods)
+            self.assertEqual(by_month["points"][0]["consumption_kwh"], 20.0)
+            store.close()
+
     def test_date_totals_survive_a_reset_that_falls_inside_the_window(self) -> None:
         # The viewer's timezone need not match the inverter's clock, so the daily
         # counter can reset partway through the requested day. The window total must
