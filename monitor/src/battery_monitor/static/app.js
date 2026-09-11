@@ -179,11 +179,13 @@ const translations = {
     "energyHistory.titleHour": "Energy by hour",
     "energyHistory.titleDate": "Energy for one day",
     "energyHistory.titleDateFor": "Energy on {date}",
-    "energyHistory.titleMonth": "Energy by month",
-    "energyHistory.titleYear": "Energy by year",
+    "energyHistory.titleMonth": "Energy this month",
+    "energyHistory.titleYear": "Energy this year",
     "energyHistory.description": "Three-year history grouped by calendar period; totals show the latest recorded period",
     "energyHistory.descriptionHour": "Hourly meter detail for the last 7 days; totals show the latest recorded hour",
     "energyHistory.descriptionDate": "Hourly totals from 0:00 to 24:00 for the selected calendar day",
+    "energyHistory.descriptionMonth": "Daily totals for each day of the current month",
+    "energyHistory.descriptionYear": "Monthly totals for each month of the current year",
     "energyHistory.view": "Energy history view",
     "energyHistory.selectDate": "Select day",
     "energyHistory.selectDateAria": "Select calendar day",
@@ -481,11 +483,13 @@ const translations = {
     "energyHistory.titleHour": "Năng lượng theo giờ",
     "energyHistory.titleDate": "Năng lượng trong một ngày",
     "energyHistory.titleDateFor": "Năng lượng ngày {date}",
-    "energyHistory.titleMonth": "Năng lượng theo tháng",
-    "energyHistory.titleYear": "Năng lượng theo năm",
+    "energyHistory.titleMonth": "Năng lượng tháng này",
+    "energyHistory.titleYear": "Năng lượng năm nay",
     "energyHistory.description": "Lịch sử ba năm được nhóm theo kỳ; tổng số hiển thị kỳ mới nhất đã ghi nhận",
     "energyHistory.descriptionHour": "Chi tiết công tơ theo giờ trong 7 ngày qua; tổng số hiển thị giờ mới nhất đã ghi nhận",
     "energyHistory.descriptionDate": "Tổng năng lượng theo giờ từ 0:00 đến 24:00 trong ngày đã chọn",
+    "energyHistory.descriptionMonth": "Tổng năng lượng từng ngày trong tháng này",
+    "energyHistory.descriptionYear": "Tổng năng lượng từng tháng trong năm nay",
     "energyHistory.view": "Chế độ xem lịch sử năng lượng",
     "energyHistory.selectDate": "Chọn ngày",
     "energyHistory.selectDateAria": "Chọn ngày trên lịch",
@@ -862,6 +866,13 @@ async function refreshEnergyHistory() {
       timestamp: payload.window_start,
       unix: state.energyWindowStart,
     };
+    state.energySummary = payload.totals || sumEnergyHistoryPoints(state.energyHistory);
+  } else if (requestedView === "month" || requestedView === "year") {
+    // Month and year break the current period into its days / months, so the
+    // totals cards summarise that whole period rather than a single bar.
+    state.energySummaryPeriod = payload.selected_period
+      ? { period: payload.selected_period }
+      : latestEnergyHistoryPoint(state.energyHistory);
     state.energySummary = payload.totals || sumEnergyHistoryPoints(state.energyHistory);
   } else {
     state.energySummaryPeriod = latestEnergyHistoryPoint(state.energyHistory);
@@ -1970,11 +1981,12 @@ function renderEnergyHistory() {
   $("energyHistoryTitle").textContent = state.energyView === "date"
     ? t("energyHistory.titleDateFor", { date: formatCalendarDate(state.energyDate) })
     : t(titleKey || "energyHistory.titleMonth");
-  const descriptionKey = state.energyView === "hour"
-    ? "energyHistory.descriptionHour"
-    : state.energyView === "date"
-      ? "energyHistory.descriptionDate"
-      : "energyHistory.description";
+  const descriptionKey = {
+    hour: "energyHistory.descriptionHour",
+    date: "energyHistory.descriptionDate",
+    month: "energyHistory.descriptionMonth",
+    year: "energyHistory.descriptionYear",
+  }[state.energyView] || "energyHistory.description";
   $("energyHistoryDescription").textContent = t(descriptionKey);
   $("energyDateControl").hidden = state.energyView !== "date";
   $("energyDateInput").value = state.energyDate;
@@ -2010,8 +2022,9 @@ function energyChartSlots(points) {
   for (let unix = start; unix <= end;) {
     slots.push(byTime.get(unix) || { unix, timestamp: new Date(unix * 1000).toISOString() });
     const next = new Date(unix * 1000);
-    if (state.energyView === "month") next.setUTCMonth(next.getUTCMonth() + 1);
-    else if (state.energyView === "year") next.setUTCFullYear(next.getUTCFullYear() + 1);
+    // year -> one bar per month; month -> one bar per day; hour/date -> per hour.
+    if (state.energyView === "year") next.setUTCMonth(next.getUTCMonth() + 1);
+    else if (state.energyView === "month") next.setUTCDate(next.getUTCDate() + 1);
     else next.setTime(next.getTime() + 3600000);
     unix = next.getTime() / 1000;
   }
@@ -2128,7 +2141,8 @@ function drawEnergyGrid(ctx, theme, pad, width, height, maxValue) {
 function drawEnergyTimeAxis(ctx, theme, pad, width, height, slots) {
   if (!slots.length) return;
   const slotWidth = width / slots.length;
-  const labelSpacing = state.energyView === "year" ? 44 : 88;
+  const labelSpacing =
+    state.energyView === "month" || state.energyView === "year" ? 44 : 88;
   const stride = Math.max(1, Math.ceil(labelSpacing / slotWidth));
   ctx.save();
   ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
@@ -2236,39 +2250,49 @@ function formatEnergyAxis(value) {
 }
 
 function formatEnergyPeriod(point) {
-  if (state.energyView === "year") return String(point.period || new Date(point.unix * 1000).getUTCFullYear());
   const date = new Date(point.timestamp || point.unix * 1000);
-  if (state.energyView === "hour") {
+  if (state.energyView === "year") {
+    // One bar per month of the current year -> short month name.
     return new Intl.DateTimeFormat(currentLocale(), {
-      weekday: "short",
-      hour: "numeric",
+      month: "short",
+      timeZone: "UTC",
     }).format(date);
   }
   if (state.energyView === "month") {
-    const period = String(point.period || "");
-    const monthDate = /^\d{4}-\d{2}$/.test(period)
-      ? new Date(`${period}-15T12:00:00Z`)
-      : date;
+    // One bar per day of the current month -> day of the month.
     return new Intl.DateTimeFormat(currentLocale(), {
-      month: "short",
-      year: "2-digit",
+      day: "numeric",
       timeZone: "UTC",
-    }).format(monthDate);
+    }).format(date);
   }
+  // hour view
   return new Intl.DateTimeFormat(currentLocale(), {
-    month: "short",
-    day: "numeric",
-    year: "2-digit",
+    weekday: "short",
+    hour: "numeric",
   }).format(date);
 }
 
 function formatEnergyPointPeriod(point) {
-  if (state.energyView === "year" || state.energyView === "month") {
-    return formatEnergySummaryPeriod(point) || String(point.period || "");
-  }
   const unix = finiteNumber(point.unix);
   const date = new Date(point.timestamp || (unix === null ? NaN : unix * 1000));
   if (!Number.isFinite(date.getTime())) return String(point.period || "");
+  if (state.energyView === "year") {
+    // Per-bar is a month of the current year.
+    return new Intl.DateTimeFormat(currentLocale(), {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(date);
+  }
+  if (state.energyView === "month") {
+    // Per-bar is a day of the current month.
+    return new Intl.DateTimeFormat(currentLocale(), {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(date);
+  }
   return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",

@@ -357,10 +357,17 @@ class RetentionStore:
             ).date().isoformat()
             return self._hourly_energy_history(selected_date, energy_timezone)
 
-        period_expression = {
-            "month": "substr(energy_date, 1, 7)",
-            "year": "substr(energy_date, 1, 4)",
-        }[str(view)]
+        # "month" breaks the current calendar month down into its days; "year"
+        # breaks the current calendar year down into its months. The daily_energy
+        # rows are keyed by their UTC date, so the current period is taken from the
+        # viewer's timezone and matched as a date prefix.
+        now_local = datetime.now(ZoneInfo(energy_timezone))
+        if view == "month":
+            period_expression = "energy_date"  # one bucket per day
+            selected_period = now_local.strftime("%Y-%m")
+        else:  # year
+            period_expression = "substr(energy_date, 1, 7)"  # one bucket per month
+            selected_period = now_local.strftime("%Y")
         with self._lock:
             rows = self.connection.execute(
                 f"""
@@ -370,12 +377,12 @@ class RetentionStore:
                     SUM(solar_generation_kwh) AS solar_generation_kwh,
                     SUM(grid_import_kwh) AS grid_import_kwh
                 FROM daily_energy
-                WHERE energy_date >= date('now', '-3 years')
+                WHERE energy_date LIKE ?
                 GROUP BY period
                 ORDER BY period ASC
-                """
+                """,
+                (f"{selected_period}%",),
             ).fetchall()
-            totals = self._energy_totals_locked()
 
         points = []
         for row in rows:
@@ -395,9 +402,9 @@ class RetentionStore:
 
         return {
             "view": view,
-            "retention_years": 3,
+            "selected_period": selected_period,
             "points": points,
-            "totals": totals,
+            "totals": _sum_energy_rows(rows),
         }
 
     def power_history(
@@ -1173,12 +1180,12 @@ def _hourly_energy_expression(
 
 
 def _energy_period_time(period: str, view: EnergyView) -> tuple[str, int]:
-    if view == "date":
-        value = f"{period}T12:00:00Z"
-    elif view == "month":
+    if view == "year":
+        # period is a YYYY-MM month; anchor it mid-month.
         value = f"{period}-15T12:00:00Z"
     else:
-        value = f"{period}-07-01T12:00:00Z"
+        # "date" and "month" periods are a full YYYY-MM-DD calendar day.
+        value = f"{period}T12:00:00Z"
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return value, int(parsed.timestamp())
 

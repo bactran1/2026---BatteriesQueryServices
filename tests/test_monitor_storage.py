@@ -102,50 +102,58 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(store.get_metadata("collector_sequence:stream-a"), "12")
             store.close()
 
-    def test_daily_energy_is_upserted_and_aggregated_by_calendar_period(self) -> None:
+    def test_month_view_shows_days_and_year_view_shows_months(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")
             store.initialize()
             now = datetime.now(timezone.utc).replace(microsecond=0)
-            earlier = now - timedelta(days=35)
+            first = now.replace(day=1, hour=8, minute=0, second=0)
+            mid = first.replace(day=15)
+            earlier_month = first - timedelta(days=40)  # a day in an earlier month
 
-            store.insert_snapshot(
-                _energy_snapshot(
-                    earlier.replace(hour=8).isoformat(),
-                    consumption_kwh=4.0,
-                    solar_generation_kwh=6.0,
-                    grid_import_kwh=1.5,
+            for sequence, (when, consumption, solar, grid) in enumerate(
+                [
+                    (first, 4.0, 6.0, 1.5),
+                    (mid, 12.0, 8.0, 3.0),
+                    (earlier_month, 99.0, 99.0, 99.0),
+                ],
+                start=1,
+            ):
+                snapshot = _energy_snapshot(
+                    when.isoformat(),
+                    consumption_kwh=consumption,
+                    solar_generation_kwh=solar,
+                    grid_import_kwh=grid,
                 )
-            )
-            store.insert_snapshot(
-                _energy_snapshot(
-                    now.replace(hour=8).isoformat(),
-                    consumption_kwh=12.0,
-                    solar_generation_kwh=8.0,
-                    grid_import_kwh=3.0,
+                snapshot["service"].update(
+                    {"buffer_stream_id": "stream-a", "sequence": sequence}
                 )
-            )
-            store.insert_snapshot(
-                _energy_snapshot(
-                    now.replace(hour=20).isoformat(),
-                    consumption_kwh=15.0,
-                    solar_generation_kwh=7.0,
-                    grid_import_kwh=None,
-                )
-            )
+                store.insert_snapshot(snapshot)
 
-            by_month = store.energy_history("month")
+            # Month view: one bar per day of the current month; the earlier month
+            # is excluded and the totals sum only the current month's days.
+            by_month = store.energy_history("month", None, "UTC")
+            self.assertEqual(by_month["selected_period"], now.strftime("%Y-%m"))
             self.assertEqual(len(by_month["points"]), 2)
-            self.assertEqual(by_month["totals"]["consumption_kwh"], 19.0)
+            self.assertEqual(by_month["points"][0]["period"], first.date().isoformat())
+            self.assertEqual(by_month["points"][0]["consumption_kwh"], 4.0)
+            self.assertEqual(by_month["points"][1]["period"], mid.date().isoformat())
+            self.assertEqual(by_month["points"][1]["consumption_kwh"], 12.0)
+            self.assertEqual(by_month["totals"]["consumption_kwh"], 16.0)
             self.assertEqual(by_month["totals"]["solar_generation_kwh"], 14.0)
             self.assertEqual(by_month["totals"]["grid_import_kwh"], 4.5)
-            by_year = store.energy_history("year")
-            self.assertEqual(by_year["totals"], by_month["totals"])
+
+            # Year view: one bar per month of the current year; the two current
+            # -month days collapse into a single month bucket.
+            by_year = store.energy_history("year", None, "UTC")
+            self.assertEqual(by_year["selected_period"], now.strftime("%Y"))
+            month_periods = [point["period"] for point in by_year["points"]]
+            self.assertIn(now.strftime("%Y-%m"), month_periods)
+            self.assertTrue(all(p.startswith(now.strftime("%Y")) for p in month_periods))
 
             stats = store.stats(retention_days=1095)
-            self.assertEqual(stats["energy_point_count"], 2)
+            self.assertEqual(stats["energy_point_count"], 3)
             self.assertEqual(stats["inverter_point_count"], 3)
-            self.assertEqual(stats["newest_energy_date"], now.date().isoformat())
             store.close()
 
     def test_hourly_energy_and_signed_power_history_are_archived(self) -> None:

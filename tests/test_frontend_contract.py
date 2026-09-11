@@ -293,7 +293,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function energyAxisMaximum", javascript)
         self.assertIn("state.energySummaryPeriod = latestEnergyHistoryPoint", javascript)
         self.assertIn('"energyHistory.kwhPeriod": "kWh · {period}"', javascript)
-        self.assertIn('"energyHistory.titleMonth": "Năng lượng theo tháng"', javascript)
+        self.assertIn('"energyHistory.titleMonth": "Năng lượng tháng này"', javascript)
         self.assertIn(".energy-history-layout", css)
         self.assertIn("#energyHistoryChart", css)
         self.assertIn(".chart-tooltip--energy", css)
