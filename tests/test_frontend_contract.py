@@ -328,6 +328,24 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".energy-flow__runtime", css)
         self.assertIn(".inverter-runtime", css)
 
+    def test_battery_packs_show_mosfet_limiting_and_balancing_state(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("function packSwitchesHtml", javascript)
+        # Sourced from the BMS mosfet_state bits and the balance_status_mask.
+        self.assertIn('mosfet.includes("charge")', javascript)
+        self.assertIn('mosfet.includes("discharge")', javascript)
+        self.assertIn('mosfet.includes("current_limiting")', javascript)
+        self.assertIn("reading.balance_status_mask", javascript)
+        self.assertIn('"battery.chargeMos": "Charge MOS"', javascript)
+        self.assertIn('"battery.dischargeMos": "Discharge MOS"', javascript)
+        self.assertIn('"battery.limiting": "Limiting"', javascript)
+        self.assertIn('"battery.equalizing": "Equalizing"', javascript)
+        self.assertIn('"battery.notEqualizing": "Not equalizing"', javascript)
+        self.assertIn(".pack-switch", css)
+        self.assertIn(".pack__switches", css)
+
     def test_power_history_overlays_inverter_sources_and_demand(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")
