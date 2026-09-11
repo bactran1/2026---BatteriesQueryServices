@@ -357,31 +357,59 @@ class RetentionStore:
             ).date().isoformat()
             return self._hourly_energy_history(selected_date, energy_timezone)
 
-        # "month" breaks the current calendar month down into its days; "year"
-        # breaks the current calendar year down into its months. The daily_energy
-        # rows are keyed by their UTC date, so the current period is taken from the
-        # viewer's timezone and matched as a date prefix.
-        now_local = datetime.now(ZoneInfo(energy_timezone))
+        # "month" breaks the current calendar month into its days; "year" breaks
+        # the current calendar year into its months. Both bucket by the *viewer's*
+        # local day, not the UTC date the daily_energy table is keyed by, so an
+        # evening reading whose UTC clock has already rolled past midnight is not
+        # filed under tomorrow. The energy_today counters reset at local midnight,
+        # so each local day's total is simply its last reading's counter (summed
+        # across inverters, then across days for the monthly buckets); the local
+        # date is derived with the viewer's current UTC offset.
+        zone = ZoneInfo(energy_timezone)
+        now_local = datetime.now(zone)
+        offset_seconds = int((now_local.utcoffset() or timedelta()).total_seconds())
         if view == "month":
-            period_expression = "energy_date"  # one bucket per day
+            period_expression = "local_date"  # one bucket per local day
             selected_period = now_local.strftime("%Y-%m")
+            start_local = now_local.replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            )
+            end_local = (start_local + timedelta(days=32)).replace(day=1)
         else:  # year
-            period_expression = "substr(energy_date, 1, 7)"  # one bucket per month
+            period_expression = "substr(local_date, 1, 7)"  # one bucket per month
             selected_period = now_local.strftime("%Y")
+            start_local = now_local.replace(
+                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
+            end_local = start_local.replace(year=start_local.year + 1)
         with self._lock:
             rows = self.connection.execute(
                 f"""
                 SELECT
                     {period_expression} AS period,
-                    SUM(consumption_kwh) AS consumption_kwh,
-                    SUM(solar_generation_kwh) AS solar_generation_kwh,
-                    SUM(grid_import_kwh) AS grid_import_kwh
-                FROM daily_energy
-                WHERE energy_date LIKE ?
+                    SUM(consumption_meter_kwh) AS consumption_kwh,
+                    SUM(solar_generation_meter_kwh) AS solar_generation_kwh,
+                    SUM(grid_import_meter_kwh) AS grid_import_kwh
+                FROM (
+                    SELECT
+                        date(captured_at_unix + ?, 'unixepoch') AS local_date,
+                        inverter_id,
+                        MAX(captured_at_unix) AS last_captured_unix,
+                        consumption_meter_kwh AS consumption_meter_kwh,
+                        solar_generation_meter_kwh AS solar_generation_meter_kwh,
+                        grid_import_meter_kwh AS grid_import_meter_kwh
+                    FROM inverter_readings
+                    WHERE captured_at_unix >= ? AND captured_at_unix < ?
+                    GROUP BY local_date, inverter_id
+                )
                 GROUP BY period
                 ORDER BY period ASC
                 """,
-                (f"{selected_period}%",),
+                (
+                    offset_seconds,
+                    int(start_local.timestamp()),
+                    int(end_local.timestamp()),
+                ),
             ).fetchall()
 
         points = []
