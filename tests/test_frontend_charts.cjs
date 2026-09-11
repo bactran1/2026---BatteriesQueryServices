@@ -85,14 +85,26 @@ test("Date bars preserve all hours of normal and daylight-saving days", () => {
   }
 });
 
-test("Missing calendar months retain an empty slot", () => {
+test("Year view retains an empty slot for a missing month", () => {
+  const ui = chart();
+  ui.state.energyView = "year";
+  ui.state.energyHistory = [
+    {unix:Date.UTC(2026,0,15)/1000, consumption_kwh:20},
+    {unix:Date.UTC(2026,2,15)/1000, consumption_kwh:30},
+  ];
+  // Jan, Feb (empty), Mar
+  assert.equal(ui.run("energyChartSlots(state.energyHistory).length"), 3);
+});
+
+test("Month view retains an empty slot for a missing day", () => {
   const ui = chart();
   ui.state.energyView = "month";
   ui.state.energyHistory = [
-    {unix:Date.UTC(2026,0,1)/1000, consumption_kwh:20},
-    {unix:Date.UTC(2026,2,1)/1000, consumption_kwh:30},
+    {unix:Date.UTC(2026,8,1)/1000, consumption_kwh:5},
+    {unix:Date.UTC(2026,8,4)/1000, consumption_kwh:8},
   ];
-  assert.equal(ui.run("energyChartSlots(state.energyHistory).length"), 3);
+  // Sep 1, 2 (empty), 3 (empty), 4
+  assert.equal(ui.run("energyChartSlots(state.energyHistory).length"), 4);
 });
 
 test("Power date axis ends at 24h for both three and five ticks", () => {
