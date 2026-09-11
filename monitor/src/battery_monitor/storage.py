@@ -359,12 +359,15 @@ class RetentionStore:
 
         # "month" breaks the current calendar month into its days; "year" breaks
         # the current calendar year into its months. Both bucket by the *viewer's*
-        # local day, not the UTC date the daily_energy table is keyed by, so an
+        # local day (not the UTC date the daily_energy table is keyed by), so an
         # evening reading whose UTC clock has already rolled past midnight is not
-        # filed under tomorrow. The energy_today counters reset at local midnight,
-        # so each local day's total is simply its last reading's counter (summed
-        # across inverters, then across days for the monthly buckets); the local
-        # date is derived with the viewer's current UTC offset.
+        # filed under tomorrow. Each local day's energy is the sum of its counter's
+        # increments across the day: a reading adds the rise since the previous one,
+        # or its own value when the counter has dropped (a reset). The energy_today
+        # counters reset at local midnight, but this also stays correct if a counter
+        # resets again mid-day (e.g. an inverter restart). The day partition makes
+        # the first reading of each day contribute its own value, and the local date
+        # is derived with the viewer's current UTC offset.
         zone = ZoneInfo(energy_timezone)
         now_local = datetime.now(zone)
         offset_seconds = int((now_local.utcoffset() or timedelta()).total_seconds())
@@ -382,33 +385,54 @@ class RetentionStore:
                 month=1, day=1, hour=0, minute=0, second=0, microsecond=0
             )
             end_local = start_local.replace(year=start_local.year + 1)
+        consumption_delta = _counter_delta_expression(
+            "consumption_meter_kwh", "previous_consumption_kwh"
+        )
+        solar_delta = _counter_delta_expression(
+            "solar_generation_meter_kwh", "previous_solar_kwh"
+        )
+        grid_delta = _counter_delta_expression(
+            "grid_import_meter_kwh", "previous_grid_kwh"
+        )
         with self._lock:
             rows = self.connection.execute(
                 f"""
                 SELECT
                     {period_expression} AS period,
-                    SUM(consumption_meter_kwh) AS consumption_kwh,
-                    SUM(solar_generation_meter_kwh) AS solar_generation_kwh,
-                    SUM(grid_import_meter_kwh) AS grid_import_kwh
+                    SUM({consumption_delta}) AS consumption_kwh,
+                    SUM({solar_delta}) AS solar_generation_kwh,
+                    SUM({grid_delta}) AS grid_import_kwh
                 FROM (
                     SELECT
                         date(captured_at_unix + ?, 'unixepoch') AS local_date,
-                        inverter_id,
-                        MAX(captured_at_unix) AS last_captured_unix,
-                        consumption_meter_kwh AS consumption_meter_kwh,
-                        solar_generation_meter_kwh AS solar_generation_meter_kwh,
-                        grid_import_meter_kwh AS grid_import_meter_kwh
+                        consumption_meter_kwh,
+                        solar_generation_meter_kwh,
+                        grid_import_meter_kwh,
+                        LAG(consumption_meter_kwh) OVER day_window
+                            AS previous_consumption_kwh,
+                        LAG(solar_generation_meter_kwh) OVER day_window
+                            AS previous_solar_kwh,
+                        LAG(grid_import_meter_kwh) OVER day_window
+                            AS previous_grid_kwh
                     FROM inverter_readings
                     WHERE captured_at_unix >= ? AND captured_at_unix < ?
-                    GROUP BY local_date, inverter_id
+                    WINDOW day_window AS (
+                        PARTITION BY
+                            inverter_id, date(captured_at_unix + ?, 'unixepoch')
+                        ORDER BY captured_at_unix
+                    )
                 )
                 GROUP BY period
+                HAVING consumption_kwh IS NOT NULL
+                    OR solar_generation_kwh IS NOT NULL
+                    OR grid_import_kwh IS NOT NULL
                 ORDER BY period ASC
                 """,
                 (
                     offset_seconds,
                     int(start_local.timestamp()),
                     int(end_local.timestamp()),
+                    offset_seconds,
                 ),
             ).fetchall()
 
@@ -1158,6 +1182,23 @@ def _energy_sample_time(
         except ValueError:
             continue
     return _snapshot_time(snapshot)
+
+
+def _counter_delta_expression(meter: str, previous: str) -> str:
+    """Energy a reading adds to a resetting daily counter.
+
+    The rise since the previous reading, or the reading's own value when the
+    counter has dropped (it reset since the previous reading) or has no previous
+    reading in the partition. Summed over a day partition this yields the day's
+    total even if the counter resets more than once within the day.
+    """
+    return f"""
+        CASE
+            WHEN {previous} IS NULL THEN {meter}
+            WHEN {meter} >= {previous} THEN {meter} - {previous}
+            ELSE {meter}
+        END
+    """
 
 
 def _sum_energy_rows(rows: list[Any]) -> dict[str, float | None]:

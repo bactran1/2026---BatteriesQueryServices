@@ -349,6 +349,44 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(by_month["points"][0]["consumption_kwh"], 20.0)
             store.close()
 
+    def test_month_view_sums_across_a_mid_day_counter_reset(self) -> None:
+        # If a counter resets partway through a day (e.g. an inverter restart),
+        # the day's total must be both segments, not just the reading after the
+        # reset — the old last-reading approach only saw the tail.
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            now = datetime.now(timezone.utc)
+            day = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # Climbs to 12, resets to 2 at midday, then climbs to 9: total 12 + 9.
+            samples = [
+                (day, 0.0),
+                (day + timedelta(hours=6), 12.0),
+                (day + timedelta(hours=12), 2.0),
+                (day + timedelta(hours=18), 9.0),
+            ]
+            for sequence, (when, consumption) in enumerate(samples, start=1):
+                snapshot = _energy_snapshot(
+                    when.isoformat(),
+                    consumption_kwh=consumption,
+                    solar_generation_kwh=consumption / 2,
+                    grid_import_kwh=consumption / 3,
+                )
+                snapshot["service"].update(
+                    {"buffer_stream_id": "stream-a", "sequence": sequence}
+                )
+                store.insert_snapshot(snapshot)
+
+            by_month = store.energy_history("month", None, "UTC")
+            day_point = next(
+                point
+                for point in by_month["points"]
+                if point["period"] == day.date().isoformat()
+            )
+            self.assertEqual(day_point["consumption_kwh"], 21.0)  # 12 + 9
+            self.assertEqual(day_point["solar_generation_kwh"], 10.5)  # 6 + 4.5
+            store.close()
+
     def test_date_totals_survive_a_reset_that_falls_inside_the_window(self) -> None:
         # The viewer's timezone need not match the inverter's clock, so the daily
         # counter can reset partway through the requested day. The window total must
