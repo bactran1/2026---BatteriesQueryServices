@@ -272,6 +272,15 @@ const translations = {
     "battery.voltage": "Voltage",
     "battery.current": "Current",
     "battery.power": "Power",
+    "battery.chargeMos": "Charge MOS",
+    "battery.dischargeMos": "Discharge MOS",
+    "battery.limiting": "Limiting",
+    "battery.cellStatus": "Cell status",
+    "battery.on": "On",
+    "battery.off": "Off",
+    "battery.active": "Active",
+    "battery.equalizing": "Equalizing",
+    "battery.notEqualizing": "Not equalizing",
     "inventory.defaultHardware": "Eco-worthy battery",
     "inventory.defaultModel": "Eco-worthy server rack battery",
     "workbench.aria": "Monitoring workbench",
@@ -576,6 +585,15 @@ const translations = {
     "battery.voltage": "Điện áp",
     "battery.current": "Dòng điện",
     "battery.power": "Công suất",
+    "battery.chargeMos": "MOS sạc",
+    "battery.dischargeMos": "MOS xả",
+    "battery.limiting": "Giới hạn dòng",
+    "battery.cellStatus": "Trạng thái cell",
+    "battery.on": "Bật",
+    "battery.off": "Tắt",
+    "battery.active": "Đang bật",
+    "battery.equalizing": "Đang cân bằng",
+    "battery.notEqualizing": "Không cân bằng",
     "inventory.defaultHardware": "Pin Eco-worthy",
     "inventory.defaultModel": "Pin tủ máy chủ Eco-worthy",
     "workbench.aria": "Bảng điều khiển giám sát",
@@ -1823,6 +1841,8 @@ function renderBatteryPacks() {
             <div><span>${escapeHtml(t("details.cycles"))}</span><strong>${reading.cycle_count ?? "--"}</strong></div>
           </div>
 
+          ${packSwitchesHtml(reading, reporting)}
+
           ${cellSummary ? `<p class="pack__cellline">${escapeHtml(cellSummary)}</p>` : ""}
 
           <details class="pack__more"${openIds.has(battery.id) ? " open" : ""}>
@@ -1854,6 +1874,54 @@ function renderBatteryPacks() {
   state.renderedSoc.forEach((_soc, batteryId) => {
     if (!activeIds.has(batteryId)) state.renderedSoc.delete(batteryId);
   });
+}
+
+// Charge/discharge MOSFET, current limiting, and cell balancing state for a pack.
+// The BMS reports these as mosfet_state bit names and a balance_status_mask.
+function packSwitchesHtml(reading, reporting) {
+  const mosfet = reporting && Array.isArray(reading.mosfet_state)
+    ? reading.mosfet_state
+    : null;
+  const balanceMask = finiteNumber(reading.balance_status_mask);
+  const equalizeKnown = reporting && balanceMask !== null;
+  const chips = [
+    packSwitchChip(t("battery.chargeMos"), mosfet, mosfet && mosfet.includes("charge"), "on"),
+    packSwitchChip(t("battery.dischargeMos"), mosfet, mosfet && mosfet.includes("discharge"), "on"),
+    packSwitchChip(t("battery.limiting"), mosfet, mosfet && mosfet.includes("current_limiting"), "warn"),
+    packStateChip(
+      t("battery.cellStatus"),
+      equalizeKnown,
+      equalizeKnown && balanceMask > 0,
+      t("battery.equalizing"),
+      t("battery.notEqualizing"),
+      "active",
+    ),
+  ];
+  return `<div class="pack__switches">${chips.join("")}</div>`;
+}
+
+function packSwitchChip(label, known, on, onTone) {
+  return packStateChip(
+    label,
+    known !== null && known !== false,
+    Boolean(on),
+    t("battery.on"),
+    t("battery.off"),
+    onTone,
+  );
+}
+
+function packStateChip(label, known, active, onLabel, offLabel, activeTone) {
+  const value = !known ? "--" : active ? onLabel : offLabel;
+  const tone = !known
+    ? "pack-switch--unknown"
+    : active
+      ? `pack-switch--${activeTone}`
+      : "pack-switch--off";
+  return `<span class="pack-switch ${tone}">
+      <span class="pack-switch__label">${escapeHtml(label)}</span>
+      <span class="pack-switch__value">${escapeHtml(value)}</span>
+    </span>`;
 }
 
 function packCellSummary(cells, delta) {
