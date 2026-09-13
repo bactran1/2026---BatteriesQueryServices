@@ -252,6 +252,9 @@ async function loadConfig() {
   const activeOpacity = Number(config.energy_active_opacity ?? 0.82);
   $("adminActiveOpacity").value = String(activeOpacity);
   $("adminActiveOpacityValue").textContent = activeOpacity.toFixed(2);
+  const pulseSpeed = Number(config.energy_pulse_speed ?? 0.2);
+  $("adminPulseSpeed").value = String(pulseSpeed);
+  $("adminPulseSpeedValue").textContent = pulseSpeed.toFixed(2);
   renderBatteryRows(config.batteries || []);
 }
 
@@ -406,6 +409,10 @@ function bind() {
     $("adminActiveOpacityValue").textContent = Number(event.target.value).toFixed(2);
   });
 
+  $("adminPulseSpeed").addEventListener("input", (event) => {
+    $("adminPulseSpeedValue").textContent = Number(event.target.value).toFixed(2);
+  });
+
   $("adminConfigForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.target;
@@ -420,6 +427,7 @@ function bind() {
       energy_glow_strength: Number(form.energy_glow_strength.value),
       energy_line_glow: form.energy_line_glow.checked,
       energy_active_opacity: Number(form.energy_active_opacity.value),
+      energy_pulse_speed: Number(form.energy_pulse_speed.value),
       batteries: readBatteryRows(),
     };
     const submit = form.querySelector("button[type=submit]");

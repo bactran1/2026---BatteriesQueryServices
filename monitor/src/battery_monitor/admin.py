@@ -43,6 +43,9 @@ DEFAULT_GLOW_STRENGTH = 0.05
 MAX_GLOW_STRENGTH = 1.5
 DEFAULT_LINE_GLOW = False
 DEFAULT_ACTIVE_OPACITY = 0.82
+DEFAULT_PULSE_SPEED = 0.2
+MIN_PULSE_SPEED = 0.02
+MAX_PULSE_SPEED = 0.6
 
 DEFAULT_SESSION_MINUTES = 30
 MIN_SESSION_MINUTES = 1
@@ -212,6 +215,12 @@ class AdminSettings:
             return DEFAULT_ACTIVE_OPACITY
         return max(0.0, min(1.0, float(value)))
 
+    def pulse_speed(self) -> float:
+        value = self._raw().get("energy_pulse_speed")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return DEFAULT_PULSE_SPEED
+        return max(MIN_PULSE_SPEED, min(MAX_PULSE_SPEED, float(value)))
+
     def effective_retention(self, base: Settings) -> int:
         value = self._raw().get("retention_days")
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -285,6 +294,7 @@ class AdminSettings:
             "energy_glow_strength": self.glow_strength(),
             "energy_line_glow": self.line_glow(),
             "energy_active_opacity": self.active_opacity(),
+            "energy_pulse_speed": self.pulse_speed(),
             "session_minutes": self.session_minutes(),
             "batteries": [
                 {
@@ -359,6 +369,18 @@ class AdminSettings:
             if opacity < 0 or opacity > 1:
                 raise ValueError("energy_active_opacity must be between 0 and 1")
             overrides["energy_active_opacity"] = round(opacity, 3)
+
+        if "energy_pulse_speed" in patch:
+            try:
+                pulse_speed = float(patch["energy_pulse_speed"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("energy_pulse_speed must be a number") from exc
+            if pulse_speed < MIN_PULSE_SPEED or pulse_speed > MAX_PULSE_SPEED:
+                raise ValueError(
+                    f"energy_pulse_speed must be between {MIN_PULSE_SPEED} "
+                    f"and {MAX_PULSE_SPEED}"
+                )
+            overrides["energy_pulse_speed"] = round(pulse_speed, 3)
 
         if "batteries" in patch:
             overrides["batteries"] = _validate_batteries(patch["batteries"])
