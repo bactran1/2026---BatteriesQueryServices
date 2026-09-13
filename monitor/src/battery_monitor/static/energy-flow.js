@@ -25,6 +25,11 @@ const BLOOM = { strength: 0.05, radius: 0.55, threshold: 0.58, mobileStrength: 0
 // admin control adjusts; the glow tube scales with it so both fade together.
 const ACTIVE_LINE_OPACITY = 0.82;
 const ACTIVE_GLOW_OPACITY = 0.02;
+// Every pulse travels at this constant rate (a fraction of the path per second),
+// independent of power. An admin control can override it within these bounds.
+const PULSE_SPEED_DEFAULT = 0.2;
+const PULSE_SPEED_MIN = 0.02;
+const PULSE_SPEED_MAX = 0.6;
 const POWER_PORTS = {
   solar: new THREE.Vector3(0.4, 1.4, 0.75),
   inverterSolar: new THREE.Vector3(0.4, 0.42, 2.2),
@@ -138,6 +143,7 @@ function startEnergyFlowScene() {
   let glowStrength = resolveGlowStrength(section.dataset.glowStrength);
   let lineGlow = resolveLineGlow(section.dataset.lineGlow);
   let activeOpacity = resolveActiveOpacity(section.dataset.activeOpacity);
+  let pulseSpeed = resolvePulseSpeed(section.dataset.pulseSpeed);
 
   function resolveGlowStrength(raw) {
     if (raw === undefined || raw === null || raw === "") return BLOOM.strength;
@@ -155,6 +161,14 @@ function startEnergyFlowScene() {
     if (raw === undefined || raw === null || raw === "") return ACTIVE_LINE_OPACITY;
     const value = Number(raw);
     return Number.isFinite(value) ? clamp(value, 0, 1) : ACTIVE_LINE_OPACITY;
+  }
+
+  function resolvePulseSpeed(raw) {
+    if (raw === undefined || raw === null || raw === "") return PULSE_SPEED_DEFAULT;
+    const value = Number(raw);
+    return Number.isFinite(value)
+      ? clamp(value, PULSE_SPEED_MIN, PULSE_SPEED_MAX)
+      : PULSE_SPEED_DEFAULT;
   }
 
   // Restyle the conduit line + glow tubing (opacity and glow) without a full telemetry
@@ -312,7 +326,8 @@ function startEnergyFlowScene() {
     network.routes.forEach((route) => {
       const active = isRouteActive(route);
       const activeCount = active ? 1 : 0;
-      const speed = clamp(0.1 + route.magnitude * 0.009, 0.1, 0.34);
+      // Constant travel rate for every pulse, independent of route power.
+      const speed = pulseSpeed;
 
       route.particles.forEach((particle, index) => {
         particle.visible = index < activeCount;
@@ -647,6 +662,13 @@ function startEnergyFlowScene() {
     activeOpacity = clamp(next, 0, 1);
     applyRouteStyle();
     renderOnce(performance.now());
+  });
+  window.addEventListener("energy-pulse-speed-change", (event) => {
+    const next = Number(event.detail);
+    if (!Number.isFinite(next)) return;
+    pulseSpeed = clamp(next, PULSE_SPEED_MIN, PULSE_SPEED_MAX);
+    renderOnce(performance.now());
+    scheduleFrame();
   });
   document.addEventListener("visibilitychange", () => {
     isDocumentVisible = !document.hidden;

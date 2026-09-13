@@ -168,6 +168,30 @@ class AdminSettingsTests(_AdminTestCase):
         store.set_metadata("admin_settings", json.dumps({"energy_active_opacity": 9}))
         self.assertAlmostEqual(admin.active_opacity(), 1.0)
 
+    def test_pulse_speed_override_and_validation(self) -> None:
+        base = load_settings()
+        store = self.make_store()
+        admin = AdminSettings(store)
+        # Defaults to the constant pulse speed.
+        self.assertAlmostEqual(admin.pulse_speed(), 0.2)
+        self.assertAlmostEqual(admin.public_config(base)["energy_pulse_speed"], 0.2)
+
+        admin.update({"energy_pulse_speed": 0.35}, base)
+        self.assertAlmostEqual(admin.pulse_speed(), 0.35)
+        self.assertAlmostEqual(admin.public_config(base)["energy_pulse_speed"], 0.35)
+
+        # Out-of-range values are rejected at write time...
+        for bad in (0.0, 0.7, -1):
+            with self.assertRaises(ValueError):
+                admin.update({"energy_pulse_speed": bad}, base)
+        # ...and a non-number is rejected too.
+        with self.assertRaises(ValueError):
+            admin.update({"energy_pulse_speed": "fast"}, base)
+
+        # pulse_speed() clamps a corrupt stored value defensively.
+        store.set_metadata("admin_settings", json.dumps({"energy_pulse_speed": 9}))
+        self.assertAlmostEqual(admin.pulse_speed(), 0.6)
+
     def test_battery_reserve_override_and_validation(self) -> None:
         base = load_settings()
         store = self.make_store()

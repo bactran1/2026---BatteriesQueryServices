@@ -160,6 +160,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('canvas.dataset.camera = "orthographic"', scene)
         self.assertIn("const HOUSE_SCENE_SCALE = 0.8", scene)
         self.assertIn("root.scale.setScalar(HOUSE_SCENE_SCALE)", scene)
+        # Pulses travel at one constant, admin-adjustable speed, not a power-scaled one.
+        self.assertIn("const speed = pulseSpeed", scene)
+        self.assertNotIn("route.magnitude * 0.009", scene)
+        self.assertIn('"energy-pulse-speed-change"', scene)
         self.assertIn("canvas.dataset.sourceTelemetry = inverterMetered", scene)
         self.assertIn("canvas.dataset.energyDirection = inverterMetered", scene)
         self.assertNotIn("canvas.dataset.energyDirection = direct", scene)
