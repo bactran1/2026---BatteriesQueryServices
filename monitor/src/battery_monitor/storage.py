@@ -510,17 +510,20 @@ class RetentionStore:
                     SELECT
                         CAST(captured_at_unix / ? AS INTEGER) * ? AS bucket_unix,
                         battery_id,
-                        AVG(power_w) AS battery_power_w
+                        AVG(power_w) AS battery_power_w,
+                        AVG(CASE WHEN soc_percent BETWEEN 0 AND 100
+                            THEN soc_percent END) AS battery_soc_percent
                     FROM readings
                     WHERE {time_filter}
                       AND status = 'ok'
-                      AND power_w IS NOT NULL
+                      AND (power_w IS NOT NULL OR soc_percent BETWEEN 0 AND 100)
                     GROUP BY bucket_unix, battery_id
                 ),
                 battery_by_bucket AS (
                     SELECT
                         bucket_unix,
-                        SUM(battery_power_w) AS battery_power_w
+                        SUM(battery_power_w) AS battery_power_w,
+                        AVG(battery_soc_percent) AS battery_soc_percent
                     FROM battery_by_pack
                     GROUP BY bucket_unix
                 ),
@@ -533,6 +536,7 @@ class RetentionStore:
                     buckets.bucket_unix,
                     inverter_by_bucket.grid_power_w,
                     battery_by_bucket.battery_power_w,
+                    battery_by_bucket.battery_soc_percent,
                     inverter_by_bucket.solar_power_w,
                     inverter_by_bucket.load_power_w,
                     inverter_by_bucket.home_load_power_w
@@ -557,6 +561,7 @@ class RetentionStore:
                 "unix": int(row["bucket_unix"]),
                 "grid_power_w": _rounded_power(row["grid_power_w"]),
                 "battery_power_w": _rounded_power(row["battery_power_w"]),
+                "battery_soc_percent": _rounded_number(row["battery_soc_percent"]),
                 "solar_power_w": _rounded_power(row["solar_power_w"]),
                 "load_power_w": _rounded_power(row["load_power_w"]),
                 "home_load_power_w": _rounded_power(row["home_load_power_w"]),

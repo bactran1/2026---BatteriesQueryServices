@@ -225,6 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "bucket_seconds": bucket_seconds,
             "sources": {
                 "battery_power_w": "direct_battery_telemetry",
+                "battery_soc_percent": "direct_battery_telemetry",
                 "grid_power_w": "inverter_telemetry",
                 "solar_power_w": "inverter_telemetry",
                 "load_power_w": "inverter_telemetry",

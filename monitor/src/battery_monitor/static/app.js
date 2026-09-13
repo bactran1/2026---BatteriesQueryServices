@@ -7,7 +7,7 @@ const state = {
   powerWindowStart: null,
   powerWindowEnd: null,
   history: [],
-  powerSeries: new Set(["grid_power_w", "battery_power_w", "solar_power_w", "home_load_power_w", "load_power_w"]),
+  powerSeries: new Set(["grid_power_w", "battery_power_w", "solar_power_w", "home_load_power_w", "load_power_w", "battery_soc_percent"]),
   energyView: "month",
   energyDate: localCalendarDateValue(new Date()),
   energyTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -299,11 +299,13 @@ const translations = {
     "history.solar": "Solar",
     "history.homeLoad": "Home load",
     "history.load": "Backup load",
+    "history.soc": "Rack SOC",
+    "history.dismissReadout": "Close chart readout",
     "history.directionNote": "Above zero: grid import and battery charging. Below zero: grid export and battery discharge.",
-    "history.chartAria": "Overlaid power history chart",
+    "history.chartAria": "Power history in watts with rack state of charge on a separate percentage scale",
     "history.unavailable": "Power history temporarily unavailable",
-    "history.awaiting": "Awaiting inverter power history",
-    "history.pointAria": "Power at {timestamp}: {values}",
+    "history.awaiting": "Awaiting logged power or battery data",
+    "history.pointAria": "Readings at {timestamp}: {values}",
     "history.importing": "importing",
     "history.exporting": "exporting",
     "history.charging": "charging",
@@ -612,11 +614,13 @@ const translations = {
     "history.solar": "Mặt trời",
     "history.homeLoad": "Phụ tải nhà",
     "history.load": "Phụ tải dự phòng",
+    "history.soc": "Mức sạc tủ pin",
+    "history.dismissReadout": "Đóng bảng số liệu",
     "history.directionNote": "Trên 0: lấy điện lưới và sạc pin. Dưới 0: phát điện lên lưới và xả pin.",
-    "history.chartAria": "Biểu đồ chồng lịch sử công suất",
+    "history.chartAria": "Lịch sử công suất theo watt và mức sạc tủ pin trên thang phần trăm riêng",
     "history.unavailable": "Lịch sử công suất tạm thời không khả dụng",
-    "history.awaiting": "Đang chờ lịch sử công suất biến tần",
-    "history.pointAria": "Công suất lúc {timestamp}: {values}",
+    "history.awaiting": "Đang chờ dữ liệu công suất hoặc pin đã ghi",
+    "history.pointAria": "Số liệu lúc {timestamp}: {values}",
     "history.importing": "đang lấy điện",
     "history.exporting": "đang phát điện",
     "history.charging": "đang sạc",
@@ -678,6 +682,7 @@ const powerHistorySeries = [
   { field: "solar_power_w", labelKey: "history.solar", color: "#30b95f" },
   { field: "home_load_power_w", labelKey: "history.homeLoad", color: "#ff7a00" },
   { field: "load_power_w", labelKey: "history.load", color: "#e04b85", dash: [6, 4] },
+  { field: "battery_soc_percent", labelKey: "history.soc", color: "#089c9c", unit: "%", dash: [3, 4] },
 ];
 const energySeries = [
   { field: "consumption_kwh", labelKey: "energyHistory.consumption", color: "#a855f7" },
@@ -2398,23 +2403,14 @@ function renderEnergyChartTooltip(activePoints, canvasRect) {
       </span>
     `)
     .join("");
-  tooltip.innerHTML = `
+  $("energyHistoryTooltipContent").innerHTML = `
     <time class="energy-tooltip__period">${escapeHtml(period)}</time>
     ${rows}
   `;
   tooltip.hidden = false;
 
-  if (viewportWidth < 540) {
-    tooltip.dataset.mobile = "true";
-    tooltip.style.left = "12px";
-    tooltip.style.top = "12px";
-  } else {
-    delete tooltip.dataset.mobile;
-    const anchorY = Math.min(...activePoints.map((item) => item.y));
-    tooltip.style.left = `${clamp(anchorX, 138, viewportWidth - 138)}px`;
-    tooltip.style.top = `${anchorY}px`;
-    tooltip.classList.toggle("is-below", anchorY < 145);
-  }
+  positionChartReadout(tooltip, viewportWidth, canvasRect.height, anchorX,
+    Math.min(...activePoints.map((item) => item.y)));
 
   const values = activePoints
     .map((item) => `${t(item.series.labelKey)} ${formatEnergyPointValue(item.value)}`)
@@ -2426,16 +2422,17 @@ function renderEnergyChartTooltip(activePoints, canvasRect) {
 }
 
 function hideEnergyChartTooltip(redraw = true) {
+  const hadSelection = state.energyChartHover !== null;
+  if (redraw) window.cancelAnimationFrame(energyChartPointerFrame);
   state.energyChartHover = null;
   const tooltip = $("energyHistoryTooltip");
   tooltip.hidden = true;
-  tooltip.classList.remove("is-below");
   delete tooltip.dataset.mobile;
   $("energyHistoryChart").setAttribute("aria-label", t("energyHistory.chartAria"));
-  if (redraw) window.requestAnimationFrame(drawEnergyHistoryChart);
+  if (redraw && hadSelection) window.requestAnimationFrame(drawEnergyHistoryChart);
 }
 
-function updateEnergyChartHoverFromClient(clientX, clientY) {
+function updateEnergyChartHoverFromClient(clientX, clientY, toggle = false) {
   const canvas = $("energyHistoryChart");
   const rect = canvas.getBoundingClientRect();
   const geometry = state.energyChartGeometry;
@@ -2457,14 +2454,18 @@ function updateEnergyChartHoverFromClient(clientX, clientY) {
     return !best || score < best.score ? { point, score } : best;
   }, null)?.point;
   if (!nearest) return;
+  if (toggle && state.energyChartHover?.unix === nearest.point.unix) {
+    hideEnergyChartTooltip();
+    return;
+  }
   state.energyChartHover = { unix: nearest.point.unix };
   drawEnergyHistoryChart();
 }
 
-function queueEnergyChartHover(clientX, clientY) {
+function queueEnergyChartHover(clientX, clientY, toggle = false) {
   window.cancelAnimationFrame(energyChartPointerFrame);
   energyChartPointerFrame = window.requestAnimationFrame(
-    () => updateEnergyChartHoverFromClient(clientX, clientY),
+    () => updateEnergyChartHoverFromClient(clientX, clientY, toggle),
   );
 }
 
@@ -2514,7 +2515,7 @@ function drawChart() {
   const canvas = $("historyChart");
   const ctx = canvas.getContext("2d");
   const theme = getThemeColors();
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const rect = canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return;
 
@@ -2527,20 +2528,19 @@ function drawChart() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, rect.width, rect.height);
 
+  const visibleSeries = selectedPowerHistorySeries();
+  const showSoc = visibleSeries.some((series) => series.unit === "%");
+  const showPower = visibleSeries.some((series) => series.unit !== "%");
   const pad = rect.width < 520
-    ? { top: 18, right: 12, bottom: 34, left: 64 }
-    : { top: 18, right: 18, bottom: 36, left: 72 };
+    ? { top: 28, right: showSoc ? 46 : 12, bottom: 34, left: showPower ? 64 : 16 }
+    : { top: 28, right: showSoc ? 52 : 18, bottom: 36, left: showPower ? 72 : 18 };
   const width = Math.max(1, rect.width - pad.left - pad.right);
   const height = Math.max(1, rect.height - pad.top - pad.bottom);
-  const visibleSeries = selectedPowerHistorySeries();
   const history = state.history
-    .filter((point) =>
-      Number.isFinite(point.unix) &&
-      visibleSeries.some((series) => finiteNumber(point[series.field]) !== null),
-    )
+    .filter((point) => Number.isFinite(point.unix))
     .sort((left, right) => left.unix - right.unix);
 
-  if (!history.length || !visibleSeries.length) {
+  if (!history.some((point) => visibleSeries.some((series) => powerHistoryNumber(point, series) !== null))) {
     drawEmptyChart(ctx, theme, pad, width, height);
     state.chartGeometry = null;
     $("chartLegend").innerHTML = "";
@@ -2551,7 +2551,8 @@ function drawChart() {
   const times = history.map((point) => point.unix);
   const values = history.flatMap((point) =>
     visibleSeries
-      .map((series) => finiteNumber(point[series.field]))
+      .filter((series) => series.unit !== "%")
+      .map((series) => powerHistoryNumber(point, series))
       .filter((value) => value !== null),
   );
   const hasFixedDateWindow = state.range === "date"
@@ -2570,7 +2571,8 @@ function drawChart() {
   minValue -= valuePadding;
   maxValue += valuePadding;
 
-  drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValue, maxValue);
+  drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValue, maxValue, showPower, showSoc);
+  canvas.dataset.socScale = showSoc ? "0-100" : "hidden";
 
   const plottedPoints = [];
   ctx.save();
@@ -2578,23 +2580,26 @@ function drawChart() {
   ctx.rect(pad.left, pad.top, width * state.chartReveal, height);
   ctx.clip();
   visibleSeries.forEach((series) => {
-    const points = history
-      .map((point) => ({ point, value: finiteNumber(point[series.field]) }))
-      .filter((item) => item.value !== null)
-      .map((item) => ({
-        ...item,
+    const points = history.map((point) => {
+      const value = powerHistoryNumber(point, series);
+      if (value === null) return null;
+      return {
+        point, value,
         series,
         color: series.color,
-        x: pad.left + scale(item.point.unix, minTime, maxTime, 0, width),
-        y: pad.top + height - scale(item.value, minValue, maxValue, 0, height),
-      }));
-    plottedPoints.push(...points);
+        x: pad.left + scale(point.unix, minTime, maxTime, 0, width),
+        y: pad.top + height - scale(value, series.unit === "%" ? 0 : minValue,
+          series.unit === "%" ? 100 : maxValue, 0, height),
+      };
+    });
+    plottedPoints.push(...points.filter(Boolean));
     drawHistorySeries(ctx, points, series.color, series.dash);
   });
   ctx.restore();
 
   state.chartGeometry = {
     points: plottedPoints,
+    powerScale: { min: minValue, max: maxValue },
     plot: { left: pad.left, right: pad.left + width, top: pad.top, bottom: pad.top + height },
   };
   renderChartLegend(history, visibleSeries);
@@ -2630,7 +2635,7 @@ function drawEmptyChart(ctx, theme, pad, width, height) {
   );
 }
 
-function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValue, maxValue) {
+function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValue, maxValue, showPower = true, showSoc = false) {
   ctx.save();
   ctx.lineWidth = 1;
   ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
@@ -2640,7 +2645,12 @@ function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValu
   for (let index = 0; index <= 4; index += 1) {
     const y = pad.top + (height * index) / 4;
     const value = maxValue - ((maxValue - minValue) * index) / 4;
-    if (Math.abs(y - zeroY) < 14) continue;
+    if (showSoc) {
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${100 - index * 25}%`, pad.left + width + 8, y);
+    }
+    if (showPower && Math.abs(y - zeroY) < 14) continue;
     ctx.strokeStyle = theme.chartGrid;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -2649,18 +2659,25 @@ function drawChartGrid(ctx, theme, pad, width, height, minTime, maxTime, minValu
     ctx.stroke();
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(formatPowerAxis(value), pad.left - 9, y);
+    if (showPower) ctx.fillText(formatPowerAxis(value), pad.left - 9, y);
   }
 
-  ctx.strokeStyle = theme.chartMuted;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(pad.left, zeroY);
-  ctx.lineTo(pad.left + width, zeroY);
-  ctx.stroke();
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  ctx.fillText("0 W", pad.left - 9, zeroY);
+  if (showPower) {
+    ctx.strokeStyle = theme.chartMuted;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, zeroY);
+    ctx.lineTo(pad.left + width, zeroY);
+    ctx.stroke();
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText("0 W", pad.left - 9, zeroY);
+  }
+  if (showSoc) {
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("SOC", pad.left + width + 8, pad.top - 12);
+  }
 
   const tickCount = width < 460 ? 3 : 5;
   for (let index = 0; index < tickCount; index += 1) {
@@ -2697,7 +2714,8 @@ function drawHistorySeries(ctx, points, color, dash = []) {
   ctx.setLineDash(dash);
   ctx.beginPath();
   points.forEach((item, index) => {
-    if (index === 0) ctx.moveTo(item.x, item.y);
+    if (!item) return;
+    if (index === 0 || !points[index - 1]) ctx.moveTo(item.x, item.y);
     else ctx.lineTo(item.x, item.y);
   });
   ctx.strokeStyle = color;
@@ -2708,7 +2726,7 @@ function drawHistorySeries(ctx, points, color, dash = []) {
   ctx.setLineDash([]);
 
   if (points.length <= 80) {
-    points.forEach((point) => {
+    points.filter(Boolean).forEach((point) => {
       ctx.beginPath();
       ctx.arc(point.x, point.y, 2.8, 0, Math.PI * 2);
       ctx.fillStyle = color;
@@ -2747,7 +2765,7 @@ function renderChartLegend(history, visibleSeries) {
   const items = visibleSeries.map((series) => {
     const point = [...history]
       .reverse()
-      .find((candidate) => finiteNumber(candidate[series.field]) !== null);
+      .find((candidate) => powerHistoryNumber(candidate, series) !== null);
     return { series, point, value: point ? point[series.field] : null };
   });
   const signature = `${state.language}:${items
@@ -2784,24 +2802,14 @@ function renderChartTooltip(activePoints, canvasRect) {
     `)
     .join("");
   tooltip.classList.add("chart-tooltip--power");
-  tooltip.innerHTML = `
+  $("chartTooltipContent").innerHTML = `
     <time class="power-tooltip__time">${escapeHtml(timestamp)}</time>
     ${rows}
   `;
   tooltip.hidden = false;
 
-  if (canvasRect.width < 540) {
-    tooltip.dataset.mobile = "true";
-    tooltip.style.left = "12px";
-    tooltip.style.top = "12px";
-  } else {
-    delete tooltip.dataset.mobile;
-    const anchorX = activePoints[0].x;
-    const anchorY = Math.min(...activePoints.map((item) => item.y));
-    tooltip.style.left = `${clamp(anchorX, 138, canvasRect.width - 138)}px`;
-    tooltip.style.top = `${anchorY}px`;
-    tooltip.classList.toggle("is-below", anchorY < 145);
-  }
+  positionChartReadout(tooltip, canvasRect.width, canvasRect.height, activePoints[0].x,
+    Math.min(...activePoints.map((item) => item.y)));
   const values = activePoints
     .map((item) => `${t(item.series.labelKey)} ${formatPowerHistoryValue(item.value, item.series.field)}`)
     .join(", ");
@@ -2814,18 +2822,35 @@ function renderChartTooltip(activePoints, canvasRect) {
   );
 }
 
+function positionChartReadout(tooltip, width, height, anchorX, anchorY) {
+  if (width < 540) {
+    tooltip.dataset.mobile = "true";
+    tooltip.style.left = "12px";
+    tooltip.style.top = "12px";
+    return;
+  }
+  delete tooltip.dataset.mobile;
+  // Measure localized content so the close button and every row stay inside the chart.
+  const tooltipWidth = tooltip.offsetWidth;
+  const tooltipHeight = tooltip.offsetHeight;
+  const top = anchorY - tooltipHeight - 14;
+  tooltip.style.left = `${clamp(anchorX - tooltipWidth / 2, 12, width - tooltipWidth - 12)}px`;
+  tooltip.style.top = `${clamp(top >= 12 ? top : anchorY + 14, 12, height - tooltipHeight - 12)}px`;
+}
+
 function hideChartTooltip(redraw = true) {
+  const hadSelection = state.chartHover !== null;
+  if (redraw) window.cancelAnimationFrame(chartPointerFrame);
   state.chartHover = null;
   const tooltip = $("chartTooltip");
   tooltip.hidden = true;
-  tooltip.classList.remove("is-below");
   tooltip.classList.remove("chart-tooltip--power");
   delete tooltip.dataset.mobile;
   $("historyChart").setAttribute("aria-label", t("history.chartAria"));
-  if (redraw) window.requestAnimationFrame(drawChart);
+  if (redraw && hadSelection) window.requestAnimationFrame(drawChart);
 }
 
-function updateChartHoverFromClient(clientX, clientY) {
+function updateChartHoverFromClient(clientX, clientY, toggle = false) {
   const canvas = $("historyChart");
   const rect = canvas.getBoundingClientRect();
   const geometry = state.chartGeometry;
@@ -2847,13 +2872,17 @@ function updateChartHoverFromClient(clientX, clientY) {
     return !best || score < best.score ? { point, score } : best;
   }, null)?.point;
   if (!nearest) return;
+  if (toggle && state.chartHover?.unix === nearest.point.unix) {
+    hideChartTooltip();
+    return;
+  }
   state.chartHover = { unix: nearest.point.unix };
   drawChart();
 }
 
-function queueChartHover(clientX, clientY) {
+function queueChartHover(clientX, clientY, toggle = false) {
   window.cancelAnimationFrame(chartPointerFrame);
-  chartPointerFrame = window.requestAnimationFrame(() => updateChartHoverFromClient(clientX, clientY));
+  chartPointerFrame = window.requestAnimationFrame(() => updateChartHoverFromClient(clientX, clientY, toggle));
 }
 
 function moveChartKeyboardSelection(key) {
@@ -2876,6 +2905,11 @@ function selectedPowerHistorySeries() {
   return powerHistorySeries.filter((series) => state.powerSeries.has(series.field));
 }
 
+function powerHistoryNumber(point, series) {
+  const value = finiteNumber(point[series.field]);
+  return series.unit === "%" && (value < 0 || value > 100) ? null : value;
+}
+
 function formatPowerAxis(value) {
   const magnitude = Math.abs(value);
   const scaled = magnitude >= 1000 ? magnitude / 1000 : magnitude;
@@ -2889,6 +2923,11 @@ function formatPowerAxis(value) {
 function formatPowerHistoryValue(value, field) {
   const number = finiteNumber(value);
   if (number === null) return "--";
+  if (field === "battery_soc_percent") {
+    return number >= 0 && number <= 100
+      ? `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 1 }).format(number)}%`
+      : "--";
+  }
   const magnitude = Math.abs(number);
   const power = magnitude >= 1000
     ? `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 1 }).format(magnitude / 1000)} kW`
@@ -3255,6 +3294,67 @@ function prefersReducedMotion() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
+function bindChartInspection(chart, tooltip, queueHover, hideTooltip, moveSelection) {
+  let touch = null;
+  chart.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "touch") {
+      touch = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+    }
+  }, { passive: true });
+  chart.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "touch") {
+      queueHover(event.clientX, event.clientY);
+    } else if (touch?.id === event.pointerId
+      && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 12) {
+      touch.moved = true;
+      hideTooltip();
+    }
+  }, { passive: true });
+  chart.addEventListener("pointerup", (event) => {
+    if (touch?.id !== event.pointerId) return;
+    const tap = !touch.moved && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) <= 12;
+    touch = null;
+    if (tap) queueHover(event.clientX, event.clientY, true);
+  }, { passive: true });
+  chart.addEventListener("pointercancel", () => { touch = null; hideTooltip(); });
+  chart.addEventListener("pointerleave", (event) => {
+    if (event.pointerType !== "touch" && !tooltip.contains(event.relatedTarget)) hideTooltip();
+  });
+  tooltip.addEventListener("pointerleave", (event) => {
+    if (event.pointerType !== "touch" && event.relatedTarget !== chart) hideTooltip();
+  });
+  chart.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    moveSelection(event.key);
+  });
+  chart.addEventListener("blur", (event) => {
+    if (!tooltip.contains(event.relatedTarget)) hideTooltip();
+  });
+  tooltip.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-dismiss-chart]")) return;
+    hideTooltip();
+    chart.focus({ preventScroll: true });
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (event.target !== chart && !tooltip.contains(event.target)) {
+      touch = null;
+      hideTooltip();
+    }
+  }, { passive: true, capture: true });
+  document.addEventListener("scroll", (event) => {
+    if (!tooltip.contains(event.target)) { touch = null; hideTooltip(); }
+  }, { passive: true, capture: true });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      const returnFocus = tooltip.contains(document.activeElement);
+      touch = null;
+      hideTooltip();
+      if (returnFocus) chart.focus({ preventScroll: true });
+    }
+  });
+}
+
 function bindControls() {
   initLanguage();
   initTheme();
@@ -3351,40 +3451,11 @@ function bindControls() {
   });
 
   const chart = $("historyChart");
-  chart.addEventListener("pointermove", (event) => {
-    if (event.pointerType === "touch") return;
-    queueChartHover(event.clientX, event.clientY);
-  });
-  chart.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "touch") queueChartHover(event.clientX, event.clientY);
-  });
-  chart.addEventListener("pointerleave", (event) => {
-    if (event.pointerType !== "touch") hideChartTooltip();
-  });
-  chart.addEventListener("keydown", (event) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    moveChartKeyboardSelection(event.key);
-  });
-  chart.addEventListener("blur", () => hideChartTooltip());
+  bindChartInspection(chart, $("chartTooltip"), queueChartHover, hideChartTooltip, moveChartKeyboardSelection);
 
   const energyChart = $("energyHistoryChart");
-  energyChart.addEventListener("pointermove", (event) => {
-    if (event.pointerType === "touch") return;
-    queueEnergyChartHover(event.clientX, event.clientY);
-  });
-  energyChart.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "touch") queueEnergyChartHover(event.clientX, event.clientY);
-  });
-  energyChart.addEventListener("pointerleave", (event) => {
-    if (event.pointerType !== "touch") hideEnergyChartTooltip();
-  });
-  energyChart.addEventListener("keydown", (event) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    moveEnergyChartKeyboardSelection(event.key);
-  });
-  energyChart.addEventListener("blur", () => hideEnergyChartTooltip());
+  bindChartInspection(energyChart, $("energyHistoryTooltip"), queueEnergyChartHover,
+    hideEnergyChartTooltip, moveEnergyChartKeyboardSelection);
   $("energyChartScroll").addEventListener("scroll", () => {
     window.cancelAnimationFrame(energyChartPointerFrame);
     energyChartPointerFrame = window.requestAnimationFrame(drawEnergyHistoryChart);

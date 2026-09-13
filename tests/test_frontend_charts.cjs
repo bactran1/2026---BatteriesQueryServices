@@ -9,31 +9,50 @@ const source = fs.readFileSync(path.join(__dirname, "../monitor/src/battery_moni
 function chart(viewportWidth = 390) {
   const bars = [];
   const labels = [];
+  const strokes = [];
+  const listeners = new Map();
+  const frames = new Map();
+  let frameId = 0;
+  const on = (target, type, callback) => {
+    const key = `${target}:${type}`;
+    listeners.set(key, [...(listeners.get(key) || []), callback]);
+  };
   const ctx = {
     setTransform() {}, clearRect() {}, save() {}, restore() {}, drawImage() {},
-    beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+    beginPath() {}, moveTo: (...args) => strokes.push(["move", ...args]),
+    lineTo: (...args) => strokes.push(["line", ...args]), stroke() {},
+    rect() {}, clip() {}, arc() {}, fill() {}, setLineDash() {},
     fillRect: (...args) => bars.push(args),
     fillText: (...args) => labels.push(args),
   };
   const elements = new Map();
   const element = (id) => {
     if (!elements.has(id)) elements.set(id, {
-      style: {}, dataset: {}, classList: { remove() {} }, setAttribute() {},
+      style: {}, dataset: {}, classList: { remove() {}, add() {}, toggle() {} }, setAttribute() {},
+      addEventListener: (type, callback) => on(id, type, callback),
+      contains: (target) => target === element(id) || target?.owner === id,
+      focus() {},
       getContext: () => ctx,
       getBoundingClientRect() {
-        return { width: parseFloat(this.style.width) || viewportWidth, height: 310 };
+        return { left: 0, top: 0, width: parseFloat(this.style.width) || viewportWidth, height: 310 };
       },
-      clientWidth: viewportWidth, scrollLeft: 0,
+      clientWidth: viewportWidth, offsetWidth: 280, offsetHeight: 210, scrollPosition: 0,
+      get scrollLeft() { return this.scrollPosition; },
+      set scrollLeft(value) { this.scrollPosition = Math.max(0, Math.min(value, this.scrollWidth - this.clientWidth)); },
       get scrollWidth() { return parseFloat(element("energyHistoryChart").style.width) || viewportWidth; },
     });
     return elements.get(id);
   };
   const context = vm.createContext({
-    document: { documentElement: { lang: "en" }, getElementById: element },
-    window: { devicePixelRatio: 3 },
+    document: { documentElement: { lang: "en" }, getElementById: element,
+      addEventListener: (type, callback) => on("document", type, callback) },
+    window: { devicePixelRatio: 3, requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
+      cancelAnimationFrame: (id) => frames.delete(id) },
   });
   vm.runInContext(`${source}\nfunction bindControls() {}\nfunction refreshCycle() {}\nfunction getThemeColors() { return {chartMuted: "#999", chartGrid: "#ddd"}; }`, context);
-  return { context, state: vm.runInContext("state", context), element, bars, labels,
+  return { context, state: vm.runInContext("state", context), element, bars, labels, strokes,
+    emit: (target, type, event = {}) => (listeners.get(`${target}:${type}`) || []).forEach(fn => fn(event)),
+    flush() { for (const [id, callback] of [...frames]) { if (frames.delete(id)) callback(); } },
     run: (code) => vm.runInContext(code, context) };
 }
 
@@ -49,6 +68,130 @@ test("Energy uses separate bars and one shared zero-based scale", () => {
   assert.ok(ui.labels.some(([text]) => text === "0.4"));
   assert.equal(ui.element("energyHistoryChart").width, 780);
 });
+
+test("SOC uses a fixed percentage axis without changing the power scale", () => {
+  const ui = chart(320);
+  ui.state.history = [
+    {unix:0, battery_power_w:-2500, battery_soc_percent:0},
+    {unix:60, battery_power_w:4500, battery_soc_percent:50},
+    {unix:120, battery_power_w:2000, battery_soc_percent:100},
+  ];
+  ui.run("drawChart()");
+  const before = {...ui.state.chartGeometry.powerScale};
+  const soc = ui.state.chartGeometry.points.filter(p => p.series.unit === "%");
+  assert.equal(soc[0].y, ui.state.chartGeometry.plot.bottom);
+  assert.equal(soc[2].y, ui.state.chartGeometry.plot.top);
+  assert.equal(soc[1].y, (soc[0].y + soc[2].y) / 2);
+  assert.ok(ui.labels.some(([text]) => text === "100%"));
+  assert.ok(ui.labels.some(([text]) => text === "0%"));
+  assert.equal(ui.element("historyChart").width, 640);
+  ui.state.powerSeries.delete("battery_soc_percent");
+  ui.run("drawChart()");
+  assert.deepEqual({...ui.state.chartGeometry.powerScale}, before);
+});
+
+test("SOC-only history, zero, invalid and absent SOC retain their meaning", () => {
+  const ui = chart();
+  ui.state.powerSeries = new Set(["battery_soc_percent"]);
+  ui.state.history = [{unix:0,battery_soc_percent:0}, {unix:60,battery_soc_percent:null},
+    {unix:120,battery_soc_percent:130}, {unix:180,battery_soc_percent:72.35}];
+  ui.run("drawChart()");
+  assert.equal(ui.state.chartGeometry.points.length, 2);
+  assert.equal(ui.run('formatPowerHistoryValue(72.35, "battery_soc_percent")'), "72.4%");
+  assert.equal(ui.run('formatPowerHistoryValue(0, "battery_soc_percent")'), "0%");
+  assert.equal(ui.run('formatPowerHistoryValue(null, "battery_soc_percent")'), "--");
+  assert.equal(ui.run('formatPowerHistoryValue(130, "battery_soc_percent")'), "--");
+  ui.state.language = "vi";
+  assert.equal(ui.run('formatPowerHistoryValue(72.35, "battery_soc_percent")'), "72,4%");
+  assert.ok(!ui.labels.some(([text]) => / W$/.test(text)));
+});
+
+test("Missing SOC breaks the line instead of drawing a made-up value", () => {
+  const ui = chart();
+  const series = ui.run('powerHistorySeries.find(s => s.unit === "%")');
+  ui.run('drawHistorySeries(document.getElementById("historyChart").getContext("2d"), [{x:0,y:1}, null, {x:2,y:3}], "teal")');
+  assert.equal(ui.strokes.filter(([kind]) => kind === "line").length, 0);
+  assert.equal(ui.strokes.filter(([kind]) => kind === "move").length, 2);
+  assert.equal(series.field, "battery_soc_percent");
+});
+
+test("Readouts stay within desktop chart bounds for every anchor", () => {
+  const ui = chart(768);
+  for (const x of [0, 384, 768]) {
+    for (const y of [0, 155, 310]) {
+      ui.run(`positionChartReadout($("chartTooltip"), 768, 310, ${x}, ${y})`);
+      const tooltip = ui.element("chartTooltip");
+      assert.ok(parseFloat(tooltip.style.left) >= 12);
+      assert.ok(parseFloat(tooltip.style.left) + tooltip.offsetWidth <= 756);
+      assert.ok(parseFloat(tooltip.style.top) >= 12);
+      assert.ok(parseFloat(tooltip.style.top) + tooltip.offsetHeight <= 298);
+    }
+  }
+});
+
+function interactiveChart(kind = "power") {
+  const ui = chart();
+  const energy = kind === "energy";
+  ui.id = energy ? "energyHistoryChart" : "historyChart";
+  ui.tooltip = energy ? "energyHistoryTooltip" : "chartTooltip";
+  if (energy) {
+    ui.state.energyView = "hour";
+    ui.state.energyHistory = [{unix:0, consumption_kwh:2}];
+    ui.run('drawEnergyHistoryChart(); bindChartInspection($("energyHistoryChart"), $("energyHistoryTooltip"), queueEnergyChartHover, hideEnergyChartTooltip, moveEnergyChartKeyboardSelection)');
+  } else {
+    ui.state.history = [{unix:0, battery_power_w:500, battery_soc_percent:81.5}];
+    ui.run('drawChart(); bindChartInspection($("historyChart"), $("chartTooltip"), queueChartHover, hideChartTooltip, moveChartKeyboardSelection)');
+  }
+  const geometry = energy ? ui.state.energyChartGeometry : ui.state.chartGeometry;
+  const point = geometry.points[0];
+  ui.touch = {pointerType:"touch", pointerId:1, clientX:point.groupX ?? point.x, clientY:150};
+  ui.tap = () => {
+    ui.emit(ui.id, "pointerdown", ui.touch);
+    ui.emit(ui.id, "pointerup", ui.touch);
+    ui.flush();
+  };
+  return ui;
+}
+
+for (const kind of ["power", "energy"]) {
+  test(`${kind}: tap opens and a second tap dismisses the readout`, () => {
+    const ui = interactiveChart(kind);
+    ui.tap();
+    assert.equal(ui.element(ui.tooltip).hidden, false);
+    if (kind === "power") assert.match(ui.element("chartTooltipContent").innerHTML, /81.5%/);
+    ui.tap();
+    assert.equal(ui.element(ui.tooltip).hidden, true);
+  });
+  test(`${kind}: close, outside tap, scrolling and Escape dismiss`, () => {
+    const ui = interactiveChart(kind);
+    for (const dismiss of [
+      () => ui.emit(ui.tooltip, "click", {target:{closest:()=>true}}),
+      () => ui.emit("document", "pointerdown", {target:{}}),
+      () => ui.emit("document", "scroll", {target:{}}),
+      () => ui.emit("document", "keydown", {key:"Escape"}),
+      () => ui.emit(ui.id, "pointercancel"),
+    ]) {
+      ui.tap();
+      assert.equal(ui.element(ui.tooltip).hidden, false);
+      dismiss();
+      ui.flush();
+      assert.equal(ui.element(ui.tooltip).hidden, true);
+    }
+  });
+  test(`${kind}: a swipe never opens the readout and canceled animation frames cannot resurrect it`, () => {
+    const ui = interactiveChart(kind);
+    ui.emit(ui.id, "pointerdown", ui.touch);
+    ui.emit(ui.id, "pointermove", {...ui.touch, clientY:190});
+    ui.emit(ui.id, "pointerup", {...ui.touch, clientY:190});
+    ui.flush();
+    assert.equal(ui.element(ui.tooltip).hidden, true);
+    ui.emit(ui.id, "pointerdown", ui.touch);
+    ui.emit(ui.id, "pointerup", ui.touch);
+    ui.emit("document", "pointerdown", {target:{}});
+    ui.flush();
+    assert.equal(ui.element(ui.tooltip).hidden, true);
+  });
+}
 
 test("Dense hourly timelines scroll instead of squeezing bars on mobile", () => {
   const ui = chart(320);
