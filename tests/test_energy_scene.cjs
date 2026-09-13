@@ -33,6 +33,26 @@ test("All flow paths are straight, orthogonal, and attached to defined ports", a
   assert.ok(network.battery.curve.getPointAt(1).distanceTo(ports.battery) < 1e-8);
 });
 
+test("Every pulse covers the same distance per second on every conduit, at any power", async () => {
+  const {run} = await scene();
+  const network = run("createFlowNetwork(createMaterials())");
+  const rate = run("pulseProgressRate");
+  const speed = run("PULSE_SPEED_DEFAULT");
+  // The inverter-battery run is far shorter than the Home load run...
+  assert.ok(network.load.length > network.battery.length * 10);
+  // ...yet a pulse moves the same scene units per second on both, and on every route.
+  const expected = speed * run("PULSE_REFERENCE_LENGTH");
+  for (const route of network.routes) {
+    assert.ok(Math.abs(rate(route, speed) * route.length - expected) < 1e-9);
+  }
+  // Power no longer affects travel speed.
+  const configure = run("configureRoute");
+  configure(network.battery, "charging", 1, true, 1, true);
+  const lowPower = rate(network.battery, speed);
+  configure(network.battery, "charging", 5000, true, 1, true);
+  assert.equal(rate(network.battery, speed), lowPower);
+});
+
 test("Modern equipment contains three distinct battery modules and independent load signals", async () => {
   const {THREE, run} = await scene();
   const system = run("createRenogySystem(createMaterials())");

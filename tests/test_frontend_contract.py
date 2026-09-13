@@ -161,7 +161,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("const HOUSE_SCENE_SCALE = 0.8", scene)
         self.assertIn("root.scale.setScalar(HOUSE_SCENE_SCALE)", scene)
         # Pulses travel at one constant, admin-adjustable speed, not a power-scaled one.
-        self.assertIn("const speed = pulseSpeed", scene)
+        self.assertIn("const speed = pulseProgressRate(route, pulseSpeed)", scene)
+        self.assertIn("length: Math.max(curve.getLength(), 0.001)", scene)
         self.assertNotIn("route.magnitude * 0.009", scene)
         self.assertIn('"energy-pulse-speed-change"', scene)
         self.assertIn("canvas.dataset.sourceTelemetry = inverterMetered", scene)
