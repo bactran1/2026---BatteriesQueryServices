@@ -458,6 +458,52 @@ class RetentionStoreTests(unittest.TestCase):
             store.close()
 
 
+    def test_power_history_includes_equal_weight_direct_pack_soc(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            self.addCleanup(store.close)
+            start = int(datetime(2026, 9, 1, tzinfo=timezone.utc).timestamp())
+            for offset, packs in [(0, [("rack-1", 20, 100), ("rack-2", 80, -50)]),
+                                  (60, [("rack-1", 40, 300)])]:
+                snapshot = _sample_snapshot()
+                snapshot["service"]["captured_at"] = datetime.fromtimestamp(start + offset, timezone.utc).isoformat()
+                snapshot["batteries"] = [
+                    {"id": name, "address": index + 1, "status": "ok",
+                     "last_reading": {"soc_percent": soc, "power_w": power}}
+                    for index, (name, soc, power) in enumerate(packs)
+                ]
+                snapshot["inverter"] = {"id": "inverter-1", "status": "ok",
+                                         "last_reading": {"battery_soc_percent": 99, "battery_power_w": 9000}}
+                store.insert_snapshot(snapshot)
+            points = store.power_history(3600, 300, start, start + 300)
+            # Pack 1 averages 30%, pack 2 80%; unequal sample counts must not overweight pack 1.
+            self.assertEqual(points[0]["battery_soc_percent"], 55)
+            self.assertEqual(points[0]["battery_power_w"], 150)
+            store.close()
+
+    def test_power_history_soc_keeps_zero_missing_and_invalid_distinct(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            self.addCleanup(store.close)
+            start = int(datetime(2026, 9, 1, tzinfo=timezone.utc).timestamp())
+            values = [(0, None, "ok"), (100, None, "ok"), (None, 500, "ok"),
+                      (125, 500, "ok"), (-1, 500, "ok"), (80, None, "error")]
+            for index, (soc, power, status) in enumerate(values):
+                snapshot = _sample_snapshot()
+                snapshot["service"]["captured_at"] = datetime.fromtimestamp(start + index * 300, timezone.utc).isoformat()
+                snapshot["batteries"] = [{"id": "rack-1", "address": 1, "status": status,
+                                           "last_reading": {"soc_percent": soc, "power_w": power}}]
+                store.insert_snapshot(snapshot)
+            points = store.power_history(3600, 300, start, start + 1800)
+            self.assertEqual([point["battery_soc_percent"] for point in points], [0, 100, None, None, None])
+            self.assertIsNone(points[0]["battery_power_w"])
+            self.assertIsNone(points[1]["battery_power_w"])
+            # The exclusive end of a calendar-day window must not include the next bucket.
+            self.assertEqual(len(store.power_history(300, 300, start, start + 300)), 1)
+            store.close()
+
     def test_home_and_backup_load_are_archived_independently(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")

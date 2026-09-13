@@ -231,6 +231,9 @@
               <button type="button" class="power-series-toggle is-active" data-power-series="load_power_w" aria-pressed="true" style="--series-color: #e04b85">
                 <i></i><span data-i18n="history.load">Backup load</span>
               </button>
+              <button type="button" class="power-series-toggle is-active" data-power-series="battery_soc_percent" aria-pressed="true" style="--series-color: #089c9c">
+                <i></i><span data-i18n="history.soc">Rack SOC</span>
+              </button>
             </div>
             <p class="power-direction-note" data-i18n="history.directionNote">Above zero: grid import and battery charging. Below zero: grid export and battery discharge.</p>
           </div>
@@ -243,7 +246,10 @@
               data-i18n-aria-label="history.chartAria"
               aria-describedby="chartTooltip"
             ></canvas>
-            <div id="chartTooltip" class="chart-tooltip" role="status" aria-live="polite" hidden></div>
+            <div id="chartTooltip" class="chart-tooltip" hidden>
+              <button type="button" class="chart-tooltip__close" data-dismiss-chart aria-label="Close chart readout" title="Close chart readout" data-i18n-aria-label="history.dismissReadout" data-i18n-title="history.dismissReadout"><span aria-hidden="true"></span></button>
+              <div id="chartTooltipContent" role="status" aria-live="polite"></div>
+            </div>
           </div>
           <div id="chartLegend" class="chart-legend" aria-hidden="true"></div>
         </section>
@@ -352,7 +358,10 @@
               ></canvas>
               </div>
               <canvas id="energyChartAxis" class="energy-chart-axis" aria-hidden="true"></canvas>
-              <div id="energyHistoryTooltip" class="chart-tooltip chart-tooltip--energy" role="status" aria-live="polite" hidden></div>
+              <div id="energyHistoryTooltip" class="chart-tooltip chart-tooltip--energy" hidden>
+                <button type="button" class="chart-tooltip__close" data-dismiss-chart aria-label="Close chart readout" title="Close chart readout" data-i18n-aria-label="history.dismissReadout" data-i18n-title="history.dismissReadout"><span aria-hidden="true"></span></button>
+                <div id="energyHistoryTooltipContent" role="status" aria-live="polite"></div>
+              </div>
               <div id="energyHistoryEmpty" class="energy-history-empty" data-i18n="energyHistory.awaiting">Awaiting inverter energy readings</div>
             </div>
           </div>
