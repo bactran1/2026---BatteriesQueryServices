@@ -25,11 +25,15 @@ const BLOOM = { strength: 0.05, radius: 0.55, threshold: 0.58, mobileStrength: 0
 // admin control adjusts; the glow tube scales with it so both fade together.
 const ACTIVE_LINE_OPACITY = 0.82;
 const ACTIVE_GLOW_OPACITY = 0.02;
-// Every pulse travels at this constant rate (a fraction of the path per second),
-// independent of power. An admin control can override it within these bounds.
+// Every pulse travels at one constant world-space speed, independent of power and of
+// how long its conduit is. The admin value is expressed as "fractions of a reference
+// conduit per second", so a pulse moves pulseSpeed * PULSE_REFERENCE_LENGTH scene
+// units per second on every route (a short inverter-battery run and the long Home
+// load run alike). An admin control can override it within these bounds.
 const PULSE_SPEED_DEFAULT = 0.2;
 const PULSE_SPEED_MIN = 0.02;
 const PULSE_SPEED_MAX = 0.6;
+const PULSE_REFERENCE_LENGTH = 3.5;
 const POWER_PORTS = {
   solar: new THREE.Vector3(0.4, 1.4, 0.75),
   inverterSolar: new THREE.Vector3(0.4, 0.42, 2.2),
@@ -326,8 +330,8 @@ function startEnergyFlowScene() {
     network.routes.forEach((route) => {
       const active = isRouteActive(route);
       const activeCount = active ? 1 : 0;
-      // Constant travel rate for every pulse, independent of route power.
-      const speed = pulseSpeed;
+      // Same world-space speed for every pulse: normalise by this conduit's length.
+      const speed = pulseProgressRate(route, pulseSpeed);
 
       route.particles.forEach((particle, index) => {
         particle.visible = index < activeCount;
@@ -1078,6 +1082,12 @@ function createFlowNetwork(materials) {
   return { group, grid, acLink, battery, load, backup, solar, routes };
 }
 
+// Fraction of a route a pulse advances per second so that it covers
+// pulseSpeed * PULSE_REFERENCE_LENGTH scene units per second on any conduit.
+function pulseProgressRate(route, pulseSpeed) {
+  return (pulseSpeed * PULSE_REFERENCE_LENGTH) / route.length;
+}
+
 function createFlowRoute(curve, materials, particleCount, phaseOffset) {
   const group = new THREE.Group();
   const lineMaterial = materials.flowLine.clone();
@@ -1106,6 +1116,8 @@ function createFlowRoute(curve, materials, particleCount, phaseOffset) {
   return {
     group,
     curve,
+    // Arc length of the conduit, used to give every pulse the same travel speed.
+    length: Math.max(curve.getLength(), 0.001),
     particles,
     lineMaterial,
     glowMaterial,
