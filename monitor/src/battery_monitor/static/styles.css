@@ -1405,6 +1405,12 @@ button {
   margin-bottom: 0;
 }
 
+.savings-actions {
+  display: grid;
+  justify-items: end;
+  gap: 9px;
+}
+
 .savings-description {
   max-width: 680px;
   margin: 8px 0 0;
@@ -3373,7 +3379,8 @@ select {
     justify-content: flex-start;
   }
 
-  .energy-history-actions {
+  .energy-history-actions,
+  .savings-actions {
     width: 100%;
     justify-items: start;
   }
@@ -3606,6 +3613,15 @@ select {
   .savings-heading .segmented button {
     padding-inline: 6px;
     font-size: 11px;
+  }
+
+  .savings-date-control {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .savings-date-control input {
+    min-width: 0;
   }
 
   .savings-primary > strong {

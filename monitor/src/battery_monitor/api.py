@@ -257,15 +257,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/savings")
     async def savings(
         timezone_name: str = Query(default="America/Los_Angeles", alias="timezone"),
+        date: str | None = Query(default=None),
     ):
-        try:
-            ZoneInfo(timezone_name)
-        except ZoneInfoNotFoundError as error:
-            raise HTTPException(status_code=400, detail="Unknown timezone") from error
+        selected_date, _, _, _, _ = _calendar_day_window(date, timezone_name)
         energy = await asyncio.to_thread(
-            store.savings_energy, timezone_name, settings.retention_days
+            store.savings_energy,
+            timezone_name,
+            settings.retention_days,
+            selected_date,
         )
-        return build_savings_payload(energy, settings.utility_tariff)
+        payload = build_savings_payload(energy, settings.utility_tariff)
+        payload["selected_date"] = selected_date
+        return payload
 
     @app.get("/api/events")
     async def events(range: str = Query(default="7d"), limit: int = Query(default=80, ge=1, le=300)):

@@ -379,11 +379,17 @@
               <h2 id="energySavingsTitle" data-i18n="savings.title">Energy Savings</h2>
               <p class="savings-description" data-i18n="savings.description">Estimated value of recorded solar energy under the household's current utility rate</p>
             </div>
-            <div id="savingsPeriodControls" class="segmented" role="group" aria-label="Savings period" data-i18n-aria-label="savings.periodAria">
-              <button type="button" data-savings-period="today" data-i18n="savings.today" aria-pressed="false">Today</button>
-              <button type="button" data-savings-period="month" data-i18n="savings.month" class="is-active" aria-pressed="true">Month</button>
-              <button type="button" data-savings-period="year" data-i18n="savings.year" aria-pressed="false">Year</button>
-              <button type="button" data-savings-period="retained" data-i18n="savings.retained" aria-pressed="false">3 years</button>
+            <div class="savings-actions">
+              <div id="savingsPeriodControls" class="segmented" role="group" aria-label="Savings period" data-i18n-aria-label="savings.periodAria">
+                <button type="button" data-savings-period="date" data-i18n="savings.date" aria-pressed="false">Date</button>
+                <button type="button" data-savings-period="month" data-i18n="savings.month" class="is-active" aria-pressed="true">Month</button>
+                <button type="button" data-savings-period="year" data-i18n="savings.year" aria-pressed="false">Year</button>
+                <button type="button" data-savings-period="retained" data-i18n="savings.retained" aria-pressed="false">3 years</button>
+              </div>
+              <label id="savingsDateControl" class="energy-date-control savings-date-control" hidden>
+                <span data-i18n="savings.selectDate">Select day</span>
+                <input id="savingsDateInput" type="date" aria-label="Select savings date" data-i18n-aria-label="savings.selectDateAria">
+              </label>
             </div>
           </div>
           <div class="savings-layout">

@@ -9,6 +9,7 @@ const staticDir = path.resolve(__dirname, "../monitor/src/battery_monitor/static
 const artifacts = path.resolve(__dirname, "../data/chart-browser-tests");
 const day = new Date().toISOString().slice(0, 10);
 const start = Date.parse(`${day}T00:00:00Z`) / 1000;
+const selectedSavingsDay = new Date((start - 86400) * 1000).toISOString().slice(0, 10);
 const power = Array.from({length:49}, (_, index) => ({
   unix:start + index * 1800, timestamp:new Date((start + index * 1800) * 1000).toISOString(),
   grid_power_w:900 * Math.cos(index / 7), battery_power_w:2500 * Math.sin(index / 9),
@@ -26,8 +27,13 @@ const live = {
   snapshot:{batteries:[]}, summary:{}, rack:{expected_battery_count:3,batteries:[]}, storage:{},
 };
 const savings = {
-  currency:"USD", default_period:"month",
+  currency:"USD", default_period:"month", selected_date:day,
   periods:{
+    date:{solar_generation_kwh:6.4,grid_import_kwh:3.1,observed_days:1,
+      estimated_savings_usd_low:1.2,estimated_savings_usd_high:1.32,
+      estimated_grid_cost_usd_low:0.58,estimated_grid_cost_usd_high:0.64,
+      solar_share_percent:67.4,average_savings_per_observed_day_usd_low:1.2,
+      average_savings_per_observed_day_usd_high:1.32},
     today:{solar_generation_kwh:6.4,grid_import_kwh:3.1,observed_days:1,
       estimated_savings_usd_low:1.2,estimated_savings_usd_high:1.32,
       estimated_grid_cost_usd_low:0.58,estimated_grid_cost_usd_high:0.64,
@@ -64,7 +70,10 @@ const server = http.createServer((request, response) => {
     selected_date:day,window_start_unix:start,window_end_unix:start+86400,bucket_seconds:1800});
   else if (url.pathname === "/api/energy") body = JSON.stringify({points:energy,
     selected_date:day,selected_period:day,window_start_unix:start,window_end_unix:start+86400});
-  else if (url.pathname === "/api/savings") body = JSON.stringify(savings);
+  else if (url.pathname === "/api/savings") body = JSON.stringify({
+    ...savings,
+    selected_date:url.searchParams.get("date") || day,
+  });
   else if (url.pathname.startsWith("/api/")) body = "{}";
   else {
     const relative = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\/static\//, "");
@@ -131,6 +140,17 @@ async function closeReadout(page, id) {
           assert.match(await page.locator("#savingsEstimate").innerText(), /\$/);
           await page.locator('[data-savings-period="year"]').click();
           assert.match(await page.locator("#savingsEstimate").innerText(), /1[,.]1|1[,.]2/);
+          await page.locator('[data-savings-period="date"]').click();
+          const selectedSavingsResponse = page.waitForResponse(response => {
+            const responseUrl = new URL(response.url());
+            return responseUrl.pathname === "/api/savings"
+              && responseUrl.searchParams.get("date") === selectedSavingsDay;
+          });
+          await page.locator("#savingsDateInput").fill(selectedSavingsDay);
+          await selectedSavingsResponse;
+          assert.equal(await page.locator("#savingsDateControl").isVisible(), true);
+          assert.equal(await page.locator("#savingsDateInput").inputValue(), selectedSavingsDay);
+          assert.notEqual(await page.locator("#savingsPeriodLabel").innerText(), "");
           const savingsLayout = await page.locator("#energySavingsSection").evaluate(section => {
             const sectionRect = section.getBoundingClientRect();
             const clipped = [...section.querySelectorAll("*")]

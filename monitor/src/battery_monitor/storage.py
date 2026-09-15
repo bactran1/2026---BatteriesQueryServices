@@ -570,15 +570,27 @@ class RetentionStore:
         ]
 
     def savings_energy(
-        self, energy_timezone: str, retention_days: int = 1095
+        self,
+        energy_timezone: str,
+        retention_days: int = 1095,
+        selected_date: str | None = None,
     ) -> dict[str, dict[str, Any]]:
         zone = ZoneInfo(energy_timezone)
         now = datetime.now(zone)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        selected_day = selected_date or today_start.date().isoformat()
+        selected_day_start = datetime.strptime(selected_day, "%Y-%m-%d").replace(
+            tzinfo=zone
+        )
         month_start = today_start.replace(day=1)
         year_start = month_start.replace(month=1)
         retained_start = now - timedelta(days=retention_days)
         periods = {
+            "date": (
+                self.energy_history("date", selected_day, energy_timezone),
+                selected_day_start,
+                selected_day_start + timedelta(days=1),
+            ),
             "today": (
                 self.energy_history("date", today_start.date().isoformat(), energy_timezone),
                 today_start,
