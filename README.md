@@ -51,8 +51,8 @@ serial while deploying (or put the same values in `config.toml`):
 
 ```bash
 bash deploy-collector.sh \
-  --inverter-host 192.168.10.50 \
-  --inverter-logger-serial 1234567890
+  --inverter-host 192.168.20.138 \
+  --inverter-logger-serial 3503566593
 ```
 
 Then check:
@@ -310,7 +310,9 @@ On the Raspberry Pi collector:
 cd ~/2026---BatteriesQueryServices
 git switch master
 git pull --ff-only origin master
-sudo bash deploy/install-auto-deploy.sh collector
+sudo bash deploy/install-auto-deploy.sh collector -- \
+  --inverter-host 192.168.20.138 \
+  --inverter-logger-serial 3503566593
 ```
 
 The installer is idempotent and performs the first check immediately. Pass `--interval 10min` before the `--` separator to choose another interval. Arguments after `--` are stored one per line and passed literally to `monitor/deploy-monitor.sh` or `deploy-collector.sh`. Host environment overrides can be placed in `/etc/battery-auto-deploy/monitor.env` or `/etc/battery-auto-deploy/collector.env`; Docker Compose values may remain in the repository's ignored `.env` file.
@@ -351,9 +353,9 @@ enabled = true
 id = "renogy-x-8k"
 model = "Renogy X 8K (Megarevo R8KLNA-compatible)"
 transport = "solarman_v5"
-host = "192.168.10.50"       # LSW-5 LAN address or reserved hostname
+host = "192.168.20.138"      # LSW-5 LAN address or reserved hostname
 tcp_port = 8899
-logger_serial = 1234567890    # number printed on the LSW-5, not the inverter
+logger_serial = 3503566593    # number printed on the LSW-5, not the inverter
 address = 1
 timeout_seconds = 2.0
 retries = 2
@@ -419,8 +421,8 @@ kept in `config.toml` or supplied directly during deployment:
 ```bash
 bash deploy-collector.sh \
   --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0 \
-  --inverter-host 192.168.10.50 \
-  --inverter-logger-serial 1234567890
+  --inverter-host 192.168.20.138 \
+  --inverter-logger-serial 3503566593
 ```
 
 The serial fallback still accepts `--inverter-serial-device` and maps that
