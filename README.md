@@ -292,7 +292,7 @@ The monitor host and Raspberry Pi can each run a small systemd timer that checks
 
 The watcher keeps separate last-seen and last-deployed commit files. It does not mark a deployment successful until the container is healthy and its OCI image revision matches the target commit. A failed build or health check is retried on the next timer run. `flock` prevents overlapping deployments, and a missing, stopped, or unhealthy container triggers a repair deployment even without a new commit.
 
-Before installation, put the deployment checkout on `master`. Keep application changes out of these host checkouts. The collector may retain an unstaged, host-specific `config.toml`; every other tracked or untracked change stops automatic deployment rather than overwriting local work.
+Before installation, put the deployment checkout on `master`. Keep application changes out of these host checkouts. The collector may retain an unstaged, host-specific `config.toml`. Other tracked changes stop automatic deployment rather than overwriting local work. Untracked files outside the selected service's Docker build inputs are ignored; untracked source, dependency, Compose, Dockerfile, or `.dockerignore` changes still stop deployment.
 
 On the x86_64 monitor host:
 

@@ -41,7 +41,10 @@ class AutoDeployContractTests(unittest.TestCase):
         self.assertIn('src/*|Dockerfile|docker-compose.yml', self.watcher)
         self.assertIn('" M config.toml"', self.watcher)
         self.assertIn('also changes config.toml', self.watcher)
-        self.assertIn('status --porcelain --untracked-files=normal', self.watcher)
+        self.assertIn('status --porcelain --untracked-files=no', self.watcher)
+        self.assertIn('ls-files --others --exclude-standard -z', self.watcher)
+        self.assertIn('Untracked files overlap ${SERVICE} build inputs', self.watcher)
+        self.assertIn('Ignoring ${untracked_ignored} unrelated untracked file', self.watcher)
 
     def test_installer_creates_persistent_systemd_timers(self) -> None:
         self.assertIn('battery-monitor-auto-deploy', self.installer)
