@@ -99,12 +99,12 @@ is_relevant_path() {
   case "${SERVICE}" in
     monitor)
       case "${path}" in
-        monitor/*|docker-compose.monitor.yml) return 0 ;;
+        monitor/*|docker-compose.monitor.yml|.dockerignore) return 0 ;;
       esac
       ;;
     collector)
       case "${path}" in
-        src/*|Dockerfile|docker-compose.yml|requirements.txt|pyproject.toml|config.toml|config.example.toml|deploy-collector.sh) return 0 ;;
+        src/*|Dockerfile|docker-compose.yml|requirements.txt|pyproject.toml|config.toml|config.example.toml|deploy-collector.sh|.dockerignore) return 0 ;;
       esac
       ;;
   esac
@@ -209,7 +209,7 @@ current_branch="$(git -C "${REPO_ROOT}" branch --show-current)"
 [[ "${current_branch}" == "${BRANCH}" ]] ||
   fail "Checkout is on '${current_branch:-detached HEAD}', not '${BRANCH}'. Switch this deployment checkout to ${BRANCH}."
 
-dirty_status="$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=normal)"
+dirty_status="$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=no)"
 local_config_modified=0
 if [[ -n "${dirty_status}" ]]; then
   unexpected_dirty=""
@@ -222,9 +222,26 @@ if [[ -n "${dirty_status}" ]]; then
   done <<< "${dirty_status}"
   if [[ -n "${unexpected_dirty}" ]]; then
     printf '%s' "${unexpected_dirty}" >&2
-    fail "Git checkout has local changes outside the permitted host config.toml file. Commit, stash, or remove them before automatic deployment."
+    fail "Git checkout has tracked changes outside the permitted host config.toml file. Commit, stash, or remove them before automatic deployment."
   fi
   log "Keeping the host's local config.toml settings during this update."
+fi
+
+untracked_blockers=()
+untracked_ignored=0
+while IFS= read -r -d '' path; do
+  if is_relevant_path "${path}"; then
+    untracked_blockers+=("${path}")
+  else
+    untracked_ignored=$((untracked_ignored + 1))
+  fi
+done < <(git -C "${REPO_ROOT}" ls-files --others --exclude-standard -z)
+if [[ "${#untracked_blockers[@]}" -gt 0 ]]; then
+  printf '?? %s\n' "${untracked_blockers[@]}" >&2
+  fail "Untracked files overlap ${SERVICE} build inputs. Move, commit, or ignore them before automatic deployment."
+fi
+if [[ "${untracked_ignored}" -gt 0 ]]; then
+  log "Ignoring ${untracked_ignored} unrelated untracked file(s); they are outside ${SERVICE} build inputs."
 fi
 
 git -C "${REPO_ROOT}" remote get-url "${REMOTE}" >/dev/null 2>&1 ||
