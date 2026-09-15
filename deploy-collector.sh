@@ -11,6 +11,10 @@ COMPOSE_FILE="${REPO_ROOT}/docker-compose.yml"
 SERVICE_NAME="batteries-query-service"
 DEFAULT_SERIAL_DEVICE="/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
 DEFAULT_INVERTER_SERIAL_DEVICE="/dev/ttyUSB1"
+DEFAULT_INVERTER_TRANSPORT="solarman_v5"
+DEFAULT_INVERTER_HOST="192.168.20.138"
+DEFAULT_INVERTER_TCP_PORT="8899"
+DEFAULT_INVERTER_LOGGER_SERIAL="3503566593"
 DEFAULT_CONFIG_FILE="${REPO_ROOT}/config.toml"
 FOLLOW_LOGS=0
 HEALTH_CHECK=1
@@ -59,7 +63,7 @@ usage() {
 "" \
 "Examples:" \
 "  bash deploy-collector.sh" \
-"  bash deploy-collector.sh --inverter-host 192.168.10.50 --inverter-logger-serial 1234567890" \
+"  bash deploy-collector.sh --inverter-host 192.168.20.138 --inverter-logger-serial 3503566593" \
 "  bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" \
 "  bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Battery_Adapter --inverter-serial-device /dev/serial/by-id/usb-Inverter_Adapter" \
 "  bash deploy-collector.sh --skip-git-update --use-cache"
@@ -381,6 +385,10 @@ compose_command
 
 export COLLECTOR_SERIAL_DEVICE="${COLLECTOR_SERIAL_DEVICE:-${DEFAULT_SERIAL_DEVICE}}"
 export COLLECTOR_INVERTER_SERIAL_DEVICE="${COLLECTOR_INVERTER_SERIAL_DEVICE:-${DEFAULT_INVERTER_SERIAL_DEVICE}}"
+export BQS_INVERTER_TRANSPORT="${BQS_INVERTER_TRANSPORT:-${DEFAULT_INVERTER_TRANSPORT}}"
+export BQS_INVERTER_HOST="${BQS_INVERTER_HOST:-${DEFAULT_INVERTER_HOST}}"
+export BQS_INVERTER_TCP_PORT="${BQS_INVERTER_TCP_PORT:-${DEFAULT_INVERTER_TCP_PORT}}"
+export BQS_INVERTER_LOGGER_SERIAL="${BQS_INVERTER_LOGGER_SERIAL:-${DEFAULT_INVERTER_LOGGER_SERIAL}}"
 mkdir -p "${REPO_ROOT}/data/collector"
 
 cd "${REPO_ROOT}"

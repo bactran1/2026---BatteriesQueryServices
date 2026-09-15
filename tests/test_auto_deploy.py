@@ -80,6 +80,8 @@ class AutoDeployContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         collector_url = "http://192.168.10.194:8000"
+        inverter_host = "192.168.20.138"
+        logger_serial = "3503566593"
         serial_device = (
             "/dev/serial/by-id/"
             "usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
@@ -89,6 +91,10 @@ class AutoDeployContractTests(unittest.TestCase):
         self.assertIn(collector_url, monitor_deploy)
         self.assertIn(serial_device, collector_compose)
         self.assertIn(serial_device, collector_deploy)
+        self.assertIn(inverter_host, collector_compose)
+        self.assertIn(inverter_host, collector_deploy)
+        self.assertIn(logger_serial, collector_compose)
+        self.assertIn(logger_serial, collector_deploy)
 
 
 if __name__ == "__main__":
