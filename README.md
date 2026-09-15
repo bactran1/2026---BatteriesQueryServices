@@ -293,6 +293,53 @@ docker run --rm hello-world
 
 If `hello-world` fails the same way, fix the Docker host before redeploying the monitor. Typical fixes are updating the LXC/Proxmox/Incus host packages, using a VM or bare-metal Docker host instead of Docker-inside-unprivileged-LXC, or temporarily rolling back the affected `containerd.io` package when that is the known source on your distribution.
 
+## Automatic deployment from master
+
+The monitor host and Raspberry Pi can each run a small systemd timer that checks `origin/master` every five minutes. A relevant new commit fast-forwards the clean local `master` checkout and calls the existing deployment script with `--skip-git-update`. The existing scripts still own the Docker build, container replacement, health check, persistent data, and image cleanup.
+
+The watcher keeps separate last-seen and last-deployed commit files. It does not mark a deployment successful until the container is healthy and its OCI image revision matches the target commit. A failed build or health check is retried on the next timer run. `flock` prevents overlapping deployments, and a missing, stopped, or unhealthy container triggers a repair deployment even without a new commit.
+
+Before installation, put the deployment checkout on `master`. Keep application changes out of these host checkouts. The collector may retain an unstaged, host-specific `config.toml`; every other tracked or untracked change stops automatic deployment rather than overwriting local work.
+
+On the x86_64 monitor host:
+
+```bash
+cd ~/2026---BatteriesQueryServices
+git switch master
+git pull --ff-only origin master
+sudo bash deploy/install-auto-deploy.sh monitor -- \
+  --collector-url http://raspberrypi.local:8000
+```
+
+On the Raspberry Pi collector:
+
+```bash
+cd ~/2026---BatteriesQueryServices
+git switch master
+git pull --ff-only origin master
+sudo bash deploy/install-auto-deploy.sh collector
+```
+
+The installer is idempotent and performs the first check immediately. Pass `--interval 10min` before the `--` separator to choose another interval. Arguments after `--` are stored one per line and passed literally to `monitor/deploy-monitor.sh` or `deploy-collector.sh`. Host environment overrides can be placed in `/etc/battery-auto-deploy/monitor.env` or `/etc/battery-auto-deploy/collector.env`; Docker Compose values may remain in the repository's ignored `.env` file.
+
+Useful service commands:
+
+```bash
+# Monitor host
+systemctl status battery-monitor-auto-deploy.timer
+journalctl -u battery-monitor-auto-deploy.service -f
+sudo systemctl start battery-monitor-auto-deploy.service
+
+# Raspberry Pi
+systemctl status battery-collector-auto-deploy.timer
+journalctl -u battery-collector-auto-deploy.service -f
+sudo systemctl start battery-collector-auto-deploy.service
+```
+
+Monitor images rebuild only for changes under `monitor/` or to `docker-compose.monitor.yml`. Collector images rebuild for collector source, dependency, configuration, Docker, Compose, or collector deployment-script changes. Documentation-only and unrelated commits still update the checkout but do not waste time rebuilding an unaffected container.
+
+Automatic production deployment makes `master` the release channel. Keep required tests and pull-request review in front of merges to that branch.
+
 ## Configuration
 
 Edit `config.toml` before starting the container. `config.example.toml` is kept as a clean reference copy.
