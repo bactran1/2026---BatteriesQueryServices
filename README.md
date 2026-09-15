@@ -66,7 +66,7 @@ curl http://localhost:8000/metrics
 On the x86_64 monitor host, set the collector URL to the Pi hostname or IP address:
 
 ```bash
-export BQM_COLLECTOR_URL=http://raspberrypi.local:8000
+export BQM_COLLECTOR_URL=http://192.168.10.194:8000
 docker compose -f docker-compose.monitor.yml up -d --build
 ```
 
@@ -149,7 +149,7 @@ The dashboard defaults to three rack batteries and shows the rack builder as Tra
 export BQM_BATTERY_NAMES="Top Battery,Middle Battery,Bottom Battery"
 export BQM_BATTERY_IPS="192.168.1.61,192.168.1.62,192.168.1.63"
 export BQM_BATTERY_MODELS="Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah"
-bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+bash monitor/deploy-monitor.sh --collector-url http://192.168.10.194:8000
 ```
 
 The IP addresses are inventory labels. Telemetry still travels from the batteries to the Raspberry Pi over RS485, then from the Pi to the monitor over the network. Leave an IP position empty when a battery does not have a directly reachable address, for example `BQM_BATTERY_IPS=192.168.1.61,,192.168.1.63`.
@@ -182,7 +182,7 @@ the deployment script:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter
+  --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
 ```
 
 Allow your Pi user to run Docker and access serial devices:
@@ -196,7 +196,7 @@ After reboot:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter
+  --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
 ```
 
 The script fetches and fast-forwards to the latest Git commit, tags the image
@@ -233,23 +233,16 @@ Then verify the collector from the Pi:
 curl http://localhost:8000/api/readings
 ```
 
-The x86_64 monitor host must be able to reach the Pi at `http://raspberrypi.local:8000` or at the Pi's static IP address.
+The x86_64 monitor host must be able to reach the Pi collector at `http://192.168.10.194:8000`.
 
 ## x86_64 monitor host deployment
 
 Deploy the dashboard/logger on the dedicated x86_64 Linux Docker host.
 
-If the x86 host can resolve the Pi hostname:
+Use the Pi's reserved LAN address:
 
 ```bash
-export BQM_COLLECTOR_URL=http://raspberrypi.local:8000
-docker compose -f docker-compose.monitor.yml up -d --build
-```
-
-If it cannot, use the Pi IP address:
-
-```bash
-export BQM_COLLECTOR_URL=http://192.168.1.50:8000
+export BQM_COLLECTOR_URL=http://192.168.10.194:8000
 docker compose -f docker-compose.monitor.yml up -d --build
 ```
 
@@ -262,7 +255,7 @@ http://x86-monitor-hostname:8080
 To rebuild and restart the monitor after updates, use the helper script:
 
 ```bash
-bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+bash monitor/deploy-monitor.sh --collector-url http://192.168.10.194:8000
 ```
 
 The script builds the monitor image from `monitor/Dockerfile`. If no `battery-monitor` container exists, it creates one. If the container already exists, it updates it with the new image. In both cases, it keeps the existing `./data/monitor` log database and waits for the container health check.
@@ -270,7 +263,7 @@ The script builds the monitor image from `monitor/Dockerfile`. If no `battery-mo
 By default, the script updates the local Git checkout to the latest remote commit before building. It tags the Docker image with that commit SHA, passes the SHA into the image metadata, rebuilds without Docker cache, and restarts the container from that image. Use this when deploying normal updates:
 
 ```bash
-bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+bash monitor/deploy-monitor.sh --collector-url http://192.168.10.194:8000
 ```
 
 If you intentionally want to build whatever files are currently on disk without pulling Git first:
@@ -292,6 +285,53 @@ docker run --rm hello-world
 ```
 
 If `hello-world` fails the same way, fix the Docker host before redeploying the monitor. Typical fixes are updating the LXC/Proxmox/Incus host packages, using a VM or bare-metal Docker host instead of Docker-inside-unprivileged-LXC, or temporarily rolling back the affected `containerd.io` package when that is the known source on your distribution.
+
+## Automatic deployment from master
+
+The monitor host and Raspberry Pi can each run a small systemd timer that checks `origin/master` every five minutes. A relevant new commit fast-forwards the clean local `master` checkout and calls the existing deployment script with `--skip-git-update`. The existing scripts still own the Docker build, container replacement, health check, persistent data, and image cleanup.
+
+The watcher keeps separate last-seen and last-deployed commit files. It does not mark a deployment successful until the container is healthy and its OCI image revision matches the target commit. A failed build or health check is retried on the next timer run. `flock` prevents overlapping deployments, and a missing, stopped, or unhealthy container triggers a repair deployment even without a new commit.
+
+Before installation, put the deployment checkout on `master`. Keep application changes out of these host checkouts. The collector may retain an unstaged, host-specific `config.toml`; every other tracked or untracked change stops automatic deployment rather than overwriting local work.
+
+On the x86_64 monitor host:
+
+```bash
+cd ~/2026---BatteriesQueryServices
+git switch master
+git pull --ff-only origin master
+sudo bash deploy/install-auto-deploy.sh monitor -- \
+  --collector-url http://192.168.10.194:8000
+```
+
+On the Raspberry Pi collector:
+
+```bash
+cd ~/2026---BatteriesQueryServices
+git switch master
+git pull --ff-only origin master
+sudo bash deploy/install-auto-deploy.sh collector
+```
+
+The installer is idempotent and performs the first check immediately. Pass `--interval 10min` before the `--` separator to choose another interval. Arguments after `--` are stored one per line and passed literally to `monitor/deploy-monitor.sh` or `deploy-collector.sh`. Host environment overrides can be placed in `/etc/battery-auto-deploy/monitor.env` or `/etc/battery-auto-deploy/collector.env`; Docker Compose values may remain in the repository's ignored `.env` file.
+
+Useful service commands:
+
+```bash
+# Monitor host
+systemctl status battery-monitor-auto-deploy.timer
+journalctl -u battery-monitor-auto-deploy.service -f
+sudo systemctl start battery-monitor-auto-deploy.service
+
+# Raspberry Pi
+systemctl status battery-collector-auto-deploy.timer
+journalctl -u battery-collector-auto-deploy.service -f
+sudo systemctl start battery-collector-auto-deploy.service
+```
+
+Monitor images rebuild only for changes under `monitor/` or to `docker-compose.monitor.yml`. Collector images rebuild for collector source, dependency, configuration, Docker, Compose, or collector deployment-script changes. Documentation-only and unrelated commits still update the checkout but do not waste time rebuilding an unaffected container.
+
+Automatic production deployment makes `master` the release channel. Keep required tests and pull-request review in front of merges to that branch.
 
 ## Configuration
 
@@ -370,7 +410,7 @@ In LSW-5 mode, only the battery adapter needs to be mapped:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/ttyUSB0
+  --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
 ```
 
 For long-running systems, prefer a stable device path. Logger settings may be
@@ -378,7 +418,7 @@ kept in `config.toml` or supplied directly during deployment:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
+  --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0 \
   --inverter-host 192.168.10.50 \
   --inverter-logger-serial 1234567890
 ```

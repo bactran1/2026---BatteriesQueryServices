@@ -221,6 +221,7 @@ const translations = {
     "savings.retainedLabel": "Three-year archive",
     "savings.estimateDetail": "Estimated electricity value at the current Schedule 7 tiers",
     "savings.rangeAria": "From {low} to {high}",
+    "savings.rangeSeparator": "to",
     "savings.solarShare": "Solar share of supplied energy",
     "savings.solarEnergy": "Solar energy valued",
     "savings.solarEnergyDetail": "Recorded inverter production",
@@ -573,6 +574,7 @@ const translations = {
     "savings.retainedLabel": "Kho lưu trữ ba năm",
     "savings.estimateDetail": "Giá trị điện ước tính theo hai bậc hiện tại của Biểu giá 7",
     "savings.rangeAria": "Từ {low} đến {high}",
+    "savings.rangeSeparator": "đến",
     "savings.solarShare": "Tỷ lệ điện cung cấp từ mặt trời",
     "savings.solarEnergy": "Điện mặt trời được tính giá trị",
     "savings.solarEnergyDetail": "Sản lượng biến tần đã ghi nhận",
@@ -2299,7 +2301,13 @@ function renderPrimaryCurrencyRange(element, low, high) {
   const separator = document.createElement("span");
   separator.className = "savings-range__separator";
   separator.setAttribute("aria-hidden", "true");
-  separator.textContent = "–";
+  const separatorSymbol = document.createElement("span");
+  separatorSymbol.className = "savings-range__separator-symbol";
+  separatorSymbol.textContent = "–";
+  const separatorLabel = document.createElement("span");
+  separatorLabel.className = "savings-range__separator-label";
+  separatorLabel.textContent = t("savings.rangeSeparator");
+  separator.replaceChildren(separatorSymbol, separatorLabel);
   const upperSpan = document.createElement("span");
   upperSpan.textContent = upperText;
   element.replaceChildren(lowerSpan, separator, upperSpan);

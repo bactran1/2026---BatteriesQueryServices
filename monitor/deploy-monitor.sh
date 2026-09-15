@@ -9,7 +9,7 @@ esac
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${REPO_ROOT}/docker-compose.monitor.yml"
 SERVICE_NAME="battery-monitor"
-DEFAULT_COLLECTOR_URL="http://raspberrypi.local:8000"
+DEFAULT_COLLECTOR_URL="http://192.168.10.194:8000"
 FOLLOW_LOGS=0
 HEALTH_CHECK=1
 SKIP_GIT_UPDATE=0
@@ -24,7 +24,7 @@ usage() {
 "  bash monitor/deploy-monitor.sh [options]" \
 "" \
 "Options:" \
-"  --collector-url URL   Collector URL, for example http://192.168.1.50:8000" \
+"  --collector-url URL   Collector URL, default http://192.168.10.194:8000" \
 "  --follow-logs         Follow container logs after deployment" \
 "  --no-health-check     Skip the post-restart health check" \
 "  --skip-git-update     Build the current local checkout without fetching Git" \
@@ -44,8 +44,8 @@ usage() {
 "" \
 "Examples:" \
 "  bash monitor/deploy-monitor.sh" \
-"  bash monitor/deploy-monitor.sh --collector-url http://192.168.1.50:8000" \
-"  BQM_COLLECTOR_URL=http://raspberrypi.local:8000 bash monitor/deploy-monitor.sh" \
+"  bash monitor/deploy-monitor.sh --collector-url http://192.168.10.194:8000" \
+"  BQM_COLLECTOR_URL=http://192.168.10.194:8000 bash monitor/deploy-monitor.sh" \
 "  bash monitor/deploy-monitor.sh --skip-git-update --use-cache"
 }
 

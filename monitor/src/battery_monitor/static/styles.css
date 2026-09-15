@@ -1402,6 +1402,7 @@ button {
 
 .savings-heading {
   align-items: center;
+  margin-bottom: 0;
 }
 
 .savings-description {
@@ -1449,9 +1450,17 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.savings-primary > strong > span:not(.savings-range__separator) {
+  white-space: nowrap;
+}
+
 .savings-range__separator {
   color: var(--muted);
   font-weight: 500;
+}
+
+.savings-range__separator-label {
+  display: none;
 }
 
 .savings-primary > p {
@@ -3315,9 +3324,12 @@ select {
   }
 
   .chart-panel,
-  .energy-history-panel,
-  .savings-panel {
+  .energy-history-panel {
     padding: 16px 0;
+  }
+
+  .savings-panel {
+    padding: 18px;
   }
 
   .savings-layout {
@@ -3325,7 +3337,7 @@ select {
   }
 
   .savings-primary {
-    padding: 22px 0;
+    padding: 20px 0;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -3587,6 +3599,15 @@ select {
     margin-top: 2px;
   }
 
+  .savings-heading {
+    gap: 14px;
+  }
+
+  .savings-heading .segmented button {
+    padding-inline: 6px;
+    font-size: 11px;
+  }
+
   .savings-primary > strong {
     align-items: flex-start;
     flex-direction: column;
@@ -3594,8 +3615,17 @@ select {
     font-size: 35px;
   }
 
-  .savings-range__separator {
+  .savings-range__separator-symbol {
     display: none;
+  }
+
+  .savings-range__separator-label {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 760;
+    line-height: 1;
+    text-transform: uppercase;
   }
 
   .savings-metrics {
@@ -3627,6 +3657,11 @@ select {
 
   .savings-tariff > div:last-child {
     border-bottom: 0;
+  }
+
+  .savings-methodology {
+    margin-top: 14px;
+    font-size: 11px;
   }
 
   select {

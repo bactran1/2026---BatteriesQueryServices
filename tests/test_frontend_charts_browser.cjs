@@ -131,6 +131,25 @@ async function closeReadout(page, id) {
           assert.match(await page.locator("#savingsEstimate").innerText(), /\$/);
           await page.locator('[data-savings-period="year"]').click();
           assert.match(await page.locator("#savingsEstimate").innerText(), /1[,.]1|1[,.]2/);
+          const savingsLayout = await page.locator("#energySavingsSection").evaluate(section => {
+            const sectionRect = section.getBoundingClientRect();
+            const clipped = [...section.querySelectorAll("*")]
+              .filter(element => {
+                const style = getComputedStyle(element);
+                if (style.display === "none" || style.visibility === "hidden") return false;
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && (
+                  rect.left < sectionRect.left - 1 || rect.right > sectionRect.right + 1
+                );
+              })
+              .map(element => element.id || element.className || element.tagName);
+            return {
+              clipped,
+              horizontalOverflow: section.scrollWidth > section.clientWidth + 1,
+            };
+          });
+          assert.deepEqual(savingsLayout.clipped, [], `${width} ${theme} ${language}: savings content clipped`);
+          assert.equal(savingsLayout.horizontalOverflow, false, `${width} ${theme} ${language}: savings overflow`);
           await page.locator("#energySavingsSection").screenshot({path:path.join(artifacts,`savings-${width}-${theme}-${language}.png`)});
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
           assert.equal(await chart.evaluate(canvas => {
