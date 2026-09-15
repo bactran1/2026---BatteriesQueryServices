@@ -569,6 +569,64 @@ class RetentionStore:
             for row in rows
         ]
 
+    def savings_energy(
+        self, energy_timezone: str, retention_days: int = 1095
+    ) -> dict[str, dict[str, Any]]:
+        zone = ZoneInfo(energy_timezone)
+        now = datetime.now(zone)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        month_start = today_start.replace(day=1)
+        year_start = month_start.replace(month=1)
+        retained_start = now - timedelta(days=retention_days)
+        periods = {
+            "today": (
+                self.energy_history("date", today_start.date().isoformat(), energy_timezone),
+                today_start,
+                today_start + timedelta(days=1),
+            ),
+            "month": (
+                self.energy_history("month", None, energy_timezone),
+                month_start,
+                (month_start + timedelta(days=32)).replace(day=1),
+            ),
+            "year": (
+                self.energy_history("year", None, energy_timezone),
+                year_start,
+                year_start.replace(year=year_start.year + 1),
+            ),
+            "retained": (
+                self.energy_history("hour", None, energy_timezone),
+                retained_start,
+                now + timedelta(seconds=1),
+            ),
+        }
+        return {
+            key: {
+                **payload.get("totals", {}),
+                "observed_days": self._observed_solar_days(start, end, zone),
+            }
+            for key, (payload, start, end) in periods.items()
+        }
+
+    def _observed_solar_days(
+        self, start: datetime, end: datetime, zone: ZoneInfo
+    ) -> int:
+        with self._lock:
+            row = self.connection.execute(
+                """
+                SELECT MIN(captured_at_unix) AS oldest, MAX(captured_at_unix) AS newest
+                FROM inverter_readings
+                WHERE captured_at_unix >= ? AND captured_at_unix < ?
+                  AND solar_generation_meter_kwh IS NOT NULL
+                """,
+                (int(start.timestamp()), int(end.timestamp())),
+            ).fetchone()
+        if row["oldest"] is None or row["newest"] is None:
+            return 0
+        oldest = datetime.fromtimestamp(int(row["oldest"]), zone).date()
+        newest = datetime.fromtimestamp(int(row["newest"]), zone).date()
+        return (newest - oldest).days + 1
+
     def _hourly_energy_history(
         self, energy_date: str | None = None, energy_timezone: str = "UTC"
     ) -> dict[str, Any]:

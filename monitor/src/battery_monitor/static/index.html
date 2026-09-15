@@ -372,6 +372,80 @@
           </div>
         </section>
 
+        <section id="energySavingsSection" class="panel savings-panel" aria-labelledby="energySavingsTitle">
+          <div class="panel-heading savings-heading">
+            <div>
+              <p class="eyebrow" data-i18n="savings.eyebrow">Financial impact</p>
+              <h2 id="energySavingsTitle" data-i18n="savings.title">Energy Savings</h2>
+              <p class="savings-description" data-i18n="savings.description">Estimated value of recorded solar energy under the household's current utility rate</p>
+            </div>
+            <div id="savingsPeriodControls" class="segmented" role="group" aria-label="Savings period" data-i18n-aria-label="savings.periodAria">
+              <button type="button" data-savings-period="today" data-i18n="savings.today" aria-pressed="false">Today</button>
+              <button type="button" data-savings-period="month" data-i18n="savings.month" class="is-active" aria-pressed="true">Month</button>
+              <button type="button" data-savings-period="year" data-i18n="savings.year" aria-pressed="false">Year</button>
+              <button type="button" data-savings-period="retained" data-i18n="savings.retained" aria-pressed="false">3 years</button>
+            </div>
+          </div>
+          <div class="savings-layout">
+            <div class="savings-primary">
+              <span id="savingsPeriodLabel" data-i18n="savings.monthLabel">This month</span>
+              <strong id="savingsEstimate">--</strong>
+              <p data-i18n="savings.estimateDetail">Estimated electricity value at the current Schedule 7 tiers</p>
+              <div class="savings-share">
+                <div>
+                  <span data-i18n="savings.solarShare">Solar share of supplied energy</span>
+                  <strong id="savingsSolarShare">--</strong>
+                </div>
+                <div id="savingsShareBar" class="savings-share__bar" style="--share: 0" role="progressbar" aria-label="Solar share of supplied energy" data-i18n-aria-label="savings.solarShare" aria-valuemin="0" aria-valuemax="100">
+                  <span></span>
+                </div>
+              </div>
+            </div>
+            <dl class="savings-metrics">
+              <div>
+                <dt data-i18n="savings.solarEnergy">Solar energy valued</dt>
+                <dd><strong id="savingsSolarEnergy">--</strong><small data-i18n="savings.solarEnergyDetail">Recorded inverter production</small></dd>
+              </div>
+              <div>
+                <dt data-i18n="savings.gridEnergy">Grid energy purchased</dt>
+                <dd><strong id="savingsGridEnergy">--</strong><small data-i18n="savings.gridEnergyDetail">Before net-metering credits</small></dd>
+              </div>
+              <div>
+                <dt data-i18n="savings.gridCost">Grid energy charges</dt>
+                <dd><strong id="savingsGridCost">--</strong><small data-i18n="savings.gridCostDetail">Estimated variable charge</small></dd>
+              </div>
+              <div>
+                <dt data-i18n="savings.dailyAverage">Average savings</dt>
+                <dd><strong id="savingsDailyAverage">--</strong><small id="savingsObservedDays" data-i18n="savings.awaitingDays">Awaiting observed days</small></dd>
+              </div>
+            </dl>
+          </div>
+          <div class="savings-tariff" aria-label="Utility rate assumptions" data-i18n-aria-label="savings.tariffAria">
+            <div class="savings-tariff__identity">
+              <span data-i18n="savings.utilityPlan">Utility plan</span>
+              <strong id="savingsUtilityPlan">Puget Sound Energy · Residential Schedule 7</strong>
+              <small id="savingsUtilityRegion">King County, WA</small>
+            </div>
+            <div>
+              <span data-i18n="savings.energyRate">Energy rate</span>
+              <strong id="savingsRate">--</strong>
+              <small id="savingsRateEffective">--</small>
+            </div>
+            <div>
+              <span data-i18n="savings.tierThreshold">Tier threshold</span>
+              <strong id="savingsTierLimit">600 kWh</strong>
+              <small data-i18n="savings.tierDetail">Tier 1 each billing month</small>
+            </div>
+            <div>
+              <span data-i18n="savings.fixedCharge">Basic charge</span>
+              <strong id="savingsBasicCharge">$7.49</strong>
+              <small data-i18n="savings.fixedChargeDetail">Monthly · excluded from savings</small>
+            </div>
+          </div>
+          <p id="savingsMethodology" class="savings-methodology" data-i18n="savings.methodology">Uses current PSE rates and assumes recorded solar receives usable net-metering credit. Municipal utility tax is not included; banked credits expire March 31.</p>
+          <div id="savingsEmpty" class="savings-empty" data-i18n="savings.awaiting">Awaiting solar and grid energy readings</div>
+        </section>
+
         <section class="rack-summary" aria-label="Rack summary" data-i18n-aria-label="fleet.summary">
           <div class="rack-summary__meta">
             <div class="rack-summary__meta-status">

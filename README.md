@@ -91,6 +91,7 @@ Defaults:
 - CSV export: dashboard download button or `GET /api/export.csv`
 - Energy history: grouped bars for hourly, monthly, and yearly consumption, solar generation, and grid import in kWh. Long timelines scroll within the chart with a fixed value axis. The Date view shows hourly bars for a local calendar day selected with `GET /api/energy?view=date&date=YYYY-MM-DD&timezone=Area/City`
 - Power history: line charts near the top of the dashboard with separate grid, direct battery, solar, Home load (CT-side), Backup load (direct inverter output), and Rack SOC series. SOC uses a dashed teal line and its own fixed 0-100% right axis; each series can be toggled independently. Use `GET /api/power-history?range=date&date=YYYY-MM-DD&timezone=Area/City` for a fixed local 0:00–24:00 calendar day, or `range=24h` for a running 24 hours (direct battery charging and grid import are positive; discharge and export are negative)
+- Energy Savings: current-dollar estimates for today, this month, this year, and the retained three-year archive. The default PSE Residential Schedule 7 values use the May 1, 2026 total variable rates of `$0.187465/kWh` for the first 600 kWh and `$0.206882/kWh` above 600 kWh. The panel values recorded solar production as usable net-metering credit and shows a range because the actual marginal tier depends on the household's billing-month consumption. The unavoidable `$7.49` basic charge is excluded.
 - Battery runtime: while the rack is discharging, the live home and inverter views estimate remaining support time until the inverter's 20% battery cutoff from direct pack voltage, usable amp-hours above the reserve, and discharge power
 
 The monitor owns one collector connection and serves a cached live snapshot to every browser. Opening more dashboard tabs does not create more requests to the Raspberry Pi. The dashboard refreshes live values every 5 seconds, pauses network work while its tab is hidden, and refreshes immediately when the tab becomes visible again.
@@ -125,6 +126,11 @@ Environment overrides:
 - `BQM_COLLECTOR_NAME`
 - `BQM_BATTERY_IDS`
 - `BQM_BATTERY_ADDRESSES`
+- `BQM_UTILITY_PROVIDER`, `BQM_UTILITY_SCHEDULE`, and `BQM_UTILITY_REGION`
+- `BQM_UTILITY_RATE_EFFECTIVE_DATE`
+- `BQM_UTILITY_TIER_1_USD_PER_KWH` and `BQM_UTILITY_TIER_2_USD_PER_KWH`
+- `BQM_UTILITY_TIER_1_LIMIT_KWH` and `BQM_UTILITY_BASIC_CHARGE_USD`
+- `BQM_UTILITY_MUNICIPAL_TAX_PERCENT`, left at `0` until the exact city tax is known
 - `BQM_BATTERY_NAMES`
 - `BQM_BATTERY_IPS`
 - `BQM_BATTERY_MODELS`
