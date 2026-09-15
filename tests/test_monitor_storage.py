@@ -11,6 +11,34 @@ from battery_monitor.storage import RetentionStore
 
 
 class RetentionStoreTests(unittest.TestCase):
+    def test_savings_energy_uses_current_periods_and_solar_observation_days(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            now = datetime.now(timezone.utc).replace(minute=5, second=0, microsecond=0)
+            earlier = now.replace(hour=max(0, now.hour - 1))
+            for captured_at, solar, grid in [(earlier, 1.0, 0.5), (now, 5.0, 2.0)]:
+                store.insert_snapshot(
+                    _energy_snapshot(
+                        captured_at.isoformat(),
+                        consumption_kwh=6.0,
+                        solar_generation_kwh=solar,
+                        grid_import_kwh=grid,
+                    )
+                )
+
+            savings = store.savings_energy("UTC")
+            store.close()
+
+            self.assertEqual(set(savings), {"today", "month", "year", "retained"})
+            # The first hourly bucket has no pre-window baseline, so it is omitted;
+            # the known rise from 1 to 5 kWh is retained without inventing energy.
+            self.assertEqual(savings["today"]["solar_generation_kwh"], 4)
+            self.assertEqual(savings["month"]["solar_generation_kwh"], 5)
+            self.assertEqual(savings["year"]["grid_import_kwh"], 2)
+            self.assertEqual(savings["retained"]["solar_generation_kwh"], 5)
+            self.assertEqual(savings["today"]["observed_days"], 1)
+
     def test_insert_snapshot_and_query_latest_history(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")

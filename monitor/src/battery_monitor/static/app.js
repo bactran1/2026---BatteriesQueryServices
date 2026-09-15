@@ -16,6 +16,8 @@ const state = {
   energySummaryPeriod: null,
   energyWindowStart: null,
   energyWindowEnd: null,
+  savingsPeriod: "month",
+  savings: null,
   storage: {},
   rack: {},
   collectorState: "offline",
@@ -24,9 +26,10 @@ const state = {
   lastLiveReceivedAt: 0,
   lastHistoryRefreshAt: 0,
   lastEnergyRefreshAt: 0,
+  lastSavingsRefreshAt: 0,
   lastEventsRefreshAt: 0,
   refreshInProgress: false,
-  resourceErrors: { live: null, history: null, energy: null, events: null },
+  resourceErrors: { live: null, history: null, energy: null, savings: null, events: null },
   theme: "light",
   chartGeometry: null,
   chartHover: null,
@@ -204,6 +207,43 @@ const translations = {
     "energyHistory.pointAria": "Energy for {period}: {values}",
     "energyHistory.awaiting": "Awaiting inverter energy readings",
     "energyHistory.unavailable": "Energy history temporarily unavailable",
+    "savings.eyebrow": "Financial impact",
+    "savings.title": "Energy Savings",
+    "savings.description": "Estimated value of recorded solar energy under the household's current utility rate",
+    "savings.periodAria": "Savings period",
+    "savings.today": "Today",
+    "savings.month": "Month",
+    "savings.year": "Year",
+    "savings.retained": "3 years",
+    "savings.todayLabel": "Today",
+    "savings.monthLabel": "This month",
+    "savings.yearLabel": "This year",
+    "savings.retainedLabel": "Three-year archive",
+    "savings.estimateDetail": "Estimated electricity value at the current Schedule 7 tiers",
+    "savings.rangeAria": "From {low} to {high}",
+    "savings.solarShare": "Solar share of supplied energy",
+    "savings.solarEnergy": "Solar energy valued",
+    "savings.solarEnergyDetail": "Recorded inverter production",
+    "savings.gridEnergy": "Grid energy purchased",
+    "savings.gridEnergyDetail": "Before net-metering credits",
+    "savings.gridCost": "Grid energy charges",
+    "savings.gridCostDetail": "Estimated variable charge",
+    "savings.dailyAverage": "Average savings",
+    "savings.perDay": "per observed day",
+    "savings.awaitingDays": "Awaiting observed days",
+    "savings.observedDays": "Across {days} observed days",
+    "savings.utilityPlan": "Utility plan",
+    "savings.energyRate": "Energy rate",
+    "savings.tierThreshold": "Tier threshold",
+    "savings.tierDetail": "Tier 1 each billing month",
+    "savings.fixedCharge": "Basic charge",
+    "savings.fixedChargeDetail": "Monthly · excluded from savings",
+    "savings.tariffAria": "Utility rate assumptions",
+    "savings.effective": "Effective {date}",
+    "savings.methodology": "Uses current PSE rates and assumes recorded solar receives usable net-metering credit. Municipal utility tax is not included; banked credits expire March 31.",
+    "savings.methodologyTax": "Uses current PSE rates and assumes recorded solar receives usable net-metering credit. Includes {tax}% municipal utility tax; banked credits expire March 31.",
+    "savings.awaiting": "Awaiting solar and grid energy readings",
+    "savings.unavailable": "Savings estimate temporarily unavailable",
     "runtime.minutes": "{minutes}m",
     "runtime.hoursMinutes": "{hours}h {minutes}m",
     "runtime.daysHours": "{days}d {hours}h",
@@ -519,6 +559,43 @@ const translations = {
     "energyHistory.pointAria": "Năng lượng trong {period}: {values}",
     "energyHistory.awaiting": "Đang chờ số liệu năng lượng từ biến tần",
     "energyHistory.unavailable": "Lịch sử năng lượng tạm thời không khả dụng",
+    "savings.eyebrow": "Hiệu quả tài chính",
+    "savings.title": "Tiết kiệm năng lượng",
+    "savings.description": "Giá trị ước tính của điện mặt trời đã ghi nhận theo biểu giá điện hiện tại của hộ gia đình",
+    "savings.periodAria": "Khoảng thời gian tiết kiệm",
+    "savings.today": "Hôm nay",
+    "savings.month": "Tháng",
+    "savings.year": "Năm",
+    "savings.retained": "3 năm",
+    "savings.todayLabel": "Hôm nay",
+    "savings.monthLabel": "Tháng này",
+    "savings.yearLabel": "Năm nay",
+    "savings.retainedLabel": "Kho lưu trữ ba năm",
+    "savings.estimateDetail": "Giá trị điện ước tính theo hai bậc hiện tại của Biểu giá 7",
+    "savings.rangeAria": "Từ {low} đến {high}",
+    "savings.solarShare": "Tỷ lệ điện cung cấp từ mặt trời",
+    "savings.solarEnergy": "Điện mặt trời được tính giá trị",
+    "savings.solarEnergyDetail": "Sản lượng biến tần đã ghi nhận",
+    "savings.gridEnergy": "Điện mua từ lưới",
+    "savings.gridEnergyDetail": "Trước tín dụng điện hai chiều",
+    "savings.gridCost": "Chi phí điện lưới",
+    "savings.gridCostDetail": "Ước tính phần chi phí biến đổi",
+    "savings.dailyAverage": "Tiết kiệm trung bình",
+    "savings.perDay": "mỗi ngày có dữ liệu",
+    "savings.awaitingDays": "Đang chờ số ngày có dữ liệu",
+    "savings.observedDays": "Trong {days} ngày có dữ liệu",
+    "savings.utilityPlan": "Biểu giá điện",
+    "savings.energyRate": "Đơn giá điện",
+    "savings.tierThreshold": "Ngưỡng bậc giá",
+    "savings.tierDetail": "Bậc 1 trong mỗi tháng hóa đơn",
+    "savings.fixedCharge": "Phí cơ bản",
+    "savings.fixedChargeDetail": "Hàng tháng · không tính là tiết kiệm",
+    "savings.tariffAria": "Các giả định về biểu giá điện",
+    "savings.effective": "Có hiệu lực {date}",
+    "savings.methodology": "Dùng biểu giá PSE hiện tại và giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Chưa bao gồm thuế điện đô thị; tín dụng tích lũy hết hạn ngày 31 tháng 3.",
+    "savings.methodologyTax": "Dùng biểu giá PSE hiện tại và giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Đã bao gồm {tax}% thuế điện đô thị; tín dụng tích lũy hết hạn ngày 31 tháng 3.",
+    "savings.awaiting": "Đang chờ dữ liệu điện mặt trời và điện lưới",
+    "savings.unavailable": "Ước tính tiết kiệm tạm thời không khả dụng",
     "runtime.minutes": "{minutes} phút",
     "runtime.hoursMinutes": "{hours} giờ {minutes} phút",
     "runtime.daysHours": "{days} ngày {hours} giờ",
@@ -752,6 +829,9 @@ async function refreshCycle(forceSecondary = false) {
     if (forceSecondary || now - state.lastEnergyRefreshAt >= SECONDARY_REFRESH_MS) {
       jobs.push(["energy", refreshEnergyHistory()]);
     }
+    if (forceSecondary || now - state.lastSavingsRefreshAt >= SECONDARY_REFRESH_MS) {
+      jobs.push(["savings", refreshSavings()]);
+    }
     if (forceSecondary || now - state.lastEventsRefreshAt >= SECONDARY_REFRESH_MS) {
       jobs.push(["events", refreshEvents()]);
     }
@@ -918,6 +998,16 @@ async function refreshEnergyHistory() {
   renderEnergyHistory();
 }
 
+async function refreshSavings() {
+  const params = new URLSearchParams({ timezone: state.energyTimezone });
+  const payload = await getJson(`/api/savings?${params}`, "savings");
+  state.savings = payload;
+  state.lastSavingsRefreshAt = Date.now();
+  state.resourceErrors.savings = null;
+  $("energySavingsSection").removeAttribute("data-refresh-error");
+  renderSavings();
+}
+
 async function refreshEvents() {
   const payload = await getJson("/api/events?range=7d&limit=80", "events");
   state.events = payload.events || [];
@@ -1013,6 +1103,11 @@ function handleResourceFailure(resource, error) {
   if (resource === "energy") {
     $("energyHistoryChart").dataset.refreshError = message;
     renderEnergyHistory();
+    return;
+  }
+  if (resource === "savings") {
+    $("energySavingsSection").dataset.refreshError = message;
+    renderSavings();
     return;
   }
   $("eventList").dataset.refreshError = message;
@@ -2085,6 +2180,148 @@ function renderEnergyHistory() {
     ? t("energyHistory.unavailable")
     : t("energyHistory.awaiting");
   window.requestAnimationFrame(drawEnergyHistoryChart);
+}
+
+function renderSavings() {
+  const payload = state.savings || {};
+  const period = payload.periods?.[state.savingsPeriod] || {};
+  const tariff = payload.tariff || {};
+  const solar = finiteNumber(period.solar_generation_kwh);
+  const grid = finiteNumber(period.grid_import_kwh);
+  const share = finiteNumber(period.solar_share_percent);
+  const observedDays = Number.isInteger(period.observed_days) ? period.observed_days : 0;
+  const periodLabelKey = {
+    today: "savings.todayLabel",
+    month: "savings.monthLabel",
+    year: "savings.yearLabel",
+    retained: "savings.retainedLabel",
+  }[state.savingsPeriod] || "savings.monthLabel";
+
+  $("savingsPeriodLabel").textContent = t(periodLabelKey);
+  renderPrimaryCurrencyRange(
+    $("savingsEstimate"),
+    period.estimated_savings_usd_low,
+    period.estimated_savings_usd_high,
+  );
+  $("savingsSolarEnergy").textContent = formatEnergyWithUnit(solar);
+  $("savingsGridEnergy").textContent = formatEnergyWithUnit(grid);
+  $("savingsGridCost").textContent = formatCurrencyRange(
+    period.estimated_grid_cost_usd_low,
+    period.estimated_grid_cost_usd_high,
+  );
+  $("savingsDailyAverage").textContent = formatCurrencyRange(
+    period.average_savings_per_observed_day_usd_low,
+    period.average_savings_per_observed_day_usd_high,
+  );
+  $("savingsObservedDays").textContent = observedDays
+    ? t("savings.observedDays", { days: formatNumber(observedDays) })
+    : t("savings.awaitingDays");
+  $("savingsSolarShare").textContent = share === null ? "--" : formatValue(share, "%");
+  const shareBar = $("savingsShareBar");
+  const boundedShare = share === null ? 0 : clamp(share, 0, 100);
+  shareBar.style.setProperty("--share", boundedShare);
+  if (share === null) shareBar.removeAttribute("aria-valuenow");
+  else shareBar.setAttribute("aria-valuenow", String(Math.round(boundedShare * 10) / 10));
+
+  const plan = [tariff.provider, tariff.schedule].filter(Boolean).join(" · ");
+  $("savingsUtilityPlan").textContent = plan || "--";
+  $("savingsUtilityRegion").textContent = tariff.region || "--";
+  $("savingsRate").textContent = formatRateRange(
+    tariff.effective_rate_low_usd_per_kwh,
+    tariff.effective_rate_high_usd_per_kwh,
+  );
+  $("savingsRateEffective").textContent = tariff.effective_date
+    ? t("savings.effective", { date: formatCalendarDate(tariff.effective_date) })
+    : "--";
+  $("savingsTierLimit").textContent = finiteNumber(tariff.tier_1_limit_kwh) === null
+    ? "--"
+    : formatEnergyWithUnit(tariff.tier_1_limit_kwh);
+  $("savingsBasicCharge").textContent = formatCurrency(tariff.basic_charge_usd);
+  const tax = finiteNumber(tariff.municipal_tax_percent);
+  $("savingsMethodology").textContent = tax !== null && tax > 0
+    ? t("savings.methodologyTax", { tax: formatValue(tax) })
+    : t("savings.methodology");
+
+  const hasEnergy = solar !== null || grid !== null;
+  const empty = $("savingsEmpty");
+  empty.hidden = hasEnergy;
+  empty.textContent = state.resourceErrors.savings
+    ? t("savings.unavailable")
+    : t("savings.awaiting");
+}
+
+function formatCurrency(value) {
+  const number = finiteNumber(value);
+  if (number === null) return "--";
+  return new Intl.NumberFormat(currentLocale(), {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(number);
+}
+
+function formatCurrencyRange(low, high) {
+  const lower = finiteNumber(low);
+  const upper = finiteNumber(high);
+  if (lower === null || upper === null) return "--";
+  const formatter = new Intl.NumberFormat(currentLocale(), {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (Math.abs(lower - upper) < 0.005) return formatter.format(lower);
+  return typeof formatter.formatRange === "function"
+    ? formatter.formatRange(lower, upper)
+    : `${formatter.format(lower)}–${formatter.format(upper)}`;
+}
+
+function renderPrimaryCurrencyRange(element, low, high) {
+  const lower = finiteNumber(low);
+  const upper = finiteNumber(high);
+  if (lower === null || upper === null) {
+    element.textContent = "--";
+    element.removeAttribute("aria-label");
+    return;
+  }
+
+  const lowerText = formatCurrency(lower);
+  const upperText = formatCurrency(upper);
+  if (Math.abs(lower - upper) < 0.005) {
+    element.textContent = lowerText;
+    element.removeAttribute("aria-label");
+    return;
+  }
+
+  const lowerSpan = document.createElement("span");
+  lowerSpan.textContent = lowerText;
+  const separator = document.createElement("span");
+  separator.className = "savings-range__separator";
+  separator.setAttribute("aria-hidden", "true");
+  separator.textContent = "–";
+  const upperSpan = document.createElement("span");
+  upperSpan.textContent = upperText;
+  element.replaceChildren(lowerSpan, separator, upperSpan);
+  element.setAttribute("aria-label", t("savings.rangeAria", {
+    low: lowerText,
+    high: upperText,
+  }));
+}
+
+function formatRateRange(low, high) {
+  const lower = finiteNumber(low);
+  const upper = finiteNumber(high);
+  if (lower === null || upper === null) return "--";
+  const formatter = new Intl.NumberFormat(currentLocale(), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${formatter.format(lower * 100)}–${formatter.format(upper * 100)}¢/kWh`;
+}
+
+function formatEnergyWithUnit(value) {
+  return finiteNumber(value) === null ? "--" : `${formatEnergyTotal(value)} kWh`;
 }
 
 function energyAxisMaximum(values) {
@@ -3209,6 +3446,7 @@ function rerenderLocalizedUi() {
   $("chartLegend").dataset.signature = "";
   hideChartTooltip(false);
   renderEnergyHistory();
+  renderSavings();
 
   if (state.livePayload) {
     renderStatus(state.livePayload);
@@ -3453,6 +3691,18 @@ function bindControls() {
       button.setAttribute("aria-pressed", "true");
       renderEnergyHistory();
       refreshEnergyHistory().catch((error) => handleResourceFailure("energy", error));
+    });
+  });
+
+  document.querySelectorAll("#savingsPeriodControls button[data-savings-period]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.savingsPeriod = button.dataset.savingsPeriod;
+      document.querySelectorAll("#savingsPeriodControls button").forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("is-active", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+      renderSavings();
     });
   });
 

@@ -21,6 +21,8 @@ class MonitorConfigTests(unittest.TestCase):
             "BQM_LIVE_POLL_INTERVAL_SECONDS": "7",
             "BQM_STALE_AFTER_SECONDS": "35",
             "BQM_OFFLINE_AFTER_SECONDS": "150",
+            "BQM_UTILITY_TIER_1_USD_PER_KWH": "0.19",
+            "BQM_UTILITY_MUNICIPAL_TAX_PERCENT": "6.5",
         }
 
         with patch.dict(os.environ, environment, clear=True):
@@ -34,6 +36,9 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual(settings.live_poll_interval_seconds, 7.0)
         self.assertEqual(settings.stale_after_seconds, 35.0)
         self.assertEqual(settings.offline_after_seconds, 150.0)
+        self.assertEqual(settings.utility_tariff.schedule, "Residential Schedule 7")
+        self.assertEqual(settings.utility_tariff.tier_1_usd_per_kwh, 0.19)
+        self.assertEqual(settings.utility_tariff.municipal_tax_percent, 6.5)
 
     def test_rack_details_combines_profile_and_live_reading(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

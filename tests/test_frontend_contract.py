@@ -307,6 +307,23 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".chart-tooltip--energy", css)
         self.assertIn(".energy-tooltip__row", css)
 
+    def test_energy_savings_uses_logged_energy_and_pse_rate_metadata(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="energySavingsSection"', html)
+        self.assertIn('id="savingsEstimate"', html)
+        self.assertIn('data-savings-period="today"', html)
+        self.assertIn('data-savings-period="retained"', html)
+        self.assertIn('getJson(`/api/savings?${params}`, "savings")', javascript)
+        self.assertIn("function renderSavings", javascript)
+        self.assertIn("function formatCurrencyRange", javascript)
+        self.assertIn('"savings.title": "Energy Savings"', javascript)
+        self.assertIn('"savings.title": "Tiết kiệm năng lượng"', javascript)
+        self.assertIn(".savings-layout", css)
+        self.assertIn(".savings-tariff", css)
+
     def test_live_views_show_estimated_battery_support_time(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")

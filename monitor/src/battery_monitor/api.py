@@ -21,6 +21,7 @@ from .assets import asset_version, cache_control_for, render_index
 from .collector import CollectorClient, CollectorError
 from .config import Settings, load_settings, rack_details
 from .service import MonitorService
+from .savings import build_savings_payload
 from .storage import EnergyView, HistoryMetric, RetentionStore
 
 logger = logging.getLogger(__name__)
@@ -252,6 +253,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 }
             )
         return payload
+
+    @app.get("/api/savings")
+    async def savings(
+        timezone_name: str = Query(default="America/Los_Angeles", alias="timezone"),
+    ):
+        try:
+            ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError as error:
+            raise HTTPException(status_code=400, detail="Unknown timezone") from error
+        energy = await asyncio.to_thread(
+            store.savings_energy, timezone_name, settings.retention_days
+        )
+        return build_savings_payload(energy, settings.utility_tariff)
 
     @app.get("/api/events")
     async def events(range: str = Query(default="7d"), limit: int = Query(default=80, ge=1, le=300)):

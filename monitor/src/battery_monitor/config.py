@@ -16,6 +16,19 @@ class BatteryProfile:
 
 
 @dataclass(frozen=True)
+class UtilityTariff:
+    provider: str
+    schedule: str
+    region: str
+    effective_date: str
+    tier_1_usd_per_kwh: float
+    tier_2_usd_per_kwh: float
+    tier_1_limit_kwh: float
+    basic_charge_usd: float
+    municipal_tax_percent: float
+
+
+@dataclass(frozen=True)
 class Settings:
     host: str
     port: int
@@ -37,6 +50,7 @@ class Settings:
     rack_location: str
     collector_name: str
     battery_profiles: tuple[BatteryProfile, ...]
+    utility_tariff: UtilityTariff
 
 
 def load_settings() -> Settings:
@@ -89,6 +103,27 @@ def load_settings() -> Settings:
         rack_location=os.getenv("BQM_RACK_LOCATION", "Battery room"),
         collector_name=os.getenv("BQM_COLLECTOR_NAME", "Raspberry Pi collector"),
         battery_profiles=battery_profiles,
+        utility_tariff=UtilityTariff(
+            provider=os.getenv("BQM_UTILITY_PROVIDER", "Puget Sound Energy"),
+            schedule=os.getenv("BQM_UTILITY_SCHEDULE", "Residential Schedule 7"),
+            region=os.getenv("BQM_UTILITY_REGION", "King County, WA"),
+            effective_date=os.getenv("BQM_UTILITY_RATE_EFFECTIVE_DATE", "2026-05-01"),
+            tier_1_usd_per_kwh=max(
+                0.0, float(os.getenv("BQM_UTILITY_TIER_1_USD_PER_KWH", "0.187465"))
+            ),
+            tier_2_usd_per_kwh=max(
+                0.0, float(os.getenv("BQM_UTILITY_TIER_2_USD_PER_KWH", "0.206882"))
+            ),
+            tier_1_limit_kwh=max(
+                0.0, float(os.getenv("BQM_UTILITY_TIER_1_LIMIT_KWH", "600"))
+            ),
+            basic_charge_usd=max(
+                0.0, float(os.getenv("BQM_UTILITY_BASIC_CHARGE_USD", "7.49"))
+            ),
+            municipal_tax_percent=max(
+                0.0, float(os.getenv("BQM_UTILITY_MUNICIPAL_TAX_PERCENT", "0"))
+            ),
+        ),
     )
 
 

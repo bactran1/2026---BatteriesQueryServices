@@ -25,6 +25,35 @@ const live = {
   collector_status:"online", collector_error:null, monitor:{last_success_at:new Date().toISOString()},
   snapshot:{batteries:[]}, summary:{}, rack:{expected_battery_count:3,batteries:[]}, storage:{},
 };
+const savings = {
+  currency:"USD", default_period:"month",
+  periods:{
+    today:{solar_generation_kwh:6.4,grid_import_kwh:3.1,observed_days:1,
+      estimated_savings_usd_low:1.2,estimated_savings_usd_high:1.32,
+      estimated_grid_cost_usd_low:0.58,estimated_grid_cost_usd_high:0.64,
+      solar_share_percent:67.4,average_savings_per_observed_day_usd_low:1.2,
+      average_savings_per_observed_day_usd_high:1.32},
+    month:{solar_generation_kwh:642.8,grid_import_kwh:184.2,observed_days:13,
+      estimated_savings_usd_low:120.5,estimated_savings_usd_high:133,
+      estimated_grid_cost_usd_low:34.53,estimated_grid_cost_usd_high:38.11,
+      solar_share_percent:77.7,average_savings_per_observed_day_usd_low:9.27,
+      average_savings_per_observed_day_usd_high:10.23},
+    year:{solar_generation_kwh:6240,grid_import_kwh:2810,observed_days:255,
+      estimated_savings_usd_low:1169.78,estimated_savings_usd_high:1290.94,
+      estimated_grid_cost_usd_low:526.78,estimated_grid_cost_usd_high:581.39,
+      solar_share_percent:69,average_savings_per_observed_day_usd_low:4.59,
+      average_savings_per_observed_day_usd_high:5.06},
+    retained:{solar_generation_kwh:16240,grid_import_kwh:7210,observed_days:730,
+      estimated_savings_usd_low:3044.03,estimated_savings_usd_high:3359.77,
+      estimated_grid_cost_usd_low:1351.62,estimated_grid_cost_usd_high:1491.62,
+      solar_share_percent:69.3,average_savings_per_observed_day_usd_low:4.17,
+      average_savings_per_observed_day_usd_high:4.6},
+  },
+  tariff:{provider:"Puget Sound Energy",schedule:"Residential Schedule 7",region:"King County, WA",
+    effective_date:"2026-05-01",tier_1_limit_kwh:600,basic_charge_usd:7.49,
+    municipal_tax_percent:0,effective_rate_low_usd_per_kwh:0.187465,
+    effective_rate_high_usd_per_kwh:0.206882},
+};
 const types = {".html":"text/html", ".js":"text/javascript", ".css":"text/css", ".svg":"image/svg+xml", ".png":"image/png"};
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, "http://localhost");
@@ -35,6 +64,7 @@ const server = http.createServer((request, response) => {
     selected_date:day,window_start_unix:start,window_end_unix:start+86400,bucket_seconds:1800});
   else if (url.pathname === "/api/energy") body = JSON.stringify({points:energy,
     selected_date:day,selected_period:day,window_start_unix:start,window_end_unix:start+86400});
+  else if (url.pathname === "/api/savings") body = JSON.stringify(savings);
   else if (url.pathname.startsWith("/api/")) body = "{}";
   else {
     const relative = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\/static\//, "");
@@ -93,9 +123,15 @@ async function closeReadout(page, id) {
           }, {theme,language});
           await page.goto(`http://127.0.0.1:${server.address().port}/`);
           await page.waitForFunction(() => document.querySelector('#historyChart').dataset.socScale === '0-100');
+          await page.waitForFunction(() => document.querySelector('#savingsEstimate').textContent !== '--');
           const chart = page.locator("#historyChart");
           await chart.scrollIntoViewIfNeeded();
           await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+          assert.match(await page.locator("#savingsEstimate").innerText(), /\$/);
+          await page.locator('[data-savings-period="year"]').click();
+          assert.match(await page.locator("#savingsEstimate").innerText(), /1[,.]1|1[,.]2/);
+          await page.locator("#energySavingsSection").screenshot({path:path.join(artifacts,`savings-${width}-${theme}-${language}.png`)});
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
           assert.equal(await chart.evaluate(canvas => {
             const data = canvas.getContext("2d").getImageData(0,0,canvas.width,canvas.height).data;
@@ -104,6 +140,8 @@ async function closeReadout(page, id) {
           if (mobile) {
             await tapChart(page, "historyChart");
           } else {
+            await chart.scrollIntoViewIfNeeded();
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
             const box = await chart.boundingBox();
             await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
           }
