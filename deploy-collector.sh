@@ -9,7 +9,7 @@ esac
 REPO_ROOT="${SCRIPT_DIR}"
 COMPOSE_FILE="${REPO_ROOT}/docker-compose.yml"
 SERVICE_NAME="batteries-query-service"
-DEFAULT_SERIAL_DEVICE="/dev/ttyUSB0"
+DEFAULT_SERIAL_DEVICE="/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
 DEFAULT_INVERTER_SERIAL_DEVICE="/dev/ttyUSB1"
 DEFAULT_CONFIG_FILE="${REPO_ROOT}/config.toml"
 FOLLOW_LOGS=0
@@ -60,6 +60,7 @@ usage() {
 "Examples:" \
 "  bash deploy-collector.sh" \
 "  bash deploy-collector.sh --inverter-host 192.168.10.50 --inverter-logger-serial 1234567890" \
+"  bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" \
 "  bash deploy-collector.sh --serial-device /dev/serial/by-id/usb-Battery_Adapter --inverter-serial-device /dev/serial/by-id/usb-Inverter_Adapter" \
 "  bash deploy-collector.sh --skip-git-update --use-cache"
 }

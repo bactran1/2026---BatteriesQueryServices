@@ -34,7 +34,7 @@ usage() {
 "" \
 "Everything after -- is saved as literal arguments for the existing deployment script." \
 "Example:" \
-"  sudo bash deploy/install-auto-deploy.sh monitor -- --collector-url http://192.168.1.50:8000"
+"  sudo bash deploy/install-auto-deploy.sh monitor -- --collector-url http://192.168.10.194:8000"
 }
 
 fail() {

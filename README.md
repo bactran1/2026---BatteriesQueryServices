@@ -66,7 +66,7 @@ curl http://localhost:8000/metrics
 On the x86_64 monitor host, set the collector URL to the Pi hostname or IP address:
 
 ```bash
-export BQM_COLLECTOR_URL=http://raspberrypi.local:8000
+export BQM_COLLECTOR_URL=http://192.168.10.194:8000
 docker compose -f docker-compose.monitor.yml up -d --build
 ```
 
@@ -149,7 +149,7 @@ The dashboard defaults to three rack batteries and shows the rack builder as Tra
 export BQM_BATTERY_NAMES="Top Battery,Middle Battery,Bottom Battery"
 export BQM_BATTERY_IPS="192.168.1.61,192.168.1.62,192.168.1.63"
 export BQM_BATTERY_MODELS="Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah"
-bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+bash monitor/deploy-monitor.sh --collector-url http://192.168.10.194:8000
 ```
 
 The IP addresses are inventory labels. Telemetry still travels from the batteries to the Raspberry Pi over RS485, then from the Pi to the monitor over the network. Leave an IP position empty when a battery does not have a directly reachable address, for example `BQM_BATTERY_IPS=192.168.1.61,,192.168.1.63`.
@@ -182,7 +182,7 @@ the deployment script:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter
+  --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
 ```
 
 Allow your Pi user to run Docker and access serial devices:
@@ -196,7 +196,7 @@ After reboot:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter
+  --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
 ```
 
 The script fetches and fast-forwards to the latest Git commit, tags the image
@@ -233,23 +233,16 @@ Then verify the collector from the Pi:
 curl http://localhost:8000/api/readings
 ```
 
-The x86_64 monitor host must be able to reach the Pi at `http://raspberrypi.local:8000` or at the Pi's static IP address.
+The x86_64 monitor host must be able to reach the Pi collector at `http://192.168.10.194:8000`.
 
 ## x86_64 monitor host deployment
 
 Deploy the dashboard/logger on the dedicated x86_64 Linux Docker host.
 
-If the x86 host can resolve the Pi hostname:
+Use the Pi's reserved LAN address:
 
 ```bash
-export BQM_COLLECTOR_URL=http://raspberrypi.local:8000
-docker compose -f docker-compose.monitor.yml up -d --build
-```
-
-If it cannot, use the Pi IP address:
-
-```bash
-export BQM_COLLECTOR_URL=http://192.168.1.50:8000
+export BQM_COLLECTOR_URL=http://192.168.10.194:8000
 docker compose -f docker-compose.monitor.yml up -d --build
 ```
 
@@ -262,7 +255,7 @@ http://x86-monitor-hostname:8080
 To rebuild and restart the monitor after updates, use the helper script:
 
 ```bash
-bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+bash monitor/deploy-monitor.sh --collector-url http://192.168.10.194:8000
 ```
 
 The script builds the monitor image from `monitor/Dockerfile`. If no `battery-monitor` container exists, it creates one. If the container already exists, it updates it with the new image. In both cases, it keeps the existing `./data/monitor` log database and waits for the container health check.
@@ -270,7 +263,7 @@ The script builds the monitor image from `monitor/Dockerfile`. If no `battery-mo
 By default, the script updates the local Git checkout to the latest remote commit before building. It tags the Docker image with that commit SHA, passes the SHA into the image metadata, rebuilds without Docker cache, and restarts the container from that image. Use this when deploying normal updates:
 
 ```bash
-bash monitor/deploy-monitor.sh --collector-url http://raspberrypi.local:8000
+bash monitor/deploy-monitor.sh --collector-url http://192.168.10.194:8000
 ```
 
 If you intentionally want to build whatever files are currently on disk without pulling Git first:
@@ -308,7 +301,7 @@ cd ~/2026---BatteriesQueryServices
 git switch master
 git pull --ff-only origin master
 sudo bash deploy/install-auto-deploy.sh monitor -- \
-  --collector-url http://raspberrypi.local:8000
+  --collector-url http://192.168.10.194:8000
 ```
 
 On the Raspberry Pi collector:
@@ -417,7 +410,7 @@ In LSW-5 mode, only the battery adapter needs to be mapped:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/ttyUSB0
+  --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
 ```
 
 For long-running systems, prefer a stable device path. Logger settings may be
@@ -425,7 +418,7 @@ kept in `config.toml` or supplied directly during deployment:
 
 ```bash
 bash deploy-collector.sh \
-  --serial-device /dev/serial/by-id/usb-Battery_RS485_Adapter \
+  --serial-device /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0 \
   --inverter-host 192.168.10.50 \
   --inverter-logger-serial 1234567890
 ```

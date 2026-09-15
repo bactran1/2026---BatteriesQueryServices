@@ -66,6 +66,30 @@ class AutoDeployContractTests(unittest.TestCase):
         self.assertIn('battery-monitor-auto-deploy.timer', self.readme)
         self.assertIn('battery-collector-auto-deploy.timer', self.readme)
 
+    def test_deployment_defaults_match_the_installed_hosts(self) -> None:
+        monitor_compose = (ROOT / "docker-compose.monitor.yml").read_text(
+            encoding="utf-8"
+        )
+        collector_compose = (ROOT / "docker-compose.yml").read_text(
+            encoding="utf-8"
+        )
+        monitor_deploy = (ROOT / "monitor" / "deploy-monitor.sh").read_text(
+            encoding="utf-8"
+        )
+        collector_deploy = (ROOT / "deploy-collector.sh").read_text(
+            encoding="utf-8"
+        )
+        collector_url = "http://192.168.10.194:8000"
+        serial_device = (
+            "/dev/serial/by-id/"
+            "usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
+        )
+
+        self.assertIn(collector_url, monitor_compose)
+        self.assertIn(collector_url, monitor_deploy)
+        self.assertIn(serial_device, collector_compose)
+        self.assertIn(serial_device, collector_deploy)
+
 
 if __name__ == "__main__":
     unittest.main()

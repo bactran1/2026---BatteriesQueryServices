@@ -24,7 +24,7 @@ services:
       - ${COLLECTOR_CONFIG_FILE:-./config.toml}:/config/config.toml:ro
       - ./data/collector:/data
     devices:
-      - ${COLLECTOR_SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
+      - ${COLLECTOR_SERIAL_DEVICE:-/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0}:/dev/ttyUSB0
       - ${COLLECTOR_INVERTER_SERIAL_DEVICE:-/dev/ttyUSB1}:/dev/ttyUSB1
     ports:
       - "8000:8000"

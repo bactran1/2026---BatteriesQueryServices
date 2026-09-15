@@ -9,7 +9,7 @@ services:
     container_name: battery-monitor
     restart: unless-stopped
     environment:
-      BQM_COLLECTOR_URL: ${BQM_COLLECTOR_URL:-http://raspberrypi.local:8000}
+      BQM_COLLECTOR_URL: ${BQM_COLLECTOR_URL:-http://192.168.10.194:8000}
       BQM_COLLECTOR_TIMEOUT_SECONDS: ${BQM_COLLECTOR_TIMEOUT_SECONDS:-5}
       BQM_LIVE_POLL_INTERVAL_SECONDS: ${BQM_LIVE_POLL_INTERVAL_SECONDS:-5}
       BQM_STALE_AFTER_SECONDS: ${BQM_STALE_AFTER_SECONDS:-30}
