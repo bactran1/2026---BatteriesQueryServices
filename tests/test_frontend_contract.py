@@ -314,9 +314,12 @@ class FrontendContractTests(unittest.TestCase):
 
         self.assertIn('id="energySavingsSection"', html)
         self.assertIn('id="savingsEstimate"', html)
-        self.assertIn('data-savings-period="today"', html)
+        self.assertIn('data-savings-period="date"', html)
+        self.assertIn('id="savingsDateInput"', html)
+        self.assertIn('id="savingsDateControl"', html)
         self.assertIn('data-savings-period="retained"', html)
         self.assertIn('getJson(`/api/savings?${params}`, "savings")', javascript)
+        self.assertIn('date: requestedDate', javascript)
         self.assertIn("function renderSavings", javascript)
         self.assertIn("function formatCurrencyRange", javascript)
         self.assertIn('"savings.title": "Energy Savings"', javascript)

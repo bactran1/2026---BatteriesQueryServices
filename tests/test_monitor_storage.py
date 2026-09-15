@@ -27,17 +27,45 @@ class RetentionStoreTests(unittest.TestCase):
                     )
                 )
 
-            savings = store.savings_energy("UTC")
+            savings = store.savings_energy("UTC", selected_date=now.date().isoformat())
             store.close()
 
-            self.assertEqual(set(savings), {"today", "month", "year", "retained"})
+            self.assertEqual(
+                set(savings), {"date", "today", "month", "year", "retained"}
+            )
             # The first hourly bucket has no pre-window baseline, so it is omitted;
             # the known rise from 1 to 5 kWh is retained without inventing energy.
             self.assertEqual(savings["today"]["solar_generation_kwh"], 4)
+            self.assertEqual(savings["date"]["solar_generation_kwh"], 4)
             self.assertEqual(savings["month"]["solar_generation_kwh"], 5)
             self.assertEqual(savings["year"]["grid_import_kwh"], 2)
             self.assertEqual(savings["retained"]["solar_generation_kwh"], 5)
             self.assertEqual(savings["today"]["observed_days"], 1)
+
+    def test_savings_energy_uses_the_selected_historical_date(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            selected_day = datetime.now(timezone.utc) - timedelta(days=2)
+            first = selected_day.replace(hour=8, minute=0, second=0, microsecond=0)
+            second = first + timedelta(hours=1)
+            for captured_at, solar in [(first, 2.0), (second, 5.0)]:
+                store.insert_snapshot(
+                    _energy_snapshot(
+                        captured_at.isoformat(),
+                        consumption_kwh=4.0,
+                        solar_generation_kwh=solar,
+                        grid_import_kwh=1.0,
+                    )
+                )
+
+            savings = store.savings_energy(
+                "UTC", selected_date=selected_day.date().isoformat()
+            )
+            store.close()
+
+            self.assertEqual(savings["date"]["solar_generation_kwh"], 3)
+            self.assertEqual(savings["date"]["observed_days"], 1)
 
     def test_insert_snapshot_and_query_latest_history(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

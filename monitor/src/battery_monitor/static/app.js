@@ -17,6 +17,7 @@ const state = {
   energyWindowStart: null,
   energyWindowEnd: null,
   savingsPeriod: "month",
+  savingsDate: localCalendarDateValue(new Date()),
   savings: null,
   storage: {},
   rack: {},
@@ -211,6 +212,9 @@ const translations = {
     "savings.title": "Energy Savings",
     "savings.description": "Estimated value of recorded solar energy under the household's current utility rate",
     "savings.periodAria": "Savings period",
+    "savings.date": "Date",
+    "savings.selectDate": "Select day",
+    "savings.selectDateAria": "Select savings date",
     "savings.today": "Today",
     "savings.month": "Month",
     "savings.year": "Year",
@@ -232,6 +236,7 @@ const translations = {
     "savings.dailyAverage": "Average savings",
     "savings.perDay": "per observed day",
     "savings.awaitingDays": "Awaiting observed days",
+    "savings.observedDay": "Across 1 observed day",
     "savings.observedDays": "Across {days} observed days",
     "savings.utilityPlan": "Utility plan",
     "savings.energyRate": "Energy rate",
@@ -564,6 +569,9 @@ const translations = {
     "savings.title": "Tiết kiệm năng lượng",
     "savings.description": "Giá trị ước tính của điện mặt trời đã ghi nhận theo biểu giá điện hiện tại của hộ gia đình",
     "savings.periodAria": "Khoảng thời gian tiết kiệm",
+    "savings.date": "Ngày",
+    "savings.selectDate": "Chọn ngày",
+    "savings.selectDateAria": "Chọn ngày xem tiết kiệm",
     "savings.today": "Hôm nay",
     "savings.month": "Tháng",
     "savings.year": "Năm",
@@ -585,6 +593,7 @@ const translations = {
     "savings.dailyAverage": "Tiết kiệm trung bình",
     "savings.perDay": "mỗi ngày có dữ liệu",
     "savings.awaitingDays": "Đang chờ số ngày có dữ liệu",
+    "savings.observedDay": "Trong 1 ngày có dữ liệu",
     "savings.observedDays": "Trong {days} ngày có dữ liệu",
     "savings.utilityPlan": "Biểu giá điện",
     "savings.energyRate": "Đơn giá điện",
@@ -1001,8 +1010,14 @@ async function refreshEnergyHistory() {
 }
 
 async function refreshSavings() {
-  const params = new URLSearchParams({ timezone: state.energyTimezone });
+  const requestedDate = state.savingsDate;
+  const params = new URLSearchParams({
+    timezone: state.energyTimezone,
+    date: requestedDate,
+  });
   const payload = await getJson(`/api/savings?${params}`, "savings");
+  if (requestedDate !== state.savingsDate) return refreshSavings();
+  state.savingsDate = payload.selected_date || requestedDate;
   state.savings = payload;
   state.lastSavingsRefreshAt = Date.now();
   state.resourceErrors.savings = null;
@@ -2199,7 +2214,11 @@ function renderSavings() {
     retained: "savings.retainedLabel",
   }[state.savingsPeriod] || "savings.monthLabel";
 
-  $("savingsPeriodLabel").textContent = t(periodLabelKey);
+  $("savingsPeriodLabel").textContent = state.savingsPeriod === "date"
+    ? formatCalendarDate(state.savingsDate)
+    : t(periodLabelKey);
+  $("savingsDateControl").hidden = state.savingsPeriod !== "date";
+  $("savingsDateInput").value = state.savingsDate;
   renderPrimaryCurrencyRange(
     $("savingsEstimate"),
     period.estimated_savings_usd_low,
@@ -2215,9 +2234,11 @@ function renderSavings() {
     period.average_savings_per_observed_day_usd_low,
     period.average_savings_per_observed_day_usd_high,
   );
-  $("savingsObservedDays").textContent = observedDays
-    ? t("savings.observedDays", { days: formatNumber(observedDays) })
-    : t("savings.awaitingDays");
+  $("savingsObservedDays").textContent = observedDays === 1
+    ? t("savings.observedDay")
+    : observedDays > 1
+      ? t("savings.observedDays", { days: formatNumber(observedDays) })
+      : t("savings.awaitingDays");
   $("savingsSolarShare").textContent = share === null ? "--" : formatValue(share, "%");
   const shareBar = $("savingsShareBar");
   const boundedShare = share === null ? 0 : clamp(share, 0, 100);
@@ -3651,6 +3672,17 @@ function bindControls() {
     hideEnergyChartTooltip(false);
     renderEnergyHistory();
     refreshEnergyHistory().catch((error) => handleResourceFailure("energy", error));
+  });
+
+  const savingsDateInput = $("savingsDateInput");
+  savingsDateInput.value = state.savingsDate;
+  savingsDateInput.max = localCalendarDateValue(new Date());
+  savingsDateInput.min = localCalendarDateValue(oldestDate);
+  savingsDateInput.addEventListener("change", () => {
+    if (!savingsDateInput.value || savingsDateInput.value === state.savingsDate) return;
+    state.savingsDate = savingsDateInput.value;
+    renderSavings();
+    refreshSavings().catch((error) => handleResourceFailure("savings", error));
   });
 
   document.querySelectorAll("[data-power-series]").forEach((button) => {
