@@ -138,7 +138,7 @@ def load_settings() -> Settings:
             180.0,
             max(-180.0, float(os.getenv("BQM_WEATHER_LONGITUDE", "-122.2348"))),
         ),
-        weather_location=os.getenv("BQM_WEATHER_LOCATION", "King County, WA"),
+        weather_location=os.getenv("BQM_WEATHER_LOCATION", "Kent, WA"),
         weather_timeout_seconds=max(
             0.5, float(os.getenv("BQM_WEATHER_TIMEOUT_SECONDS", "4"))
         ),

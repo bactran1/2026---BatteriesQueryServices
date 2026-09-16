@@ -52,6 +52,10 @@ class MonitorConfigTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             settings = load_settings()
 
+        self.assertEqual(settings.weather_latitude, 47.3809)
+        self.assertEqual(settings.weather_longitude, -122.2348)
+        self.assertEqual(settings.weather_location, "Kent, WA")
+
         details = rack_details(
             settings,
             [
