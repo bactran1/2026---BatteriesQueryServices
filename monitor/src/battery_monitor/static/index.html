@@ -133,6 +133,22 @@
               <p id="energyFlowState" class="energy-flow__state" data-i18n="energy.waitingShort">Waiting</p>
             </div>
             <p id="energyFlowDescription" data-i18n="energy.waiting">Waiting for battery telemetry</p>
+            <aside id="energyWeather" class="energy-flow__weather" data-kind="unavailable" data-day="true" aria-live="polite">
+              <div class="energy-weather__visual" aria-hidden="true">
+                <i class="energy-weather__sun"></i>
+                <i class="energy-weather__cloud"></i>
+                <i class="energy-weather__precipitation"><b></b><b></b><b></b></i>
+                <i class="energy-weather__fog"><b></b><b></b><b></b></i>
+              </div>
+              <div class="energy-weather__copy">
+                <div>
+                  <strong id="energyWeatherTemperature">--</strong>
+                  <span id="energyWeatherCondition">Weather unavailable</span>
+                </div>
+                <small id="energyWeatherDetails">Current conditions unavailable</small>
+                <a class="energy-weather__source" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" data-i18n="weather.source">Weather by Open-Meteo</a>
+              </div>
+            </aside>
           </div>
           <div id="energyFlowStage" class="energy-flow__stage">
             <canvas

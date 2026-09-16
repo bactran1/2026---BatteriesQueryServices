@@ -51,6 +51,12 @@ class Settings:
     collector_name: str
     battery_profiles: tuple[BatteryProfile, ...]
     utility_tariff: UtilityTariff
+    weather_enabled: bool
+    weather_latitude: float
+    weather_longitude: float
+    weather_location: str
+    weather_timeout_seconds: float
+    weather_refresh_seconds: float
 
 
 def load_settings() -> Settings:
@@ -123,6 +129,21 @@ def load_settings() -> Settings:
             municipal_tax_percent=max(
                 0.0, float(os.getenv("BQM_UTILITY_MUNICIPAL_TAX_PERCENT", "0"))
             ),
+        ),
+        weather_enabled=_environment_bool("BQM_WEATHER_ENABLED", True),
+        weather_latitude=min(
+            90.0, max(-90.0, float(os.getenv("BQM_WEATHER_LATITUDE", "47.3809")))
+        ),
+        weather_longitude=min(
+            180.0,
+            max(-180.0, float(os.getenv("BQM_WEATHER_LONGITUDE", "-122.2348"))),
+        ),
+        weather_location=os.getenv("BQM_WEATHER_LOCATION", "King County, WA"),
+        weather_timeout_seconds=max(
+            0.5, float(os.getenv("BQM_WEATHER_TIMEOUT_SECONDS", "4"))
+        ),
+        weather_refresh_seconds=max(
+            60.0, float(os.getenv("BQM_WEATHER_REFRESH_SECONDS", "600"))
         ),
     )
 
@@ -260,3 +281,10 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _environment_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}

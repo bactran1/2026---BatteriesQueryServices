@@ -23,6 +23,7 @@ from .config import Settings, load_settings, rack_details
 from .service import MonitorService
 from .savings import build_savings_payload
 from .storage import EnergyView, HistoryMetric, RetentionStore
+from .weather import WeatherClient
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store=store,
         collector=collector,
         retention_provider=lambda: admin_settings.effective_retention(settings),
+    )
+    weather = WeatherClient(
+        enabled=settings.weather_enabled,
+        latitude=settings.weather_latitude,
+        longitude=settings.weather_longitude,
+        location=settings.weather_location,
+        timeout_seconds=settings.weather_timeout_seconds,
+        refresh_seconds=settings.weather_refresh_seconds,
     )
 
     @asynccontextmanager
@@ -150,6 +159,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             "snapshot": snapshot,
         }
+
+    @app.get("/api/weather")
+    async def current_weather():
+        return await asyncio.to_thread(weather.current)
 
     @app.get("/api/history")
     async def history(
