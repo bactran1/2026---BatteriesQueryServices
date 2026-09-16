@@ -567,13 +567,14 @@ function startEnergyFlowScene() {
     const width = Math.max(1, Math.round(bounds.width));
     const height = Math.max(1, Math.round(bounds.height));
     const aspect = width / height;
-    const viewWidth = width <= 480 ? 8.25 : width <= 760 ? 9.6 : 12.4;
+    const viewWidth = width <= 480 ? 8.25 : width <= 800 ? 9.6 : 13.8;
     const viewHeight = viewWidth / aspect;
     camera.left = -viewWidth / 2;
     camera.right = viewWidth / 2;
     camera.top = viewHeight / 2;
     camera.bottom = -viewHeight / 2;
-    root.position.set(width <= 480 ? 0.2 : 0.55, width <= 480 ? -0.58 : -0.25, 0);
+    const rootY = width <= 480 ? -0.58 : width <= 800 ? -1.05 : -0.38;
+    root.position.set(width <= 480 ? 0.2 : 0.55, rootY, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width <= 600 ? 1.5 : 2));
     renderer.setSize(width, height, false);
     renderer.shadowMap.enabled = width > 480;

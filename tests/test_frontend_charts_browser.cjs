@@ -124,7 +124,7 @@ async function closeReadout(page, id) {
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const browser = await chromium.launch({headless:true, ...(process.env.BROWSER_CHANNEL ? {channel:process.env.BROWSER_CHANNEL} : {})});
   try {
-    for (const width of [320, 390, 480, 768, 1440]) {
+    for (const width of [320, 390, 480, 600, 768, 1024, 1440]) {
       for (const theme of ["light", "dark"]) {
         for (const language of ["en", "vi"]) {
           const mobile = width <= 480;
@@ -141,9 +141,10 @@ async function closeReadout(page, id) {
           await page.waitForFunction(() => document.querySelector('#historyChart').dataset.socScale === '0-100');
           await page.waitForFunction(() => document.querySelector('#savingsEstimate').textContent !== '--');
           await page.waitForFunction(() => document.querySelector('#energyWeatherTemperature').textContent !== '--');
-          if (width <= 480) {
-            const energyFlowLayout = await page.locator("#energyFlowLeaders").evaluate(svg => {
+          const energyFlowLayout = await page.locator("#energyFlowLeaders").evaluate(svg => {
               const sectionRect = svg.closest("#energyFlowSection").getBoundingClientRect();
+              const copyRect = svg.closest("#energyFlowSection")
+                .querySelector(".energy-flow__copy").getBoundingClientRect();
               const callouts = [...svg.closest("#energyFlowSection").querySelectorAll(".energy-flow__callout")]
                 .map(element => {
                   const rect = element.getBoundingClientRect();
@@ -166,8 +167,36 @@ async function closeReadout(page, id) {
                   length:Math.hypot(x2 - x1, y2 - y1),
                 };
               });
-              return {width:sectionRect.width,height:sectionRect.height,callouts,leaders};
-            });
+              return {
+                width:sectionRect.width,
+                height:sectionRect.height,
+                dividerBottom:copyRect.bottom - sectionRect.top,
+                callouts,
+                leaders,
+              };
+          });
+          for (const callout of energyFlowLayout.callouts) {
+            assert.ok(callout.left >= -1 && callout.right <= energyFlowLayout.width + 1
+                && callout.top >= -1 && callout.bottom <= energyFlowLayout.height + 1,
+              `${width} ${theme} ${language}: ${callout.name} callout is outside the scene`);
+          }
+          for (let index = 0; index < energyFlowLayout.callouts.length; index += 1) {
+            for (let other = index + 1; other < energyFlowLayout.callouts.length; other += 1) {
+              const a = energyFlowLayout.callouts[index];
+              const b = energyFlowLayout.callouts[other];
+              const overlap = a.left < b.right - 1 && a.right > b.left + 1
+                && a.top < b.bottom - 1 && a.bottom > b.top + 1;
+              assert.equal(overlap, false,
+                `${width} ${theme} ${language}: ${a.name} and ${b.name} callouts overlap`);
+            }
+          }
+          const topCallouts = energyFlowLayout.callouts
+            .filter(callout => ["inverter", "solar", "grid"].includes(callout.name));
+          const dividerClearance = Math.min(...topCallouts.map(callout => callout.top))
+            - energyFlowLayout.dividerBottom;
+          assert.ok(dividerClearance >= 12,
+            `${width} ${theme} ${language}: title divider crosses the top callouts (${Math.round(dividerClearance)}px)`);
+          if (width <= 480) {
             const lengths = energyFlowLayout.leaders.map(leader => leader.length);
             assert.equal(lengths.length, 6, `${width} ${theme} ${language}: missing energy leader`);
             assert.ok(Math.max(...lengths) <= 175,
@@ -176,21 +205,10 @@ async function closeReadout(page, id) {
             assert.ok(Math.max(...lengths) / Math.min(...lengths) <= 2.6,
               `${width} ${theme} ${language}: energy leaders are visually unbalanced (${energyFlowLayout.leaders
                 .map(leader => `${leader.name}:${Math.round(leader.length)}`).join(", ")})`);
-            for (const callout of energyFlowLayout.callouts) {
-              assert.ok(callout.left >= -1 && callout.right <= energyFlowLayout.width + 1
-                  && callout.top >= -1 && callout.bottom <= energyFlowLayout.height + 1,
-                `${width} ${theme} ${language}: ${callout.name} callout is outside the scene`);
-            }
-            for (let index = 0; index < energyFlowLayout.callouts.length; index += 1) {
-              for (let other = index + 1; other < energyFlowLayout.callouts.length; other += 1) {
-                const a = energyFlowLayout.callouts[index];
-                const b = energyFlowLayout.callouts[other];
-                const overlap = a.left < b.right - 1 && a.right > b.left + 1
-                  && a.top < b.bottom - 1 && a.bottom > b.top + 1;
-                assert.equal(overlap, false,
-                  `${width} ${theme} ${language}: ${a.name} and ${b.name} callouts overlap`);
-              }
-            }
+            const bottomGap = energyFlowLayout.height
+              - Math.max(...energyFlowLayout.callouts.map(callout => callout.bottom));
+            assert.ok(bottomGap >= 16 && bottomGap <= 80,
+              `${width} ${theme} ${language}: mobile energy footer gap is ${Math.round(bottomGap)}px`);
           }
           assert.equal(await page.locator("#energyWeather").getAttribute("data-kind"), "rain");
           assert.notEqual(await page.locator("#energyWeatherDetails").innerText(), "");
@@ -230,7 +248,7 @@ async function closeReadout(page, id) {
             assert.equal(weatherBounds.paddingRight, "0px",
               `${width} ${theme} ${language}: mobile weather right padding`);
           }
-          if ([320, 390, 480, 1440].includes(width) && theme === "light" && language === "en") {
+          if ([320, 390, 480, 600, 1440].includes(width) && theme === "light" && language === "en") {
             await page.locator("#energyFlowSection").screenshot({
               path:path.join(artifacts,`weather-${width}-${theme}-${language}.png`),
             });
