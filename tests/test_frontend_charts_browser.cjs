@@ -146,16 +146,39 @@ async function closeReadout(page, id) {
           const weatherBounds = await page.locator("#energyWeather").evaluate(element => {
             const weatherRect = element.getBoundingClientRect();
             const sectionRect = element.closest("#energyFlowSection").getBoundingClientRect();
+            const topCallouts = [
+              ".energy-flow__callout--inverter",
+              ".energy-flow__callout--solar",
+              ".energy-flow__callout--grid",
+            ].map(selector => sectionRect.top
+              + element.closest("#energyFlowSection").querySelector(selector).offsetTop);
             return {
               inside: weatherRect.left >= sectionRect.left - 1
                 && weatherRect.right <= sectionRect.right + 1
                 && weatherRect.top >= sectionRect.top - 1
                 && weatherRect.bottom <= sectionRect.bottom + 1,
               overflow: element.scrollWidth > element.clientWidth + 1,
+              height: weatherRect.height,
+              paddingLeft: getComputedStyle(element).paddingLeft,
+              paddingRight: getComputedStyle(element).paddingRight,
+              calloutClearance: Math.min(...topCallouts) - weatherRect.bottom,
+              background: getComputedStyle(element).backgroundColor,
             };
           });
           assert.equal(weatherBounds.inside, true, `${width} ${theme} ${language}: weather outside scene`);
           assert.equal(weatherBounds.overflow, false, `${width} ${theme} ${language}: weather overflow`);
+          assert.ok(weatherBounds.calloutClearance >= 12,
+            `${width} ${theme} ${language}: weather too close to power callouts`);
+          if (width <= 390) {
+            assert.equal(weatherBounds.background, "rgba(0, 0, 0, 0)",
+              `${width} ${theme} ${language}: mobile weather should blend into scene`);
+            assert.ok(weatherBounds.height <= 64,
+              `${width} ${theme} ${language}: mobile weather is too tall`);
+            assert.equal(weatherBounds.paddingLeft, "0px",
+              `${width} ${theme} ${language}: mobile weather left padding`);
+            assert.equal(weatherBounds.paddingRight, "0px",
+              `${width} ${theme} ${language}: mobile weather right padding`);
+          }
           if ((width === 320 || width === 1440) && theme === "light" && language === "en") {
             await page.locator("#energyFlowSection").screenshot({
               path:path.join(artifacts,`weather-${width}-${theme}-${language}.png`),
