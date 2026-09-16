@@ -3836,6 +3836,7 @@ select {
 
   .energy-flow__callout--inverter {
     --leader-length: 138px;
+    top: 286px;
     left: 2%;
     width: 104px;
   }
@@ -3852,29 +3853,32 @@ select {
 
   .energy-flow__callout--grid {
     --leader-length: 144px;
+    top: 265px;
     right: 0;
     width: 80px;
   }
 
   .energy-flow__callout--bottom {
-    top: auto;
-    bottom: 24px;
+    bottom: auto;
   }
 
   .energy-flow__callout--load {
     --leader-length: 110px;
+    top: 516px;
     left: 4%;
     width: 26%;
   }
 
   .energy-flow__callout--backup {
     --leader-length: 98px;
+    top: 538px;
     left: 36%;
     width: 26%;
   }
 
   .energy-flow__callout--battery {
     --leader-length: 110px;
+    top: 522px;
     right: 3%;
     left: auto;
     width: 31%;

@@ -450,8 +450,10 @@ function startEnergyFlowScene() {
         if (!box) return null;
         const line = document.createElementNS(SVGNS, "line");
         line.setAttribute("class", "energy-flow__leader-line");
+        line.dataset.target = target.cls.replace("energy-flow__callout--", "");
         const dot = document.createElementNS(SVGNS, "circle");
         dot.setAttribute("class", "energy-flow__leader-dot");
+        dot.dataset.target = line.dataset.target;
         dot.setAttribute("r", "3");
         if (target.color) {
           line.style.stroke = target.color;

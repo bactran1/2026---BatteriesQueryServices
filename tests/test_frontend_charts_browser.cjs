@@ -124,10 +124,10 @@ async function closeReadout(page, id) {
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const browser = await chromium.launch({headless:true, ...(process.env.BROWSER_CHANNEL ? {channel:process.env.BROWSER_CHANNEL} : {})});
   try {
-    for (const width of [320, 390, 768, 1440]) {
+    for (const width of [320, 390, 480, 768, 1440]) {
       for (const theme of ["light", "dark"]) {
         for (const language of ["en", "vi"]) {
-          const mobile = width <= 390;
+          const mobile = width <= 480;
           const context = await browser.newContext({viewport:{width,height:900}, hasTouch:mobile,
             isMobile:mobile, deviceScaleFactor:2, timezoneId:"UTC", reducedMotion:"reduce"});
           const page = await context.newPage();
@@ -141,6 +141,57 @@ async function closeReadout(page, id) {
           await page.waitForFunction(() => document.querySelector('#historyChart').dataset.socScale === '0-100');
           await page.waitForFunction(() => document.querySelector('#savingsEstimate').textContent !== '--');
           await page.waitForFunction(() => document.querySelector('#energyWeatherTemperature').textContent !== '--');
+          if (width <= 480) {
+            const energyFlowLayout = await page.locator("#energyFlowLeaders").evaluate(svg => {
+              const sectionRect = svg.closest("#energyFlowSection").getBoundingClientRect();
+              const callouts = [...svg.closest("#energyFlowSection").querySelectorAll(".energy-flow__callout")]
+                .map(element => {
+                  const rect = element.getBoundingClientRect();
+                  return {
+                    name:[...element.classList].find(name => name.startsWith("energy-flow__callout--")
+                      && name !== "energy-flow__callout--bottom").replace("energy-flow__callout--", ""),
+                    left:rect.left - sectionRect.left,
+                    right:rect.right - sectionRect.left,
+                    top:rect.top - sectionRect.top,
+                    bottom:rect.bottom - sectionRect.top,
+                  };
+                });
+              const leaders = [...svg.querySelectorAll("line")].map(line => {
+                const x1 = Number(line.getAttribute("x1"));
+                const y1 = Number(line.getAttribute("y1"));
+                const x2 = Number(line.getAttribute("x2"));
+                const y2 = Number(line.getAttribute("y2"));
+                return {
+                  name:line.dataset.target,
+                  length:Math.hypot(x2 - x1, y2 - y1),
+                };
+              });
+              return {width:sectionRect.width,height:sectionRect.height,callouts,leaders};
+            });
+            const lengths = energyFlowLayout.leaders.map(leader => leader.length);
+            assert.equal(lengths.length, 6, `${width} ${theme} ${language}: missing energy leader`);
+            assert.ok(Math.max(...lengths) <= 175,
+              `${width} ${theme} ${language}: energy leader is too long (${energyFlowLayout.leaders
+                .map(leader => `${leader.name}:${Math.round(leader.length)}`).join(", ")})`);
+            assert.ok(Math.max(...lengths) / Math.min(...lengths) <= 2.6,
+              `${width} ${theme} ${language}: energy leaders are visually unbalanced (${energyFlowLayout.leaders
+                .map(leader => `${leader.name}:${Math.round(leader.length)}`).join(", ")})`);
+            for (const callout of energyFlowLayout.callouts) {
+              assert.ok(callout.left >= -1 && callout.right <= energyFlowLayout.width + 1
+                  && callout.top >= -1 && callout.bottom <= energyFlowLayout.height + 1,
+                `${width} ${theme} ${language}: ${callout.name} callout is outside the scene`);
+            }
+            for (let index = 0; index < energyFlowLayout.callouts.length; index += 1) {
+              for (let other = index + 1; other < energyFlowLayout.callouts.length; other += 1) {
+                const a = energyFlowLayout.callouts[index];
+                const b = energyFlowLayout.callouts[other];
+                const overlap = a.left < b.right - 1 && a.right > b.left + 1
+                  && a.top < b.bottom - 1 && a.bottom > b.top + 1;
+                assert.equal(overlap, false,
+                  `${width} ${theme} ${language}: ${a.name} and ${b.name} callouts overlap`);
+              }
+            }
+          }
           assert.equal(await page.locator("#energyWeather").getAttribute("data-kind"), "rain");
           assert.notEqual(await page.locator("#energyWeatherDetails").innerText(), "");
           const weatherBounds = await page.locator("#energyWeather").evaluate(element => {
@@ -179,7 +230,7 @@ async function closeReadout(page, id) {
             assert.equal(weatherBounds.paddingRight, "0px",
               `${width} ${theme} ${language}: mobile weather right padding`);
           }
-          if ((width === 320 || width === 1440) && theme === "light" && language === "en") {
+          if ([320, 390, 480, 1440].includes(width) && theme === "light" && language === "en") {
             await page.locator("#energyFlowSection").screenshot({
               path:path.join(artifacts,`weather-${width}-${theme}-${language}.png`),
             });
