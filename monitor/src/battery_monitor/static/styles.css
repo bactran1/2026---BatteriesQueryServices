@@ -580,7 +580,7 @@ button {
   left: 24px;
   width: calc(100% - 48px);
   min-height: 100px;
-  padding-right: 320px;
+  padding-right: 358px;
   padding-bottom: 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   pointer-events: none;
@@ -1406,8 +1406,8 @@ button {
   right: 0;
   display: flex;
   align-items: center;
-  width: 292px;
-  min-height: 76px;
+  width: 330px;
+  min-height: 88px;
   padding: 9px 11px;
   gap: 11px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -1618,6 +1618,17 @@ button {
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.energy-weather__copy .energy-weather__solar {
+  margin-top: 3px;
+  color: rgba(255, 212, 94, 0.82);
+  font-variant-numeric: tabular-nums;
+  font-weight: 680;
+}
+
+.energy-weather__solar[hidden] {
+  display: none;
 }
 
 .energy-weather__source {
@@ -3740,7 +3751,7 @@ select {
   .energy-flow__callout--inverter,
   .energy-flow__callout--solar,
   .energy-flow__callout--grid {
-    top: 244px;
+    top: 260px;
   }
 }
 
@@ -3847,7 +3858,7 @@ select {
   .energy-flow__callout--inverter,
   .energy-flow__callout--solar,
   .energy-flow__callout--grid {
-    top: 272px;
+    top: 276px;
   }
 
   .energy-flow__callout--inverter {

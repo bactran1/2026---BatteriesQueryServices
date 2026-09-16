@@ -573,7 +573,7 @@ function startEnergyFlowScene() {
     camera.right = viewWidth / 2;
     camera.top = viewHeight / 2;
     camera.bottom = -viewHeight / 2;
-    const rootY = width <= 480 ? -0.58 : width <= 800 ? -1.05 : -0.38;
+    const rootY = width <= 480 ? -0.58 : width <= 800 ? -1.22 : -0.38;
     root.position.set(width <= 480 ? 0.2 : 0.55, rootY, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width <= 600 ? 1.5 : 2));
     renderer.setSize(width, height, false);
