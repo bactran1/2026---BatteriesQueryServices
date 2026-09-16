@@ -198,6 +198,11 @@ async function closeReadout(page, id) {
             - energyFlowLayout.dividerBottom;
           assert.ok(dividerClearance >= 12,
             `${width} ${theme} ${language}: title divider crosses the top callouts (${Math.round(dividerClearance)}px)`);
+          const solarCallout = topCallouts.find(callout => callout.name === "solar");
+          if (width > 480) {
+            assert.ok(solarCallout.left >= energyFlowLayout.width * 0.4,
+              `${width} ${theme} ${language}: solar callout is too far from the panel area`);
+          }
           if (width <= 480) {
             const lengths = energyFlowLayout.leaders.map(leader => leader.length);
             assert.equal(lengths.length, 6, `${width} ${theme} ${language}: missing energy leader`);
