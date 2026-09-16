@@ -132,11 +132,11 @@ def load_settings() -> Settings:
         ),
         weather_enabled=_environment_bool("BQM_WEATHER_ENABLED", True),
         weather_latitude=min(
-            90.0, max(-90.0, float(os.getenv("BQM_WEATHER_LATITUDE", "47.6062")))
+            90.0, max(-90.0, float(os.getenv("BQM_WEATHER_LATITUDE", "47.3809")))
         ),
         weather_longitude=min(
             180.0,
-            max(-180.0, float(os.getenv("BQM_WEATHER_LONGITUDE", "-122.3321"))),
+            max(-180.0, float(os.getenv("BQM_WEATHER_LONGITUDE", "-122.2348"))),
         ),
         weather_location=os.getenv("BQM_WEATHER_LOCATION", "King County, WA"),
         weather_timeout_seconds=max(
