@@ -196,6 +196,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="energyLoadValue"', html)
         self.assertIn('id="energyWeather"', html)
         self.assertIn('id="energyWeatherTemperature"', html)
+        self.assertIn('id="energyWeatherSolar"', html)
         self.assertIn('href="https://open-meteo.com/"', html)
         self.assertIn('getJson("/api/weather", "weather")', javascript)
         self.assertIn("function renderWeather", javascript)

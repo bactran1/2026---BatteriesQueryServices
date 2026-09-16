@@ -128,6 +128,17 @@ const translations = {
     "weather.feelsLike": "Feels {temperature}",
     "weather.humidity": "{value}% humidity",
     "weather.wind": "Wind {value}",
+    "weather.irradiance": "Irradiance {value} W/m²",
+    "weather.sunPosition": "Sun {elevation}° · {azimuth}° {direction}",
+    "weather.dni": "DNI {value} W/m²",
+    "weather.directionN": "N",
+    "weather.directionNE": "NE",
+    "weather.directionE": "E",
+    "weather.directionSE": "SE",
+    "weather.directionS": "S",
+    "weather.directionSW": "SW",
+    "weather.directionW": "W",
+    "weather.directionNW": "NW",
     "weather.stale": "Last known conditions",
     "weather.source": "Weather by Open-Meteo",
     "weather.sourceTitle": "Conditions for {location} · {source}",
@@ -504,6 +515,17 @@ const translations = {
     "weather.feelsLike": "Cảm giác {temperature}",
     "weather.humidity": "Độ ẩm {value}%",
     "weather.wind": "Gió {value}",
+    "weather.irradiance": "Bức xạ {value} W/m²",
+    "weather.sunPosition": "Mặt trời {elevation}° · {azimuth}° {direction}",
+    "weather.dni": "DNI {value} W/m²",
+    "weather.directionN": "B",
+    "weather.directionNE": "ĐB",
+    "weather.directionE": "Đ",
+    "weather.directionSE": "ĐN",
+    "weather.directionS": "N",
+    "weather.directionSW": "TN",
+    "weather.directionW": "T",
+    "weather.directionNW": "TB",
     "weather.stale": "Điều kiện gần nhất",
     "weather.source": "Thời tiết từ Open-Meteo",
     "weather.sourceTitle": "Điều kiện tại {location} · {source}",
@@ -2406,6 +2428,10 @@ function renderWeather() {
   const apparent = finiteNumber(weather.apparent_temperature_c);
   const humidity = finiteNumber(weather.relative_humidity_percent);
   const wind = finiteNumber(weather.wind_speed_kmh);
+  const irradiance = finiteNumber(weather.solar_irradiance_w_m2);
+  const directIrradiance = finiteNumber(weather.direct_normal_irradiance_w_m2);
+  const solarElevation = finiteNumber(weather.solar_elevation_degrees);
+  const solarAzimuth = finiteNumber(weather.solar_azimuth_degrees);
   const available = ["ok", "stale"].includes(weather.status) && temperature !== null;
   const condition = weatherCondition(weather.weather_code, weather.is_day !== false);
 
@@ -2437,6 +2463,37 @@ function renderWeather() {
   }
   if (weather.status === "stale") details.push(t("weather.stale"));
   $("energyWeatherDetails").textContent = details.join(" · ") || t("weather.detailsUnavailable");
+
+  const solarDetails = [];
+  if (available && irradiance !== null) {
+    solarDetails.push(t("weather.irradiance", {
+      value: formatNumber(Math.max(0, Math.round(irradiance))),
+    }));
+  }
+  if (available && solarElevation !== null && solarAzimuth !== null) {
+    solarDetails.push(t("weather.sunPosition", {
+      elevation: formatNumber(Math.round(solarElevation)),
+      azimuth: formatNumber(Math.round(((solarAzimuth % 360) + 360) % 360)),
+      direction: solarCompassDirection(solarAzimuth),
+    }));
+  }
+  const solar = $("energyWeatherSolar");
+  solar.hidden = !solarDetails.length;
+  solar.textContent = solarDetails.join(" · ");
+  solar.title = directIrradiance === null
+    ? solar.textContent
+    : `${solar.textContent} · ${t("weather.dni", {
+        value: formatNumber(Math.max(0, Math.round(directIrradiance))),
+      })}`;
+}
+
+function solarCompassDirection(azimuthValue) {
+  const azimuth = finiteNumber(azimuthValue);
+  if (azimuth === null) return "";
+  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const normalized = ((azimuth % 360) + 360) % 360;
+  const direction = directions[Math.round(normalized / 45) % directions.length];
+  return t(`weather.direction${direction}`);
 }
 
 function weatherCondition(codeValue, isDay) {

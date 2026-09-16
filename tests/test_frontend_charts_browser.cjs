@@ -31,6 +31,8 @@ const weather = {
   observed_at:new Date().toISOString(),temperature_c:18.2,apparent_temperature_c:17.4,
   relative_humidity_percent:71,precipitation_mm:0.2,weather_code:61,
   cloud_cover_percent:83,wind_speed_kmh:8.6,is_day:true,
+  solar_irradiance_w_m2:482.4,direct_normal_irradiance_w_m2:621.7,
+  solar_elevation_degrees:42.4,solar_azimuth_degrees:188.2,
 };
 const savings = {
   currency:"USD", default_period:"month", selected_date:day,
@@ -212,6 +214,7 @@ async function closeReadout(page, id) {
           }
           assert.equal(await page.locator("#energyWeather").getAttribute("data-kind"), "rain");
           assert.notEqual(await page.locator("#energyWeatherDetails").innerText(), "");
+          assert.match(await page.locator("#energyWeatherSolar").innerText(), /W\/m²/);
           const weatherBounds = await page.locator("#energyWeather").evaluate(element => {
             const weatherRect = element.getBoundingClientRect();
             const sectionRect = element.closest("#energyFlowSection").getBoundingClientRect();
@@ -241,8 +244,8 @@ async function closeReadout(page, id) {
           if (width <= 390) {
             assert.equal(weatherBounds.background, "rgba(0, 0, 0, 0)",
               `${width} ${theme} ${language}: mobile weather should blend into scene`);
-            assert.ok(weatherBounds.height <= 64,
-              `${width} ${theme} ${language}: mobile weather is too tall`);
+            assert.ok(weatherBounds.height <= 90,
+              `${width} ${theme} ${language}: mobile weather is too tall (${Math.round(weatherBounds.height)}px)`);
             assert.equal(weatherBounds.paddingLeft, "0px",
               `${width} ${theme} ${language}: mobile weather left padding`);
             assert.equal(weatherBounds.paddingRight, "0px",
