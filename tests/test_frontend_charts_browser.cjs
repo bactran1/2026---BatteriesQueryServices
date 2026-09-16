@@ -26,6 +26,12 @@ const live = {
   collector_status:"online", collector_error:null, monitor:{last_success_at:new Date().toISOString()},
   snapshot:{batteries:[]}, summary:{}, rack:{expected_battery_count:3,batteries:[]}, storage:{},
 };
+const weather = {
+  status:"ok",source:"Open-Meteo",location:"King County, WA",
+  observed_at:new Date().toISOString(),temperature_c:18.2,apparent_temperature_c:17.4,
+  relative_humidity_percent:71,precipitation_mm:0.2,weather_code:61,
+  cloud_cover_percent:83,wind_speed_kmh:8.6,is_day:true,
+};
 const savings = {
   currency:"USD", default_period:"month", selected_date:day,
   periods:{
@@ -66,6 +72,7 @@ const server = http.createServer((request, response) => {
   let body;
   let type = "application/json";
   if (url.pathname === "/api/live") body = JSON.stringify(live);
+  else if (url.pathname === "/api/weather") body = JSON.stringify(weather);
   else if (url.pathname === "/api/power-history") body = JSON.stringify({points:power,
     selected_date:day,window_start_unix:start,window_end_unix:start+86400,bucket_seconds:1800});
   else if (url.pathname === "/api/energy") body = JSON.stringify({points:energy,
@@ -133,6 +140,27 @@ async function closeReadout(page, id) {
           await page.goto(`http://127.0.0.1:${server.address().port}/`);
           await page.waitForFunction(() => document.querySelector('#historyChart').dataset.socScale === '0-100');
           await page.waitForFunction(() => document.querySelector('#savingsEstimate').textContent !== '--');
+          await page.waitForFunction(() => document.querySelector('#energyWeatherTemperature').textContent !== '--');
+          assert.equal(await page.locator("#energyWeather").getAttribute("data-kind"), "rain");
+          assert.notEqual(await page.locator("#energyWeatherDetails").innerText(), "");
+          const weatherBounds = await page.locator("#energyWeather").evaluate(element => {
+            const weatherRect = element.getBoundingClientRect();
+            const sectionRect = element.closest("#energyFlowSection").getBoundingClientRect();
+            return {
+              inside: weatherRect.left >= sectionRect.left - 1
+                && weatherRect.right <= sectionRect.right + 1
+                && weatherRect.top >= sectionRect.top - 1
+                && weatherRect.bottom <= sectionRect.bottom + 1,
+              overflow: element.scrollWidth > element.clientWidth + 1,
+            };
+          });
+          assert.equal(weatherBounds.inside, true, `${width} ${theme} ${language}: weather outside scene`);
+          assert.equal(weatherBounds.overflow, false, `${width} ${theme} ${language}: weather overflow`);
+          if ((width === 320 || width === 1440) && theme === "light" && language === "en") {
+            await page.locator("#energyFlowSection").screenshot({
+              path:path.join(artifacts,`weather-${width}-${theme}-${language}.png`),
+            });
+          }
           const chart = page.locator("#historyChart");
           await chart.scrollIntoViewIfNeeded();
           await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));

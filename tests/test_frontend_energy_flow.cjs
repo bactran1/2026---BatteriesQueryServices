@@ -47,9 +47,31 @@ function dashboard(homeLoad, backupLoad = 0) {
   const render = () => vm.runInContext(
     'renderEnergyFlow({mode: "charging"}); renderInverterTelemetry();', context,
   );
+  const renderWeather = () => vm.runInContext("renderWeather();", context);
   render();
-  return { element, events, state, render };
+  return { element, events, state, render, renderWeather };
 }
+
+test("Current weather is localized without changing its source measurements", () => {
+  const ui = dashboard(1500, 450);
+  ui.state.weather = {
+    status: "ok", temperature_c: 18, apparent_temperature_c: 17,
+    relative_humidity_percent: 71, wind_speed_kmh: 8.6,
+    weather_code: 61, is_day: true, source: "Open-Meteo", location: "Home",
+  };
+  ui.renderWeather();
+  assert.equal(ui.element("energyWeatherTemperature").textContent, "64°F");
+  assert.equal(ui.element("energyWeatherCondition").textContent, "Rain");
+  assert.match(ui.element("energyWeatherDetails").textContent, /Feels 63°F/);
+  assert.match(ui.element("energyWeatherDetails").textContent, /Wind 5 mph/);
+  assert.equal(ui.element("energyWeather").dataset.kind, "rain");
+
+  ui.state.language = "vi";
+  ui.renderWeather();
+  assert.equal(ui.element("energyWeatherTemperature").textContent, "18°C");
+  assert.equal(ui.element("energyWeatherCondition").textContent, "Có mưa");
+  assert.match(ui.element("energyWeatherDetails").textContent, /Gió 9 km\/h/);
+});
 
 test("Home load label, description, and animation use the CT-side load", () => {
   const ui = dashboard(1500, 0);

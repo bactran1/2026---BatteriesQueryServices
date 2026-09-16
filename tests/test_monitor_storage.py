@@ -15,8 +15,10 @@ class RetentionStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")
             store.initialize()
-            now = datetime.now(timezone.utc).replace(minute=5, second=0, microsecond=0)
-            earlier = now.replace(hour=max(0, now.hour - 1))
+            now = datetime.now(timezone.utc).replace(
+                hour=2, minute=5, second=0, microsecond=0
+            )
+            earlier = now.replace(hour=1)
             for captured_at, solar, grid in [(earlier, 1.0, 0.5), (now, 5.0, 2.0)]:
                 store.insert_snapshot(
                     _energy_snapshot(

@@ -39,6 +39,8 @@ usage() {
 "  BQM_BATTERY_NAMES     Comma-separated battery names" \
 "  BQM_BATTERY_IPS       Comma-separated battery IP addresses" \
 "  BQM_BATTERY_MODELS    Comma-separated battery models" \
+"  BQM_WEATHER_LATITUDE  Household latitude for current conditions" \
+"  BQM_WEATHER_LONGITUDE Household longitude for current conditions" \
 "  MONITOR_IMAGE_NAME    Image name, default battery-monitor" \
 "  MONITOR_IMAGE_TAG     Image tag; default is the current Git commit SHA" \
 "" \

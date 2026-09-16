@@ -19,6 +19,7 @@ const state = {
   savingsPeriod: "month",
   savingsDate: localCalendarDateValue(new Date()),
   savings: null,
+  weather: null,
   storage: {},
   rack: {},
   collectorState: "offline",
@@ -28,9 +29,10 @@ const state = {
   lastHistoryRefreshAt: 0,
   lastEnergyRefreshAt: 0,
   lastSavingsRefreshAt: 0,
+  lastWeatherRefreshAt: 0,
   lastEventsRefreshAt: 0,
   refreshInProgress: false,
-  resourceErrors: { live: null, history: null, energy: null, savings: null, events: null },
+  resourceErrors: { live: null, history: null, energy: null, savings: null, weather: null, events: null },
   theme: "light",
   chartGeometry: null,
   chartHover: null,
@@ -110,6 +112,25 @@ const translations = {
     "energy.waiting": "Waiting for live energy telemetry",
     "energy.waitingShort": "Waiting",
     "energy.sceneAria": "Three-dimensional home with solar, CT-side home load, grid, hybrid inverter, three rack batteries, and separate backup load",
+    "weather.clearDay": "Clear sky",
+    "weather.clearNight": "Clear night",
+    "weather.mainlyClear": "Mostly clear",
+    "weather.partlyCloudy": "Partly cloudy",
+    "weather.cloudy": "Cloudy",
+    "weather.fog": "Foggy",
+    "weather.drizzle": "Light drizzle",
+    "weather.rain": "Rain",
+    "weather.snow": "Snow",
+    "weather.storm": "Thunderstorms",
+    "weather.unknown": "Current weather",
+    "weather.unavailable": "Weather unavailable",
+    "weather.detailsUnavailable": "Current conditions unavailable",
+    "weather.feelsLike": "Feels {temperature}",
+    "weather.humidity": "{value}% humidity",
+    "weather.wind": "Wind {value}",
+    "weather.stale": "Last known conditions",
+    "weather.source": "Weather by Open-Meteo",
+    "weather.sourceTitle": "Conditions for {location} · {source}",
     "energy.grid": "Grid",
     "energy.inverter": "Inverter",
     "energy.solar": "Solar",
@@ -467,6 +488,25 @@ const translations = {
     "energy.waiting": "Đang chờ dữ liệu năng lượng trực tiếp",
     "energy.waitingShort": "Đang chờ",
     "energy.sceneAria": "Nhà ba chiều với điện mặt trời, phụ tải nhà phía CT, lưới điện, biến tần hybrid, ba bộ pin và phụ tải dự phòng riêng",
+    "weather.clearDay": "Trời quang",
+    "weather.clearNight": "Đêm quang",
+    "weather.mainlyClear": "Ít mây",
+    "weather.partlyCloudy": "Mây rải rác",
+    "weather.cloudy": "Nhiều mây",
+    "weather.fog": "Có sương mù",
+    "weather.drizzle": "Mưa phùn nhẹ",
+    "weather.rain": "Có mưa",
+    "weather.snow": "Có tuyết",
+    "weather.storm": "Có giông",
+    "weather.unknown": "Thời tiết hiện tại",
+    "weather.unavailable": "Không có dữ liệu thời tiết",
+    "weather.detailsUnavailable": "Chưa có điều kiện thời tiết hiện tại",
+    "weather.feelsLike": "Cảm giác {temperature}",
+    "weather.humidity": "Độ ẩm {value}%",
+    "weather.wind": "Gió {value}",
+    "weather.stale": "Điều kiện gần nhất",
+    "weather.source": "Thời tiết từ Open-Meteo",
+    "weather.sourceTitle": "Điều kiện tại {location} · {source}",
     "energy.grid": "Điện lưới",
     "energy.inverter": "Biến tần",
     "energy.solar": "Điện mặt trời",
@@ -783,6 +823,7 @@ const THEME_STORAGE_KEY = "battery-monitor-theme";
 const LANGUAGE_STORAGE_KEY = "battery-monitor-language";
 const LIVE_REFRESH_MS = 5000;
 const SECONDARY_REFRESH_MS = 30000;
+const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
 const UI_OFFLINE_AFTER_MS = 120000;
 const requestControllers = new Map();
@@ -842,6 +883,9 @@ async function refreshCycle(forceSecondary = false) {
     }
     if (forceSecondary || now - state.lastSavingsRefreshAt >= SECONDARY_REFRESH_MS) {
       jobs.push(["savings", refreshSavings()]);
+    }
+    if (forceSecondary || now - state.lastWeatherRefreshAt >= WEATHER_REFRESH_MS) {
+      jobs.push(["weather", refreshWeather()]);
     }
     if (forceSecondary || now - state.lastEventsRefreshAt >= SECONDARY_REFRESH_MS) {
       jobs.push(["events", refreshEvents()]);
@@ -1025,6 +1069,14 @@ async function refreshSavings() {
   renderSavings();
 }
 
+async function refreshWeather() {
+  const payload = await getJson("/api/weather", "weather");
+  state.weather = payload;
+  state.lastWeatherRefreshAt = Date.now();
+  state.resourceErrors.weather = null;
+  renderWeather();
+}
+
 async function refreshEvents() {
   const payload = await getJson("/api/events?range=7d&limit=80", "events");
   state.events = payload.events || [];
@@ -1125,6 +1177,14 @@ function handleResourceFailure(resource, error) {
   if (resource === "savings") {
     $("energySavingsSection").dataset.refreshError = message;
     renderSavings();
+    return;
+  }
+  if (resource === "weather") {
+    state.lastWeatherRefreshAt = Date.now();
+    state.weather = state.weather
+      ? { ...state.weather, status: "stale" }
+      : { status: "unavailable" };
+    renderWeather();
     return;
   }
   $("eventList").dataset.refreshError = message;
@@ -2338,6 +2398,82 @@ function renderPrimaryCurrencyRange(element, low, high) {
   }));
 }
 
+function renderWeather() {
+  const container = $("energyWeather");
+  if (!container) return;
+  const weather = state.weather || {};
+  const temperature = finiteNumber(weather.temperature_c);
+  const apparent = finiteNumber(weather.apparent_temperature_c);
+  const humidity = finiteNumber(weather.relative_humidity_percent);
+  const wind = finiteNumber(weather.wind_speed_kmh);
+  const available = ["ok", "stale"].includes(weather.status) && temperature !== null;
+  const condition = weatherCondition(weather.weather_code, weather.is_day !== false);
+
+  container.dataset.kind = available ? condition.kind : "unavailable";
+  container.dataset.day = String(weather.is_day !== false);
+  container.dataset.status = weather.status || "unavailable";
+  container.title = available
+    ? t("weather.sourceTitle", {
+        location: weather.location || t("weather.unknown"),
+        source: weather.source || "Open-Meteo",
+      })
+    : t("weather.unavailable");
+  $("energyWeatherTemperature").textContent = available
+    ? formatWeatherTemperature(temperature)
+    : "--";
+  $("energyWeatherCondition").textContent = available
+    ? t(condition.labelKey)
+    : t("weather.unavailable");
+
+  const details = [];
+  if (available && apparent !== null) {
+    details.push(t("weather.feelsLike", { temperature: formatWeatherTemperature(apparent) }));
+  }
+  if (available && humidity !== null) {
+    details.push(t("weather.humidity", { value: formatNumber(Math.round(humidity)) }));
+  }
+  if (available && wind !== null) {
+    details.push(t("weather.wind", { value: formatWeatherWind(wind) }));
+  }
+  if (weather.status === "stale") details.push(t("weather.stale"));
+  $("energyWeatherDetails").textContent = details.join(" · ") || t("weather.detailsUnavailable");
+}
+
+function weatherCondition(codeValue, isDay) {
+  const code = Number(codeValue);
+  if (!Number.isFinite(code)) return { kind: "unknown", labelKey: "weather.unknown" };
+  if (code === 0) {
+    return { kind: "clear", labelKey: isDay ? "weather.clearDay" : "weather.clearNight" };
+  }
+  if (code === 1) return { kind: "partly-cloudy", labelKey: "weather.mainlyClear" };
+  if (code === 2) return { kind: "partly-cloudy", labelKey: "weather.partlyCloudy" };
+  if (code === 3) return { kind: "cloudy", labelKey: "weather.cloudy" };
+  if (code === 45 || code === 48) return { kind: "fog", labelKey: "weather.fog" };
+  if (code >= 51 && code <= 57) return { kind: "drizzle", labelKey: "weather.drizzle" };
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) {
+    return { kind: "rain", labelKey: "weather.rain" };
+  }
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) {
+    return { kind: "snow", labelKey: "weather.snow" };
+  }
+  if (code >= 95 && code <= 99) return { kind: "storm", labelKey: "weather.storm" };
+  return { kind: "unknown", labelKey: "weather.unknown" };
+}
+
+function formatWeatherTemperature(celsius) {
+  if (state.language === "en") {
+    return `${formatNumber(Math.round(celsius * 9 / 5 + 32))}°F`;
+  }
+  return `${formatNumber(Math.round(celsius))}°C`;
+}
+
+function formatWeatherWind(kilometersPerHour) {
+  if (state.language === "en") {
+    return `${formatNumber(Math.round(kilometersPerHour * 0.621371))} mph`;
+  }
+  return `${formatNumber(Math.round(kilometersPerHour))} km/h`;
+}
+
 function formatRateRange(low, high) {
   const lower = finiteNumber(low);
   const upper = finiteNumber(high);
@@ -3476,6 +3612,7 @@ function rerenderLocalizedUi() {
   hideChartTooltip(false);
   renderEnergyHistory();
   renderSavings();
+  renderWeather();
 
   if (state.livePayload) {
     renderStatus(state.livePayload);
