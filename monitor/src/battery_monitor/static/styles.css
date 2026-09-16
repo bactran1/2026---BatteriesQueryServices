@@ -764,7 +764,7 @@ button {
   --callout-color: #f2ef50;
   --leader-length: 148px;
   top: 210px;
-  left: max(210px, 18%);
+  left: 50%;
 }
 
 .energy-flow__callout--grid {
@@ -3572,7 +3572,7 @@ select {
   }
 
   .energy-flow__callout--solar {
-    left: 41%;
+    left: 43%;
   }
 
   .energy-flow__callout--grid {
