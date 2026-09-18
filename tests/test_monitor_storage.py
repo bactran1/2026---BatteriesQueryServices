@@ -6,6 +6,7 @@ import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from battery_monitor.storage import RetentionStore
 
@@ -255,16 +256,16 @@ class RetentionStoreTests(unittest.TestCase):
                 store.insert_snapshot(snapshot)
 
             hourly = store.energy_history("hour")
-            self.assertEqual(hourly["window_days"], 7)
-            # The leading bucket has no earlier sample to difference against, and
-            # the counters reset at the inverter's local midnight rather than at
-            # 00:00 UTC, so it is skipped instead of being credited with whatever
-            # total the counter happened to be showing.
-            self.assertEqual(len(hourly["points"]), 2)
-            self.assertEqual(hourly["points"][0]["consumption_kwh"], 0.8)
-            self.assertEqual(hourly["points"][0]["solar_generation_kwh"], 0.5)
-            self.assertEqual(hourly["points"][0]["grid_import_kwh"], 0.4)
-            self.assertEqual(hourly["points"][1]["consumption_kwh"], 0.8)
+            self.assertEqual(hourly["window_seconds"], 60 * 60)
+            self.assertEqual(hourly["bucket_seconds"], 5 * 60)
+            self.assertTrue(
+                all(
+                    hourly["window_start_unix"]
+                    <= point["unix"]
+                    < hourly["window_end_unix"]
+                    for point in hourly["points"]
+                )
+            )
 
             selected_date = store.energy_history("date", day.date().isoformat())
             self.assertEqual(selected_date["view"], "date")
@@ -540,6 +541,44 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(points[0]["battery_power_w"], 150)
             store.close()
 
+    def test_hour_view_is_the_rolling_last_hour_in_five_minute_buckets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            fixed_now = (int(time.time()) // 300) * 300
+            window_start = fixed_now - 60 * 60
+            samples = [(window_start - 60, 5.0, 3.0, 2.0)]
+            samples.extend(
+                (
+                    window_start + index * 300 + 240,
+                    5.0 + (index + 1) * 0.1,
+                    3.0 + (index + 1) * 0.2,
+                    2.0 + (index + 1) * 0.05,
+                )
+                for index in range(12)
+            )
+            for captured_at, consumption, solar, grid in samples:
+                store.insert_snapshot(
+                    _energy_snapshot(
+                        datetime.fromtimestamp(captured_at, timezone.utc).isoformat(),
+                        consumption_kwh=consumption,
+                        solar_generation_kwh=solar,
+                        grid_import_kwh=grid,
+                    )
+                )
+
+            with patch("battery_monitor.storage.time.time", return_value=fixed_now):
+                result = store.energy_history("hour")
+            store.close()
+
+            self.assertEqual(result["window_start_unix"], window_start)
+            self.assertEqual(result["window_end_unix"], fixed_now)
+            self.assertEqual(result["bucket_seconds"], 300)
+            self.assertEqual(len(result["points"]), 12)
+            self.assertAlmostEqual(result["totals"]["consumption_kwh"], 1.2)
+            self.assertAlmostEqual(result["totals"]["solar_generation_kwh"], 2.4)
+            self.assertAlmostEqual(result["totals"]["grid_import_kwh"], 0.6)
+
     def test_power_history_soc_keeps_zero_missing_and_invalid_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")
@@ -608,7 +647,7 @@ class RetentionStoreTests(unittest.TestCase):
 class HourlyEnergyResetTests(unittest.TestCase):
     """The inverter's *_energy_today_kwh counters reset at its LOCAL midnight.
 
-    The hourly view must not assume that happens at 00:00 UTC, or the midnight
+    The calendar-day view must not assume that happens at 00:00 UTC, or the midnight
     bucket absorbs a whole day of generation and consumption.
     """
 
@@ -635,7 +674,7 @@ class HourlyEnergyResetTests(unittest.TestCase):
         self.addCleanup(store.close)
         return store
 
-    def test_hourly_view_has_no_midnight_spike(self) -> None:
+    def test_calendar_day_view_has_no_midnight_spike(self) -> None:
         store = self._make_store()
 
         now = int(time.time())
@@ -659,8 +698,9 @@ class HourlyEnergyResetTests(unittest.TestCase):
                 )
             )
 
-        points = store.energy_history("hour")["points"]
-        self.assertGreater(len(points), 24)
+        selected_date = datetime.fromtimestamp(start + 24 * 3600, timezone.utc).date()
+        points = store.energy_history("date", selected_date.isoformat(), "UTC")["points"]
+        self.assertGreater(len(points), 20)
 
         by_hour = {
             datetime.fromtimestamp(point["unix"], timezone.utc).hour: point

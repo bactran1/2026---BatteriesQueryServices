@@ -1,0 +1,43 @@
+name: iOS build
+
+on:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build and test
+        run: |
+          set -o pipefail
+          bash scripts/test-simulator.sh 2>&1 | tee build.log
+      - name: Package simulator app
+        run: |
+          APP_PATH="$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)"
+          test -n "$APP_PATH"
+          ditto -c -k --keepParent "$APP_PATH" BatteryMonitor-simulator.app.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BatteryMonitor-simulator-app
+          path: ios/BatteryMonitor-simulator.app.zip
+          if-no-files-found: error

@@ -162,6 +162,23 @@ At the default 60-second interval, three batteries produce roughly 4.7 million l
 
 The Pi collector stores one sequenced replay snapshot every 60 seconds for 24 hours at `./data/collector/collector-buffer.sqlite3`. When the monitor restarts or temporarily loses the Pi, it requests every missing sequence and inserts it idempotently. This repairs short archive gaps without changing the normal 60-second sampling rate or duplicating rows.
 
+## iPhone and iPad app
+
+The native SwiftUI companion app lives in [`ios/`](ios/README.md). It connects
+to the x86 monitor API over the local network and provides adaptive iPhone/iPad
+navigation, animated live power flow, direct battery details, interactive power
+and SOC charts, weather and irradiance, savings, English/Vietnamese localization,
+and a last-known dashboard cache. It does not connect directly to the Raspberry
+Pi collector or RS485 devices.
+
+Generate the Xcode project on a Mac with Xcode 16 or newer:
+
+```bash
+cd ios
+bash generate-project.sh
+open BatteryMonitor.xcodeproj
+```
+
 ## Raspberry Pi 4B deployment
 
 A Raspberry Pi 4B with 8 GB RAM is more than enough for the collector. Use Raspberry Pi OS Lite 64-bit if possible, install Docker Engine with the Compose plugin, and plug the battery USB-to-RS485 adapter into the Pi. The monitor server does not run on the Pi.

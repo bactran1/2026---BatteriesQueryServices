@@ -16,6 +16,7 @@ const state = {
   energySummaryPeriod: null,
   energyWindowStart: null,
   energyWindowEnd: null,
+  energyBucketSeconds: 3600,
   savingsPeriod: "month",
   savingsDate: localCalendarDateValue(new Date()),
   savings: null,
@@ -212,13 +213,13 @@ const translations = {
     "inverter.healthAlerts": "{alarms} alarms · {faults} faults",
     "inverter.lastError": "Last error: {message}",
     "energyHistory.eyebrow": "Energy history",
-    "energyHistory.titleHour": "Energy by hour",
+    "energyHistory.titleHour": "Energy in the last hour",
     "energyHistory.titleDate": "Energy for one day",
     "energyHistory.titleDateFor": "Energy on {date}",
     "energyHistory.titleMonth": "Energy this month",
     "energyHistory.titleYear": "Energy this year",
     "energyHistory.description": "Three-year history grouped by calendar period; totals show the latest recorded period",
-    "energyHistory.descriptionHour": "Hourly meter detail for the last 7 days; totals show the latest recorded hour",
+    "energyHistory.descriptionHour": "Five-minute energy totals across the rolling last 60 minutes",
     "energyHistory.descriptionDate": "Hourly totals from 0:00 to 24:00 for the selected calendar day",
     "energyHistory.descriptionMonth": "Daily totals for each day of the current month",
     "energyHistory.descriptionYear": "Monthly totals for each month of the current year",
@@ -236,6 +237,7 @@ const translations = {
     "energyHistory.grid": "Grid draw",
     "energyHistory.kwhAwaiting": "kWh · awaiting data",
     "energyHistory.kwhPeriod": "kWh · {period}",
+    "energyHistory.lastHour": "last 60 minutes",
     "energyHistory.chartAria": "Energy consumption, solar generation and grid draw, in kilowatt-hours by period",
     "energyHistory.pointAria": "Energy for {period}: {values}",
     "energyHistory.awaiting": "Awaiting inverter energy readings",
@@ -599,13 +601,13 @@ const translations = {
     "inverter.healthAlerts": "{alarms} cảnh báo · {faults} lỗi",
     "inverter.lastError": "Lỗi gần nhất: {message}",
     "energyHistory.eyebrow": "Lịch sử năng lượng",
-    "energyHistory.titleHour": "Năng lượng theo giờ",
+    "energyHistory.titleHour": "Năng lượng trong giờ qua",
     "energyHistory.titleDate": "Năng lượng trong một ngày",
     "energyHistory.titleDateFor": "Năng lượng ngày {date}",
     "energyHistory.titleMonth": "Năng lượng tháng này",
     "energyHistory.titleYear": "Năng lượng năm nay",
     "energyHistory.description": "Lịch sử ba năm được nhóm theo kỳ; tổng số hiển thị kỳ mới nhất đã ghi nhận",
-    "energyHistory.descriptionHour": "Chi tiết công tơ theo giờ trong 7 ngày qua; tổng số hiển thị giờ mới nhất đã ghi nhận",
+    "energyHistory.descriptionHour": "Tổng năng lượng mỗi năm phút trong 60 phút gần nhất",
     "energyHistory.descriptionDate": "Tổng năng lượng theo giờ từ 0:00 đến 24:00 trong ngày đã chọn",
     "energyHistory.descriptionMonth": "Tổng năng lượng từng ngày trong tháng này",
     "energyHistory.descriptionYear": "Tổng năng lượng từng tháng trong năm nay",
@@ -623,6 +625,7 @@ const translations = {
     "energyHistory.grid": "Điện lấy từ lưới",
     "energyHistory.kwhAwaiting": "kWh · đang chờ dữ liệu",
     "energyHistory.kwhPeriod": "kWh · {period}",
+    "energyHistory.lastHour": "60 phút gần nhất",
     "energyHistory.chartAria": "Biểu đồ lịch sử năng lượng theo kilowatt-giờ",
     "energyHistory.pointAria": "Năng lượng trong {period}: {values}",
     "energyHistory.awaiting": "Đang chờ số liệu năng lượng từ biến tần",
@@ -1050,6 +1053,7 @@ async function refreshEnergyHistory() {
   state.energyHistory = Array.isArray(payload.points) ? payload.points : [];
   state.energyWindowStart = finiteNumber(payload.window_start_unix);
   state.energyWindowEnd = finiteNumber(payload.window_end_unix);
+  state.energyBucketSeconds = finiteNumber(payload.bucket_seconds) || 3600;
   if (requestedView === "date") {
     state.energyDate = payload.selected_date || requestedDate;
     state.energySummaryPeriod = {
@@ -1067,7 +1071,7 @@ async function refreshEnergyHistory() {
     state.energySummary = payload.totals || sumEnergyHistoryPoints(state.energyHistory);
   } else {
     state.energySummaryPeriod = latestEnergyHistoryPoint(state.energyHistory);
-    state.energySummary = state.energySummaryPeriod || {};
+    state.energySummary = payload.totals || sumEnergyHistoryPoints(state.energyHistory);
   }
   state.lastEnergyRefreshAt = Date.now();
   state.resourceErrors.energy = null;
@@ -2237,7 +2241,9 @@ function renderEnergyHistory() {
     $(id).textContent = formatEnergyTotal(state.energySummary[field]);
   });
 
-  const summaryPeriod = formatEnergySummaryPeriod(state.energySummaryPeriod);
+  const summaryPeriod = state.energyView === "hour"
+    ? t("energyHistory.lastHour")
+    : formatEnergySummaryPeriod(state.energySummaryPeriod);
   const periodText = summaryPeriod
     ? t("energyHistory.kwhPeriod", { period: summaryPeriod })
     : t("energyHistory.kwhAwaiting");
@@ -2556,20 +2562,22 @@ function energyAxisMaximum(values) {
 
 function energyChartSlots(points) {
   const byTime = new Map(points.map((point) => [point.unix, point]));
-  const fixedDay = state.energyView === "date"
+  const fixedWindow = (state.energyView === "date" || state.energyView === "hour")
     && finiteNumber(state.energyWindowStart) !== null
     && finiteNumber(state.energyWindowEnd) !== null;
-  if (!points.length && !fixedDay) return [];
-  const start = fixedDay ? state.energyWindowStart : points[0].unix;
-  const end = fixedDay ? state.energyWindowEnd - 1 : points.at(-1).unix;
+  if (!points.length && !fixedWindow) return [];
+  const start = fixedWindow ? state.energyWindowStart : points[0].unix;
+  const end = fixedWindow ? state.energyWindowEnd - 1 : points.at(-1).unix;
   const slots = [];
   for (let unix = start; unix <= end;) {
     slots.push(byTime.get(unix) || { unix, timestamp: new Date(unix * 1000).toISOString() });
     const next = new Date(unix * 1000);
-    // year -> one bar per month; month -> one bar per day; hour/date -> per hour.
+    // year -> month; month -> day; date -> hour; hour -> API interval.
     if (state.energyView === "year") next.setUTCMonth(next.getUTCMonth() + 1);
     else if (state.energyView === "month") next.setUTCDate(next.getUTCDate() + 1);
-    else next.setTime(next.getTime() + 3600000);
+    else if (state.energyView === "hour") {
+      next.setTime(next.getTime() + state.energyBucketSeconds * 1000);
+    } else next.setTime(next.getTime() + 3600000);
     unix = next.getTime() / 1000;
   }
   return slots;
@@ -2587,9 +2595,13 @@ function drawEnergyHistoryChart() {
     .sort((left, right) => left.unix - right.unix);
   const slots = energyChartSlots(points);
   const followingLatest = Math.abs(scroller.scrollLeft - Number(canvas.dataset.maxScroll || 0)) <= 2;
-  // Keep each three-bar group readable, with scrolling confined to the chart.
+  // Preserve useful horizontal spacing for long calendar timelines.
   const pad = { top: 26, right: 18, bottom: 40, left: 58 };
-  const chartWidth = Math.max(viewport.width, slots.length * 32 + pad.left + pad.right);
+  const minimumSlotWidth = state.energyView === "hour" ? 18 : 32;
+  const chartWidth = Math.max(
+    viewport.width,
+    slots.length * minimumSlotWidth + pad.left + pad.right,
+  );
   canvas.style.width = `${chartWidth}px`;
   const rect = canvas.getBoundingClientRect();
   if (rect.height <= 0) return;
@@ -2610,9 +2622,7 @@ function drawEnergyHistoryChart() {
   const maxValue = energyAxisMaximum(values);
   drawEnergyGrid(ctx, theme, pad, width, height, maxValue);
   const slotWidth = width / Math.max(1, slots.length);
-  const groupWidth = Math.min(slotWidth * 0.78, 84);
-  const gap = 2;
-  const barWidth = (groupWidth - gap * (energySeries.length - 1)) / energySeries.length;
+  const baseline = pad.top + height;
   const plottedPoints = [];
   slots.forEach((point, index) => {
     const groupX = pad.left + slotWidth * (index + 0.5);
@@ -2621,19 +2631,16 @@ function drawEnergyHistoryChart() {
       ctx.fillStyle = theme.chartGrid;
       ctx.fillRect(groupX - slotWidth / 2, pad.top, slotWidth, height);
     }
-    energySeries.forEach((series, seriesIndex) => {
+    energySeries.forEach((series) => {
       const value = finiteNumber(point[series.field]);
       if (value === null || value < 0) return;
-      const x = groupX - groupWidth / 2 + seriesIndex * (barWidth + gap);
-      const barHeight = value / maxValue * height;
-      const y = pad.top + height - barHeight;
-      ctx.fillStyle = series.color;
-      ctx.globalAlpha = selected ? 1 : 0.86;
-      ctx.fillRect(x, y, barWidth, barHeight);
-      ctx.globalAlpha = 1;
+      const y = baseline - value / maxValue * height;
       plottedPoints.push({ point, value, series, color: series.color,
-        x: x + barWidth / 2, y, groupX, barWidth });
+        x: groupX, y, groupX, hitWidth: slotWidth });
     });
+  });
+  energySeries.forEach((series) => {
+    drawEnergyAreaSeries(ctx, slots, plottedPoints, series, baseline, slotWidth);
   });
   drawEnergyTimeAxis(ctx, theme, pad, width, height, slots);
   const axis = $("energyChartAxis");
@@ -2646,7 +2653,7 @@ function drawEnergyHistoryChart() {
     points: plottedPoints,
     plot: { left: pad.left, right: pad.left + width, top: pad.top, bottom: pad.top + height },
   };
-  canvas.dataset.chartType = "grouped-bars";
+  canvas.dataset.chartType = "overlapping-areas";
   const viewKey = `${state.energyView}:${state.energyDate}`;
   if (canvas.dataset.viewKey !== viewKey && points.length) {
     canvas.dataset.viewKey = viewKey;
@@ -2660,6 +2667,58 @@ function drawEnergyHistoryChart() {
     : [];
   if (activePoints.length) renderEnergyChartTooltip(activePoints, rect);
   else hideEnergyChartTooltip(false);
+}
+
+function drawEnergyAreaSeries(ctx, slots, plottedPoints, series, baseline, slotWidth) {
+  const byTime = new Map(
+    plottedPoints
+      .filter((item) => item.series === series)
+      .map((item) => [item.point.unix, item]),
+  );
+  const segments = [];
+  let segment = [];
+  slots.forEach((slot) => {
+    const point = byTime.get(slot.unix);
+    if (point) segment.push(point);
+    else if (segment.length) {
+      segments.push(segment);
+      segment = [];
+    }
+  });
+  if (segment.length) segments.push(segment);
+
+  segments.forEach((points) => {
+    const halfSinglePoint = Math.min(slotWidth * 0.34, 18);
+    const firstX = points.length === 1 ? points[0].x - halfSinglePoint : points[0].x;
+    const lastX = points.length === 1 ? points[0].x + halfSinglePoint : points.at(-1).x;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(firstX, baseline);
+    if (points.length === 1) {
+      ctx.lineTo(points[0].x, points[0].y);
+    } else {
+      points.forEach((point) => ctx.lineTo(point.x, point.y));
+    }
+    ctx.lineTo(lastX, baseline);
+    ctx.closePath();
+    ctx.fillStyle = series.color;
+    ctx.globalAlpha = 0.24;
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      if (index) ctx.lineTo(point.x, point.y);
+      else ctx.moveTo(point.x, point.y);
+    });
+    ctx.strokeStyle = series.color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.stroke();
+    ctx.restore();
+  });
 }
 
 function drawEnergyGrid(ctx, theme, pad, width, height, maxValue) {
@@ -2809,10 +2868,9 @@ function formatEnergyPeriod(point) {
       timeZone: "UTC",
     }).format(date);
   }
-  // hour view
+  // Rolling-hour view.
   return new Intl.DateTimeFormat(currentLocale(), {
-    weekday: "short",
-    hour: "numeric",
+    hour: "numeric", minute: "2-digit",
   }).format(date);
 }
 
@@ -3863,6 +3921,7 @@ function bindControls() {
     state.energySummaryPeriod = null;
     state.energyWindowStart = null;
     state.energyWindowEnd = null;
+    state.energyBucketSeconds = 3600;
     hideEnergyChartTooltip(false);
     renderEnergyHistory();
     refreshEnergyHistory().catch((error) => handleResourceFailure("energy", error));
@@ -3916,6 +3975,7 @@ function bindControls() {
       state.energySummaryPeriod = null;
       state.energyWindowStart = null;
       state.energyWindowEnd = null;
+      state.energyBucketSeconds = 3600;
       hideEnergyChartTooltip(false);
       document.querySelectorAll("#energyViewControls button").forEach((item) => {
         item.classList.remove("is-active");
