@@ -22,6 +22,7 @@ function chart(viewportWidth = 390) {
     setTransform() {}, clearRect() {}, save() {}, restore() {}, drawImage() {},
     beginPath() {}, closePath() {}, moveTo: (...args) => strokes.push(["move", ...args]),
     lineTo: (...args) => strokes.push(["line", ...args]), stroke() {},
+    bezierCurveTo: (...args) => strokes.push(["curve", ...args]),
     rect() {}, clip() {}, arc() {}, fill() { areas.push({ color: this.fillStyle, alpha: this.globalAlpha }); }, setLineDash() {},
     fillRect: (...args) => bars.push(args),
     fillText: (...args) => labels.push(args),
@@ -288,4 +289,103 @@ test("Power date axis ends at 24h for both three and five ticks", () => {
   const fields = ui.run("selectedPowerHistorySeries().map(series => series.field).join(',')");
   assert.ok(fields.includes("home_load_power_w"));
   assert.ok(fields.includes("load_power_w"));
+});
+
+// Sample one cubic Bézier segment so the curve itself, not just its endpoints,
+// can be checked against the data it claims to represent.
+function bezierY(from, curve, at) {
+  const [, c1x, c1y, c2x, c2y, x, y] = curve;
+  const inverse = 1 - at;
+  return {
+    x: inverse ** 3 * from.x + 3 * inverse ** 2 * at * c1x + 3 * inverse * at ** 2 * c2x + at ** 3 * x,
+    y: inverse ** 3 * from.y + 3 * inverse ** 2 * at * c1y + 3 * inverse * at ** 2 * c2y + at ** 3 * y,
+  };
+}
+
+function energyCurveSegments(ui) {
+  const segments = [];
+  let cursor = null;
+  for (const op of ui.strokes) {
+    const [kind] = op;
+    if (kind === "move" || kind === "line") cursor = { x: op[1], y: op[2] };
+    if (kind !== "curve") continue;
+    segments.push({ from: cursor, curve: op });
+    cursor = { x: op[5], y: op[6] };
+  }
+  return segments;
+}
+
+// Hourly readings, as the Date view buckets them.
+function hourlyEnergy(values) {
+  return values.map((kwh, index) => ({
+    unix: index * 3600,
+    consumption_kwh: kwh,
+    solar_generation_kwh: null,
+    grid_import_kwh: null,
+  }));
+}
+
+test("Energy areas are drawn as smooth curves rather than sharp corners", () => {
+  const ui = chart(900);
+  ui.state.energyView = "date";
+  ui.state.energyHistory = hourlyEnergy([0.2, 1.4, 0.6, 2.1, 0.9]);
+  ui.run("drawEnergyHistoryChart()");
+
+  const segments = energyCurveSegments(ui);
+  // One curve per gap, for the area fill and again for the stroke on top.
+  assert.equal(segments.length, (5 - 1) * 2);
+  // A curved segment bends: its control points leave the straight chord.
+  const bent = segments.filter(({ from, curve }) => {
+    const [, c1x, c1y, c2x, c2y, x, y] = curve;
+    const chord = (px) => from.y + ((y - from.y) * (px - from.x)) / (x - from.x);
+    return Math.abs(c1y - chord(c1x)) > 0.5 || Math.abs(c2y - chord(c2x)) > 0.5;
+  });
+  assert.ok(bent.length >= segments.length / 2, "most segments should curve, not run straight");
+});
+
+test("Smoothing rounds the corners without inventing energy between samples", () => {
+  const ui = chart(900);
+  ui.state.energyView = "date";
+  // A spike between two low readings is where a naive spline overshoots.
+  ui.state.energyHistory = hourlyEnergy([0.1, 0.1, 3.4, 0.1, 0.1]);
+  ui.run("drawEnergyHistoryChart()");
+
+  const plotted = ui.state.energyChartGeometry.points
+    .filter((item) => item.series.field === "consumption_kwh")
+    .sort((left, right) => left.x - right.x);
+  const { top, bottom } = ui.state.energyChartGeometry.plot;
+
+  for (const { from, curve } of energyCurveSegments(ui)) {
+    const to = { x: curve[5], y: curve[6] };
+    const low = Math.min(from.y, to.y);
+    const high = Math.max(from.y, to.y);
+    for (let step = 0; step <= 20; step += 1) {
+      const sample = bezierY(from, curve, step / 20);
+      // Monotone interpolation keeps every sampled point inside the pair it joins,
+      // so the fill never dips below the zero baseline or tops the recorded peak.
+      assert.ok(sample.y >= low - 1e-6 && sample.y <= high + 1e-6);
+      assert.ok(sample.y >= top - 1e-6 && sample.y <= bottom + 1e-6);
+      // And it advances left to right, so the area cannot fold back on itself.
+      assert.ok(sample.x >= from.x - 1e-6 && sample.x <= to.x + 1e-6);
+    }
+  }
+
+  // Every recorded reading still sits exactly on the curve.
+  const endpoints = energyCurveSegments(ui).map(({ curve }) => ({ x: curve[5], y: curve[6] }));
+  for (const point of plotted.slice(1)) {
+    assert.ok(endpoints.some((end) => Math.abs(end.x - point.x) < 1e-6 && Math.abs(end.y - point.y) < 1e-6));
+  }
+});
+
+test("A gap-separated lone reading still draws its own small area", () => {
+  const ui = chart(900);
+  ui.state.energyView = "month";
+  ui.state.energyHistory = [
+    {unix: 0, consumption_kwh: 0.5, solar_generation_kwh: null, grid_import_kwh: null},
+    {unix: 2 * 86400, consumption_kwh: 0.7, solar_generation_kwh: null, grid_import_kwh: null},
+  ];
+  ui.run("drawEnergyHistoryChart()");
+  // Two days apart, so no curve joins them and each keeps its own triangle fill.
+  assert.equal(energyCurveSegments(ui).length, 0);
+  assert.equal(ui.areas.filter((area) => area.alpha === 0.24).length, 2);
 });
