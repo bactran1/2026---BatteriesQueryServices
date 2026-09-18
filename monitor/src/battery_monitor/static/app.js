@@ -108,6 +108,11 @@ const translations = {
     "rack.pack": "pack",
     "rack.packs": "packs",
     "rack.reporting": "{count} reporting",
+    "rack.flowEyebrow": "Rack energy flow",
+    "rack.flowHardware": "Eco-worthy 48 V LiFePO4 server rack packs",
+    "rack.flowSummary": "Eco-worthy 48 V LiFePO4 · {packs} · {power} on the bus",
+    "rack.flowUnavailable": "Eco-worthy 48 V LiFePO4 · {packs} · waiting for telemetry",
+    "rack.sceneAria": "Animated Eco-worthy battery rack showing live energy flow",
     "energy.eyebrow": "Live home energy",
     "energy.title": "Home power flow",
     "energy.waiting": "Waiting for live energy telemetry",
@@ -496,6 +501,11 @@ const translations = {
     "rack.pack": "bộ pin",
     "rack.packs": "bộ pin",
     "rack.reporting": "{count} đang báo dữ liệu",
+    "rack.flowEyebrow": "Dòng năng lượng tủ pin",
+    "rack.flowHardware": "Các bộ pin tủ máy chủ Eco-worthy 48 V LiFePO4",
+    "rack.flowSummary": "Eco-worthy 48 V LiFePO4 · {packs} · {power} trên thanh cái",
+    "rack.flowUnavailable": "Eco-worthy 48 V LiFePO4 · {packs} · đang chờ dữ liệu",
+    "rack.sceneAria": "Hoạt ảnh tủ pin Eco-worthy hiển thị dòng năng lượng trực tiếp",
     "energy.eyebrow": "Năng lượng trong nhà",
     "energy.title": "Dòng điện trong nhà",
     "energy.waiting": "Đang chờ dữ liệu năng lượng trực tiếp",
@@ -851,6 +861,8 @@ const SECONDARY_REFRESH_MS = 30000;
 const WEATHER_REFRESH_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
 const UI_OFFLINE_AFTER_MS = 120000;
+// The Rack overview scene builds one Eco-worthy module per pack, up to this many.
+const RACK_SCENE_MAX_PACKS = 8;
 const requestControllers = new Map();
 let schedulerTimer = null;
 let chartResizeFrame = null;
@@ -953,11 +965,20 @@ async function refreshLive() {
   applyEnergyPulseSpeed(payload.ui && payload.ui.energy_pulse_speed);
 }
 
+// The Rack overview scene shares the energy scene's glow and cadence settings, so
+// mirror each value onto its section as well: a scene that loads after the event has
+// already fired still reads the operator's choice from the DOM.
+function mirrorSceneSetting(name, value) {
+  const rack = document.getElementById("rackSummarySection");
+  if (rack) rack.dataset[name] = value;
+}
+
 function applyEnergyGlow(value) {
   const section = document.getElementById("energyFlowSection");
   if (!section) return;
   const strength = Number(value);
   if (!Number.isFinite(strength)) return;
+  mirrorSceneSetting("glowStrength", String(strength));
   if (section.dataset.glowStrength === String(strength)) return;
   section.dataset.glowStrength = String(strength);
   window.dispatchEvent(new CustomEvent("energy-glow-change", { detail: strength }));
@@ -968,6 +989,7 @@ function applyEnergyLineGlow(value) {
   if (!section) return;
   // Default to disabled (glowless tubing) when the payload predates the setting.
   const enabled = value === undefined || value === null ? false : Boolean(value);
+  mirrorSceneSetting("lineGlow", String(enabled));
   if (section.dataset.lineGlow === String(enabled)) return;
   section.dataset.lineGlow = String(enabled);
   window.dispatchEvent(new CustomEvent("energy-line-glow-change", { detail: enabled }));
@@ -988,6 +1010,7 @@ function applyEnergyPulseSpeed(value) {
   if (!section) return;
   const speed = Number(value);
   if (!Number.isFinite(speed)) return;
+  mirrorSceneSetting("pulseSpeed", String(speed));
   if (section.dataset.pulseSpeed === String(speed)) return;
   section.dataset.pulseSpeed = String(speed);
   window.dispatchEvent(new CustomEvent("energy-pulse-speed-change", { detail: speed }));
@@ -1236,7 +1259,9 @@ function renderLiveFailure(message) {
     : t("status.noDashboardResponse");
   $("connectionDetail").textContent = t("status.refreshError", { message });
   renderBatteryPacks();
-  renderEnergyFlow({ mode: "stale", label: t("flow.lastKnownRack") });
+  const staleFlow = { mode: "stale", label: t("flow.lastKnownRack") };
+  renderEnergyFlow(staleFlow);
+  renderRackFlow(staleFlow);
   renderInverterTelemetry();
 }
 
@@ -1280,6 +1305,72 @@ function renderSummary(summary) {
         value: formatValue(summary.maximum_cell_voltage_delta_v, "V", 3),
       });
   renderEnergyFlow(flow);
+  renderRackFlow(flow, summary);
+}
+
+// Feeds the Rack overview's 3D scene: only the packs themselves and the flow they
+// push onto (or pull from) the rack bus, so the stage stays battery-only.
+function renderRackFlow(flow, summary = state.summary || {}) {
+  const section = $("rackSummarySection");
+  if (!section) return;
+
+  const mode = ["charging", "discharging", "idle", "stale"].includes(flow?.mode)
+    ? flow.mode
+    : "stale";
+  const packs = packBatteryList().slice(0, RACK_SCENE_MAX_PACKS).map((battery) => {
+    const reading = battery.last_reading || {};
+    const reporting = state.collectorOnline
+      && battery.status === "ok"
+      && Boolean(battery.last_reading);
+    return {
+      id: battery.id,
+      mode: energyFlowPresentation(reading, reporting).mode,
+      soc: finiteNumber(reading.soc_percent),
+      power: finiteNumber(reading.power_w),
+      current: finiteNumber(reading.current_a),
+      voltage: finiteNumber(reading.voltage_v),
+      alarm: packHasAlert(battery, reading),
+      reporting,
+    };
+  });
+  const expected = state.rack?.expected_battery_count ?? state.rack?.batteries?.length ?? 0;
+  const batteryCount = Math.max(packs.length, expected);
+  const rackSoc = finiteNumber(summary.average_soc_percent);
+  const rackPower = finiteNumber(summary.total_power_w);
+  const rackCurrent = finiteNumber(summary.total_current_a);
+
+  section.dataset.rackMode = mode;
+  section.dataset.rackSoc = String(rackSoc ?? 0);
+  section.dataset.rackPower = String(rackPower ?? 0);
+  section.dataset.rackCurrent = String(rackCurrent ?? 0);
+  section.dataset.rackCount = String(batteryCount);
+  section.dataset.rackPacks = JSON.stringify(packs);
+
+  $("rackFlowState").textContent = flow?.label || t("common.waitingReadings");
+  const packLabel = `${formatNumber(batteryCount)} ${t(batteryCount === 1 ? "rack.pack" : "rack.packs")}`;
+  $("rackFlowHardware").textContent = rackPower === null || mode === "stale"
+    ? t("rack.flowUnavailable", { packs: packLabel })
+    : t("rack.flowSummary", { packs: packLabel, power: formatPower(Math.abs(rackPower)) });
+
+  window.dispatchEvent(new CustomEvent("battery-rack-flow", {
+    detail: {
+      mode,
+      soc: rackSoc,
+      power: rackPower,
+      current: rackCurrent,
+      batteryCount,
+      packs,
+    },
+  }));
+}
+
+// A pack is flagged on the rack scene when the collector reports it degraded or when
+// its own BMS raised an alarm or a fault.
+function packHasAlert(battery, reading) {
+  if (battery.status && battery.status !== "ok") return true;
+  const alarms = Array.isArray(reading.alarms) ? reading.alarms.length : 0;
+  const faults = Array.isArray(reading.faults) ? reading.faults.length : 0;
+  return alarms + faults > 0;
 }
 
 function renderEnergyFlow(flow) {

@@ -469,7 +469,18 @@
           <div id="savingsEmpty" class="savings-empty" data-i18n="savings.awaiting">Awaiting solar and grid energy readings</div>
         </section>
 
-        <section class="rack-summary" aria-label="Rack summary" data-i18n-aria-label="fleet.summary">
+        <section
+          id="rackSummarySection"
+          class="rack-summary"
+          aria-label="Rack summary"
+          data-i18n-aria-label="fleet.summary"
+          data-rack-mode="stale"
+          data-rack-soc="0"
+          data-rack-power="0"
+          data-rack-current="0"
+          data-rack-count="0"
+          data-rack-packs="[]"
+        >
           <div class="rack-summary__meta">
             <div class="rack-summary__meta-status">
               <p class="eyebrow" data-i18n="rack.overview">Rack overview</p>
@@ -491,6 +502,29 @@
                 <strong>RS485</strong>
                 <small id="rackConnection">Modbus RTU</small>
               </div>
+            </div>
+          </div>
+          <div id="rackFlowStage" class="rack-flow">
+            <canvas
+              id="rackFlowCanvas"
+              class="rack-flow__canvas"
+              role="img"
+              aria-label="Animated Eco-worthy battery rack and its energy flow"
+              data-i18n-aria-label="rack.sceneAria"
+            ></canvas>
+            <div class="rack-flow__copy">
+              <p class="eyebrow" data-i18n="rack.flowEyebrow">Rack energy flow</p>
+              <div class="rack-flow__system-state">
+                <i aria-hidden="true"></i>
+                <p id="rackFlowState" class="rack-flow__state" data-i18n="common.waitingReadings">Waiting for readings</p>
+              </div>
+              <p id="rackFlowHardware" class="rack-flow__hardware" data-i18n="rack.flowHardware">Eco-worthy 48 V LiFePO4 server rack packs</p>
+            </div>
+            <div id="rackFlowFallback" class="rack-flow__fallback" aria-hidden="true">
+              <span class="rack-flow__fallback-pack"><i></i><i></i><i></i></span>
+              <span class="rack-flow__fallback-pack"><i></i><i></i><i></i></span>
+              <span class="rack-flow__fallback-pack"><i></i><i></i><i></i></span>
+              <span class="rack-flow__fallback-bus"></span>
             </div>
           </div>
           <div class="rack-summary__soc">
@@ -602,5 +636,6 @@
     </div>
     <script src="/static/app.js?v=__BUILD_COMMIT__"></script>
     <script type="module" src="/static/energy-flow.js?v=__BUILD_COMMIT__"></script>
+    <script type="module" src="/static/rack-flow.js?v=__BUILD_COMMIT__"></script>
   </body>
 </html>

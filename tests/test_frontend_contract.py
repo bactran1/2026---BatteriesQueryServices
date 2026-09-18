@@ -93,7 +93,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('<details id="payloadDetails"', html)
         self.assertNotIn('<details id="payloadDetails" open', html)
         self.assertNotIn('<h2 id="rackName">Eco-worthy Rack</h2>', html)
-        self.assertIn("grid-template-columns: minmax(210px, 0.85fr)", css)
+        self.assertIn("grid-template-columns: minmax(320px, 0.95fr)", css)
         # Rack identity/status was folded into the Rack summary card.
         self.assertIn('class="rack-summary__meta"', html)
         self.assertNotIn('class="rack-overview"', html)
@@ -118,6 +118,88 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('Intl.RelativeTimeFormat(currentLocale()', javascript)
         self.assertIn(".language-toggle__track", css)
         self.assertIn(".preference-controls", css)
+
+    def test_rack_overview_animates_eco_worthy_packs_and_their_flow(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        scene = (STATIC / "rack-flow.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        # The Rack overview carries its own WebGL stage, loaded like the home scene.
+        self.assertIn('id="rackSummarySection"', html)
+        self.assertIn('id="rackFlowStage"', html)
+        self.assertIn('id="rackFlowCanvas"', html)
+        self.assertIn('type="module" src="/static/rack-flow.js', html)
+        self.assertIn('data-rack-packs="[]"', html)
+        self.assertLess(
+            html.index('id="rackFlowStage"'), html.index('class="rack-summary__soc"')
+        )
+
+        # The dashboard feeds it per-pack telemetry.
+        self.assertIn("function renderRackFlow", javascript)
+        self.assertIn('CustomEvent("battery-rack-flow"', javascript)
+        self.assertIn("section.dataset.rackPacks = JSON.stringify(packs)", javascript)
+        self.assertIn("function packHasAlert", javascript)
+        self.assertIn("const RACK_SCENE_MAX_PACKS = 8", javascript)
+        self.assertIn('"rack.flowEyebrow": "Rack energy flow"', javascript)
+        self.assertIn('"rack.flowEyebrow": "Dòng năng lượng tủ pin"', javascript)
+        self.assertIn("Eco-worthy 48 V LiFePO4", javascript)
+
+        # The stage holds Eco-worthy packs and their conduits, and nothing else.
+        self.assertIn('import * as THREE from "three"', scene)
+        self.assertIn("THREE.WebGLRenderer", scene)
+        self.assertIn("THREE.OrthographicCamera", scene)
+        self.assertIn("THREE.LineCurve3", scene)
+        self.assertIn("function createBatteryModule", scene)
+        self.assertIn("function createRackNetwork", scene)
+        self.assertIn("function createStraightPath", scene)
+        self.assertIn("function createFlowRoute", scene)
+        self.assertIn("function configureRoute", scene)
+        self.assertIn("function brandTexture", scene)
+        self.assertIn("function drawModuleScreen", scene)
+        self.assertIn('canvas.dataset.topology = "packs-and-bus-only"', scene)
+        self.assertIn('canvas.dataset.hardware = "eco-worthy-rack"', scene)
+        self.assertIn('ctx.fillText("ECO", 78, 62)', scene)
+        self.assertIn('ctx.fillText("-WORTHY", 200, 62)', scene)
+        self.assertIn("LiFePO4  48V  100Ah", scene)
+        # Nothing from the home scene's cast is modelled here: no house, no solar
+        # array, no utility pole, no inverter, no metered grid or load.
+        for absent in (
+            "createHouseShell",
+            "createSolarArray",
+            "createUtilityPole",
+            "createPowerCenter",
+            "windowMaterial",
+            "homeGlow",
+            "inverterSignalMaterial",
+            "gridPower",
+            "solarPower",
+            "loadPower",
+        ):
+            self.assertNotIn(absent, scene)
+
+        # Pulses share the home scene's constant-speed model and flow palette.
+        self.assertIn("const speed = pulseProgressRate(route, pulseSpeed)", scene)
+        self.assertIn("length: Math.max(curve.getLength(), 0.001)", scene)
+        self.assertIn("const PULSE_REFERENCE_LENGTH = 3.5", scene)
+        self.assertIn("charging: 0xd9ff3f", scene)
+        self.assertIn("discharging: 0xff6258", scene)
+        self.assertIn('"energy-pulse-speed-change"', scene)
+        self.assertIn('"energy-line-glow-change"', scene)
+        self.assertIn('"energy-glow-change"', scene)
+        self.assertIn("function mirrorSceneSetting", javascript)
+
+        # Same resilience contract as the home scene.
+        self.assertIn("IntersectionObserver", scene)
+        self.assertIn('matchMedia("(prefers-reduced-motion: reduce)")', scene)
+        self.assertIn('canvas.addEventListener("webglcontextlost"', scene)
+        self.assertIn("function showFallback", scene)
+        self.assertIn("function disposeObject", scene)
+        self.assertIn(".rack-summary.is-rack-fallback .rack-flow__fallback", css)
+        self.assertIn("@keyframes rack-flow-fallback-cell", css)
+        self.assertIn('.rack-summary[data-rack-mode="charging"] .rack-flow', css)
+        self.assertIn('.rack-summary[data-rack-mode="discharging"] .rack-flow', css)
+        self.assertIn(".rack-flow__copy", css)
 
     def test_three_dimensional_energy_flow_is_live_and_resilient(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
