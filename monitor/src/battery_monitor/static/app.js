@@ -2597,11 +2597,10 @@ function drawEnergyHistoryChart() {
   const followingLatest = Math.abs(scroller.scrollLeft - Number(canvas.dataset.maxScroll || 0)) <= 2;
   // Preserve useful horizontal spacing for long calendar timelines.
   const pad = { top: 26, right: 18, bottom: 40, left: 58 };
-  const minimumSlotWidth = state.energyView === "hour" ? 18 : 32;
-  const chartWidth = Math.max(
-    viewport.width,
-    slots.length * minimumSlotWidth + pad.left + pad.right,
-  );
+  const fitsCompleteTimeline = state.energyView === "hour" || state.energyView === "date";
+  const chartWidth = fitsCompleteTimeline
+    ? viewport.width
+    : Math.max(viewport.width, slots.length * 32 + pad.left + pad.right);
   canvas.style.width = `${chartWidth}px`;
   const rect = canvas.getBoundingClientRect();
   if (rect.height <= 0) return;
