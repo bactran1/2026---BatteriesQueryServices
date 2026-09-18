@@ -2781,14 +2781,11 @@ function drawEnergyAreaSeries(ctx, slots, plottedPoints, series, baseline, slotW
     const halfSinglePoint = Math.min(slotWidth * 0.34, 18);
     const firstX = points.length === 1 ? points[0].x - halfSinglePoint : points[0].x;
     const lastX = points.length === 1 ? points[0].x + halfSinglePoint : points.at(-1).x;
+    const tangents = energyCurveTangents(points);
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(firstX, baseline);
-    if (points.length === 1) {
-      ctx.lineTo(points[0].x, points[0].y);
-    } else {
-      points.forEach((point) => ctx.lineTo(point.x, point.y));
-    }
+    traceEnergyCurve(ctx, points, tangents, true);
     ctx.lineTo(lastX, baseline);
     ctx.closePath();
     ctx.fillStyle = series.color;
@@ -2798,10 +2795,7 @@ function drawEnergyAreaSeries(ctx, slots, plottedPoints, series, baseline, slotW
 
     ctx.save();
     ctx.beginPath();
-    points.forEach((point, index) => {
-      if (index) ctx.lineTo(point.x, point.y);
-      else ctx.moveTo(point.x, point.y);
-    });
+    traceEnergyCurve(ctx, points, tangents, false);
     ctx.strokeStyle = series.color;
     ctx.lineWidth = 2;
     ctx.lineJoin = "round";
@@ -2809,6 +2803,69 @@ function drawEnergyAreaSeries(ctx, slots, plottedPoints, series, baseline, slotW
     ctx.stroke();
     ctx.restore();
   });
+}
+
+// Fritsch-Carlson monotone tangents for the energy areas. A plain Catmull-Rom or
+// cardinal spline overshoots around a spike, which on a chart with a zero baseline
+// invents energy that was never recorded (and dips the fill below the axis). The
+// monotone form stays inside each neighbouring pair of samples, so the curve only
+// rounds the corners: every recorded value still sits exactly on the line, and no
+// point between two samples exceeds them.
+function energyCurveTangents(points) {
+  if (points.length < 2) return [0];
+  const slopes = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const run = points[index + 1].x - points[index].x;
+    slopes.push(run > 0 ? (points[index + 1].y - points[index].y) / run : 0);
+  }
+  const tangents = points.map((_, index) => {
+    if (!index) return slopes[0];
+    if (index === points.length - 1) return slopes.at(-1);
+    // A local peak or trough gets a flat tangent so the curve turns without lifting
+    // past the sample that made it.
+    if (slopes[index - 1] * slopes[index] <= 0) return 0;
+    return (slopes[index - 1] + slopes[index]) / 2;
+  });
+  slopes.forEach((slope, index) => {
+    if (slope === 0) {
+      tangents[index] = 0;
+      tangents[index + 1] = 0;
+      return;
+    }
+    const before = tangents[index] / slope;
+    const after = tangents[index + 1] / slope;
+    const distance = before * before + after * after;
+    if (distance <= 9) return;
+    const scale = 3 / Math.sqrt(distance);
+    tangents[index] = scale * before * slope;
+    tangents[index + 1] = scale * after * slope;
+  });
+  return tangents;
+}
+
+// Trace a segment as cubic Béziers built from those tangents. `connect` continues an
+// open path (the area fill, already sitting on the baseline); otherwise the segment
+// starts its own subpath (the stroke on top).
+function traceEnergyCurve(ctx, points, tangents, connect) {
+  if (connect) ctx.lineTo(points[0].x, points[0].y);
+  else ctx.moveTo(points[0].x, points[0].y);
+  for (let index = 1; index < points.length; index += 1) {
+    const from = points[index - 1];
+    const to = points[index];
+    const run = to.x - from.x;
+    if (!(run > 0)) {
+      ctx.lineTo(to.x, to.y);
+      continue;
+    }
+    ctx.bezierCurveTo(
+      from.x + run / 3,
+      from.y + (tangents[index - 1] * run) / 3,
+      to.x - run / 3,
+      to.y - (tangents[index] * run) / 3,
+      to.x,
+      to.y,
+    );
+  }
 }
 
 function drawEnergyGrid(ctx, theme, pad, width, height, maxValue) {

@@ -389,6 +389,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function localCalendarDateValue", javascript)
         self.assertIn('canvas.dataset.chartType = "overlapping-areas"', javascript)
         self.assertIn("function drawEnergyAreaSeries", javascript)
+        # The areas are smoothed with monotone cubics, so corners round off without
+        # the curve overshooting a reading or dipping below the zero baseline.
+        self.assertIn("function energyCurveTangents", javascript)
+        self.assertIn("function traceEnergyCurve", javascript)
+        self.assertIn("ctx.bezierCurveTo(", javascript)
         self.assertIn('id="energyChartScroll"', html)
         self.assertIn("function energyAxisMaximum", javascript)
         self.assertIn("state.energySummaryPeriod = latestEnergyHistoryPoint", javascript)

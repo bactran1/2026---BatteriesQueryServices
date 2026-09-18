@@ -100,6 +100,8 @@ Every battery-facing dashboard value comes from the Eco-worthy battery bus: rack
 
 Power history returns `battery_soc_percent` from the existing battery logs, with no database migration required. Each time bucket averages valid SOC readings per pack, then gives each available pack equal weight. Missing or invalid SOC stays unavailable, not 0%; inverter SOC is never used as a fallback.
 
+Energy history draws its overlapping areas as smooth curves in every view, Hour through Year. The smoothing is monotone cubic interpolation, so it only rounds the corners between readings: each recorded value still sits exactly on the line, no point between two readings rises above or falls below the pair that brackets it, and a flat run of zeros stays flat on the baseline instead of dipping under the axis.
+
 Both history charts support mouse hover, touch selection, and keyboard arrows. On touchscreens, tap a point to inspect it; close the readout with its X button, tap the same point again, tap outside, or scroll the page. Swiping the chart scrolls without pinning a readout. Escape dismisses a keyboard or mouse selection.
 
 In Live home energy, Home load uses `home_load_total_power_w` for the load between the CT meter and the inverter breaker. Backup load uses `load_total_power_w` for the inverter's direct load output. An unavailable Home load reading is shown as not metered and its animation pauses; a measured zero is shown as 0 W.
