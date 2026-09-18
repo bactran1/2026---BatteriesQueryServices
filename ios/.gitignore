@@ -1,0 +1,8 @@
+BatteryMonitor.xcodeproj/
+*.xcworkspace/
+build/
+DerivedData/
+*.ipa
+*.app.zip
+.DS_Store
+

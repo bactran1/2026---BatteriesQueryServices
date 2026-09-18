@@ -8,6 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, "../monitor/src/battery_moni
 
 function chart(viewportWidth = 390) {
   const bars = [];
+  const areas = [];
   const labels = [];
   const strokes = [];
   const listeners = new Map();
@@ -19,9 +20,9 @@ function chart(viewportWidth = 390) {
   };
   const ctx = {
     setTransform() {}, clearRect() {}, save() {}, restore() {}, drawImage() {},
-    beginPath() {}, moveTo: (...args) => strokes.push(["move", ...args]),
+    beginPath() {}, closePath() {}, moveTo: (...args) => strokes.push(["move", ...args]),
     lineTo: (...args) => strokes.push(["line", ...args]), stroke() {},
-    rect() {}, clip() {}, arc() {}, fill() {}, setLineDash() {},
+    rect() {}, clip() {}, arc() {}, fill() { areas.push({ color: this.fillStyle, alpha: this.globalAlpha }); }, setLineDash() {},
     fillRect: (...args) => bars.push(args),
     fillText: (...args) => labels.push(args),
   };
@@ -50,21 +51,24 @@ function chart(viewportWidth = 390) {
       cancelAnimationFrame: (id) => frames.delete(id) },
   });
   vm.runInContext(`${source}\nfunction bindControls() {}\nfunction refreshCycle() {}\nfunction getThemeColors() { return {chartMuted: "#999", chartGrid: "#ddd"}; }`, context);
-  return { context, state: vm.runInContext("state", context), element, bars, labels, strokes,
+  return { context, state: vm.runInContext("state", context), element, bars, areas, labels, strokes,
     emit: (target, type, event = {}) => (listeners.get(`${target}:${type}`) || []).forEach(fn => fn(event)),
     flush() { for (const [id, callback] of [...frames]) { if (frames.delete(id)) callback(); } },
     run: (code) => vm.runInContext(code, context) };
 }
 
-test("Energy uses separate bars and one shared zero-based scale", () => {
+test("Energy uses translucent overlapping areas and one shared zero-based scale", () => {
   const ui = chart();
   ui.state.energyView = "hour";
   ui.state.energyHistory = [{unix: 0, consumption_kwh: 0.2, solar_generation_kwh: 0.4, grid_import_kwh: 0.1}];
   ui.run("drawEnergyHistoryChart()");
-  assert.equal(ui.bars.length, 3);
-  assert.equal(ui.element("energyHistoryChart").dataset.chartType, "grouped-bars");
-  assert.equal(ui.bars[1][3], ui.bars[0][3] * 2);
-  assert.equal(ui.bars[1][1], 26);
+  assert.equal(ui.areas.length, 3);
+  assert.ok(ui.areas.every((area) => area.alpha === 0.24));
+  assert.equal(ui.element("energyHistoryChart").dataset.chartType, "overlapping-areas");
+  const consumption = ui.state.energyChartGeometry.points.find((point) => point.series.field === "consumption_kwh");
+  const solar = ui.state.energyChartGeometry.points.find((point) => point.series.field === "solar_generation_kwh");
+  assert.equal(solar.y, 26);
+  assert.equal(consumption.y, (26 + ui.state.energyChartGeometry.plot.bottom) / 2);
   assert.ok(ui.labels.some(([text]) => text === "0.4"));
   assert.equal(ui.element("energyHistoryChart").width, 780);
 });
@@ -193,16 +197,19 @@ for (const kind of ["power", "energy"]) {
   });
 }
 
-test("Dense hourly timelines scroll instead of squeezing bars on mobile", () => {
+test("Rolling hour fits twelve five-minute areas in the mobile viewport", () => {
   const ui = chart(320);
   ui.state.energyView = "hour";
-  ui.state.energyHistory = Array.from({length:168}, (_, index) => ({
-    unix:index*3600, consumption_kwh:1, solar_generation_kwh:2, grid_import_kwh:0,
+  ui.state.energyWindowStart = 0;
+  ui.state.energyWindowEnd = 3600;
+  ui.state.energyBucketSeconds = 300;
+  ui.state.energyHistory = Array.from({length:12}, (_, index) => ({
+    unix:index*300, consumption_kwh:1, solar_generation_kwh:2, grid_import_kwh:0,
   }));
   ui.run("drawEnergyHistoryChart()");
-  assert.equal(ui.bars.length, 504);
-  assert.ok(ui.bars.every(([, , width]) => width >= 6));
-  assert.ok(parseFloat(ui.element("energyHistoryChart").style.width) > 320);
+  assert.equal(ui.areas.length, 3);
+  assert.equal(ui.state.energyChartGeometry.points.length, 36);
+  assert.equal(parseFloat(ui.element("energyHistoryChart").style.width), 320);
   assert.equal(ui.element("energyChartScroll").clientWidth, 320);
 });
 
@@ -211,14 +218,15 @@ test("Zero energy stays zero and missing energy is not drawn as zero", () => {
   ui.state.energyView = "hour";
   ui.state.energyHistory = [{unix:0, consumption_kwh:0, solar_generation_kwh:null, grid_import_kwh:0.002}];
   ui.run("drawEnergyHistoryChart()");
-  assert.equal(ui.bars.length, 2);
-  assert.equal(ui.bars[0][3], 0);
+  assert.equal(ui.areas.length, 2);
+  assert.equal(ui.state.energyChartGeometry.points.find((point) => point.value === 0).y,
+    ui.state.energyChartGeometry.plot.bottom);
   assert.ok(ui.labels.some(([text]) => text === "0.002"));
   assert.equal(ui.run("formatEnergyTotal(0.002)"), "0.002");
   assert.equal(ui.run("formatEnergyPointValue(1.5678)"), "1.5678 kWh");
 });
 
-test("Date bars preserve all hours of normal and daylight-saving days", () => {
+test("Date areas preserve all hours of normal and daylight-saving days", () => {
   const ui = chart();
   ui.state.energyView = "date";
   for (const hours of [23, 24, 25]) {
