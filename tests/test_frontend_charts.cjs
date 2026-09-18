@@ -236,6 +236,22 @@ test("Date areas preserve all hours of normal and daylight-saving days", () => {
   }
 });
 
+for (const viewportWidth of [320, 1440]) {
+  test(`Date view fits all 24 hourly points at ${viewportWidth}px without scrolling`, () => {
+    const ui = chart(viewportWidth);
+    ui.state.energyView = "date";
+    ui.state.energyWindowStart = 0;
+    ui.state.energyWindowEnd = 24 * 3600;
+    ui.state.energyHistory = Array.from({length:24}, (_, index) => ({
+      unix:index*3600, consumption_kwh:1, solar_generation_kwh:2, grid_import_kwh:0.5,
+    }));
+    ui.run("drawEnergyHistoryChart()");
+    assert.equal(ui.state.energyChartGeometry.points.length, 72);
+    assert.equal(parseFloat(ui.element("energyHistoryChart").style.width), viewportWidth);
+    assert.equal(ui.element("energyHistoryChart").scrollWidth, viewportWidth);
+  });
+}
+
 test("Year view retains an empty slot for a missing month", () => {
   const ui = chart();
   ui.state.energyView = "year";
