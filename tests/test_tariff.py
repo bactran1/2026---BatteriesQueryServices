@@ -24,6 +24,17 @@ def at(year, month, day, hour, minute=0):
     return datetime(year, month, day, hour, minute, tzinfo=ZONE)
 
 
+def _runs(periods):
+    """Collapse 24 hourly periods into (start_hour, end_hour, period) blocks."""
+    runs = []
+    for hour, period in enumerate(periods):
+        if runs and runs[-1][2] == period:
+            runs[-1][1] = hour + 1
+        else:
+            runs.append([hour, hour + 1, period])
+    return [tuple(run) for run in runs]
+
+
 class TariffPeriodTests(unittest.TestCase):
     def test_a_weekday_runs_through_all_three_periods(self) -> None:
         # Wednesday, January 14 2026.
@@ -38,6 +49,35 @@ class TariffPeriodTests(unittest.TestCase):
         for hour, period in expected.items():
             with self.subTest(hour=hour):
                 self.assertEqual(period_for(at(2026, 1, 14, hour)), period)
+
+    def test_a_weekday_off_peak_is_two_blocks_not_one_long_run(self) -> None:
+        """The shape the dashboard labels have to describe.
+
+        Off-peak on a weekday is 10 a.m.-5 p.m. and 8-11 p.m., split by the
+        evening peak. It is only one unbroken 7 a.m.-11 p.m. run on a weekend
+        or holiday, when no peak hours apply.
+        """
+        weekday = [period_for(at(2026, 1, 14, hour)) for hour in range(24)]
+        self.assertEqual(
+            _runs(weekday),
+            [
+                (0, 7, SUPER_OFF_PEAK),
+                (7, 10, ON_PEAK),
+                (10, 17, OFF_PEAK),
+                (17, 20, ON_PEAK),
+                (20, 23, OFF_PEAK),
+                (23, 24, SUPER_OFF_PEAK),
+            ],
+        )
+        weekend = [period_for(at(2026, 1, 17, hour)) for hour in range(24)]
+        self.assertEqual(
+            _runs(weekend),
+            [
+                (0, 7, SUPER_OFF_PEAK),
+                (7, 23, OFF_PEAK),
+                (23, 24, SUPER_OFF_PEAK),
+            ],
+        )
 
     def test_the_super_off_peak_block_wraps_across_midnight(self) -> None:
         self.assertEqual(period_for(at(2026, 1, 14, 23, 59)), SUPER_OFF_PEAK)

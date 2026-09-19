@@ -72,7 +72,10 @@ def build_savings_payload(
             },
             "windows": {
                 ON_PEAK: "Weekdays 7-10 a.m. and 5-8 p.m., excluding holidays",
-                OFF_PEAK: "All other hours between 7 a.m. and 11 p.m.",
+                OFF_PEAK: (
+                    "Weekdays 10 a.m.-5 p.m. and 8-11 p.m.; "
+                    "weekends and holidays 7 a.m.-11 p.m."
+                ),
                 SUPER_OFF_PEAK: "Every day 11 p.m. to 7 a.m.",
             },
             "basic_charge_usd": round(tariff.basic_charge_usd, 2),

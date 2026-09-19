@@ -433,7 +433,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function formatRate", javascript)
         self.assertIn('"savings.periodSuperOffPeak": "Super off-peak"', javascript)
         self.assertIn('"savings.periodSuperOffPeak": "Giờ siêu thấp điểm"', javascript)
-        self.assertIn('"savings.windowOnPeak": "Weekdays 7–10 AM, 5–8 PM"', javascript)
+        self.assertIn(
+            '"savings.windowOnPeak": "Weekdays 7–10 AM, 5–8 PM · not holidays"',
+            javascript,
+        )
+        # Off-peak is two weekday blocks, not one 7 a.m.-11 p.m. run; that shape
+        # only holds on a weekend or holiday.
+        self.assertIn(
+            '"savings.windowOffPeak": "10 AM–5 PM, 8–11 PM · weekends all day"',
+            javascript,
+        )
         self.assertIn(".savings-tou__row", css)
         self.assertIn('.savings-tou__row[data-tou="on_peak"]', css)
         # The tier range is gone from the markup, the strings and the code.
