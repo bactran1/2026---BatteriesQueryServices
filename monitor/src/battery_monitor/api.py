@@ -33,7 +33,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     static_version = asset_version(settings.build_commit, STATIC_DIR)
-    store = RetentionStore(settings.database_path)
+    store = RetentionStore(
+        settings.database_path, settings.utility_tariff.timezone
+    )
     collector = CollectorClient(
         base_url=settings.collector_url,
         timeout_seconds=settings.collector_timeout_seconds,

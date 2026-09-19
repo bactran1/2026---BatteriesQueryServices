@@ -50,6 +50,7 @@ class MonitorService:
         logger.info("battery monitor connection manager started")
         next_log_at = 0.0
         next_prune_at = 0.0
+        next_tou_backfill_at = 0.0
         while not self._stop.is_set():
             cycle_started = time.monotonic()
             if not self._paused:
@@ -62,6 +63,12 @@ class MonitorService:
                 if now >= next_prune_at:
                     await self.prune_once()
                     next_prune_at = now + 60 * 60
+                if now >= next_tou_backfill_at:
+                    # History logged before the time-of-use switch has no rollup.
+                    # Rebuild it in bounded slices so the archive fills in without
+                    # stalling a poll cycle.
+                    rebuilt = await self.backfill_tou_once()
+                    next_tou_backfill_at = now + (60.0 if rebuilt else 60 * 60)
 
             elapsed = time.monotonic() - cycle_started
             wait_seconds = max(
@@ -172,6 +179,22 @@ class MonitorService:
             if isinstance(exc, (OSError, sqlite3.Error)):
                 self.last_storage_error = str(exc)
             logger.warning("retention prune failed: %s", exc)
+            return 0
+
+    async def backfill_tou_once(self, budget_seconds: float = 5.0) -> int:
+        """Roll up one slice of days that have no time-of-use split yet."""
+        try:
+            rebuilt = await asyncio.to_thread(
+                self.store.backfill_tou_energy, budget_seconds
+            )
+            if rebuilt:
+                logger.info("rolled up %s day(s) of time-of-use energy", rebuilt)
+                self.last_storage_error = None
+            return rebuilt
+        except Exception as exc:
+            if isinstance(exc, (OSError, sqlite3.Error)):
+                self.last_storage_error = str(exc)
+            logger.warning("time-of-use rollup failed: %s", exc)
             return 0
 
     async def log_once(self) -> None:

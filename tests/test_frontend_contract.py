@@ -418,11 +418,34 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('getJson(`/api/savings?${params}`, "savings")', javascript)
         self.assertIn('date: requestedDate', javascript)
         self.assertIn("function renderSavings", javascript)
-        self.assertIn("function formatCurrencyRange", javascript)
         self.assertIn('"savings.title": "Energy Savings"', javascript)
         self.assertIn('"savings.title": "Tiết kiệm năng lượng"', javascript)
         self.assertIn(".savings-layout", css)
         self.assertIn(".savings-tariff", css)
+
+        # Schedule 327 prices by the clock, so the panel shows a per-period
+        # breakdown and one exact figure instead of a tier range.
+        self.assertIn('id="savingsTouRows"', html)
+        self.assertIn('id="savingsCurrentPeriod"', html)
+        self.assertIn('id="savingsCurrentRate"', html)
+        self.assertIn("function renderSavingsTou", javascript)
+        self.assertIn("function savingsFigure", javascript)
+        self.assertIn("function formatRate", javascript)
+        self.assertIn('"savings.periodSuperOffPeak": "Super off-peak"', javascript)
+        self.assertIn('"savings.periodSuperOffPeak": "Giờ siêu thấp điểm"', javascript)
+        self.assertIn('"savings.windowOnPeak": "Weekdays 7–10 AM, 5–8 PM"', javascript)
+        self.assertIn(".savings-tou__row", css)
+        self.assertIn('.savings-tou__row[data-tou="on_peak"]', css)
+        # The tier range is gone from the markup, the strings and the code.
+        for retired in ("savingsTierLimit", "savings.tierThreshold", "Schedule 7"):
+            self.assertNotIn(retired, html)
+        for retired in (
+            "formatCurrencyRange",
+            "renderPrimaryCurrencyRange",
+            "tier_1_limit_kwh",
+            "savings.rangeSeparator",
+        ):
+            self.assertNotIn(retired, javascript)
 
     def test_live_views_show_estimated_battery_support_time(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")

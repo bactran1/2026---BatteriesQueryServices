@@ -1723,19 +1723,6 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.savings-primary > strong > span:not(.savings-range__separator) {
-  white-space: nowrap;
-}
-
-.savings-range__separator {
-  color: var(--muted);
-  font-weight: 500;
-}
-
-.savings-range__separator-label {
-  display: none;
-}
-
 .savings-primary > p {
   max-width: 390px;
   margin: 9px 0 22px;
@@ -1746,6 +1733,128 @@ button {
 
 .savings-share {
   margin-top: auto;
+}
+
+/* ===== Time-of-use breakdown =====
+   One row per Schedule 327 period, so the bill's shape is visible: which hours
+   the solar landed in, which hours the grid draw landed in, and what each was
+   worth at that period's price. */
+.savings-tou {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.savings-tou__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.savings-tou__heading > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.savings-tou__heading > small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.savings-tou__row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.6fr) repeat(4, minmax(72px, 1fr));
+  gap: 8px 14px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.savings-tou__row:last-child {
+  border-bottom: 0;
+}
+
+.savings-tou__row--head {
+  padding: 0 0 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.savings-tou__row > span:not(:first-child) {
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.savings-tou__row--head > span:not(:first-child) {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.savings-tou__row strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 730;
+}
+
+/* The period name carries a colour cue so the expensive block is obvious. */
+.savings-tou__row[data-tou] strong::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  content: "";
+}
+
+.savings-tou__row[data-tou="on_peak"] strong::before {
+  background: var(--red);
+}
+
+.savings-tou__row[data-tou="off_peak"] strong::before {
+  background: var(--orange);
+}
+
+.savings-tou__row[data-tou="super_off_peak"] strong::before {
+  background: var(--green);
+}
+
+.savings-tou__row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.savings-tou__empty {
+  padding: 12px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .savings-tou__row {
+    grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(60px, 1fr));
+  }
+
+  /* Grid energy and solar value drop out first; the rate and solar kWh that
+     explain the number stay. */
+  .savings-tou__row > span:nth-child(4),
+  .savings-tou__row > span:nth-child(5) {
+    display: none;
+  }
 }
 
 .savings-share > div:first-child {

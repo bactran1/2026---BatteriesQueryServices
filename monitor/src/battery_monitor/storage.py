@@ -4,10 +4,13 @@ import json
 import sqlite3
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date as date_type
+from datetime import datetime, time as time_type, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
+
+from .tariff import TOU_PERIODS, period_for
 
 HistoryMetric = Literal[
     "voltage_v",
@@ -60,10 +63,16 @@ class RetentionStore:
         "last_error",
     ]
 
-    def __init__(self, database_path: Path):
+    def __init__(
+        self, database_path: Path, tariff_timezone: str = "America/Los_Angeles"
+    ):
         self.database_path = database_path
         self._connection: sqlite3.Connection | None = None
         self._lock = threading.RLock()
+        # Time-of-use periods are wall-clock hours in the *utility's* timezone,
+        # not the viewer's, so the rollup is keyed by the tariff's own calendar.
+        self.tariff_timezone = tariff_timezone
+        self._tariff_zone = ZoneInfo(tariff_timezone)
 
     def initialize(self) -> None:
         with self._lock:
@@ -142,6 +151,17 @@ class RetentionStore:
                     ON readings (captured_at_unix, alarm_count, fault_count, status);
                 CREATE INDEX IF NOT EXISTS idx_daily_energy_date
                     ON daily_energy (energy_date);
+                CREATE TABLE IF NOT EXISTS tou_energy (
+                    energy_date TEXT NOT NULL,
+                    day_start_unix INTEGER NOT NULL,
+                    tou_period TEXT NOT NULL,
+                    consumption_kwh REAL NOT NULL DEFAULT 0,
+                    solar_generation_kwh REAL NOT NULL DEFAULT 0,
+                    grid_import_kwh REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY (energy_date, tou_period)
+                );
+                CREATE INDEX IF NOT EXISTS idx_tou_energy_day
+                    ON tou_energy (day_start_unix);
                 CREATE INDEX IF NOT EXISTS idx_inverter_readings_time
                     ON inverter_readings (captured_at_unix);
                 CREATE INDEX IF NOT EXISTS idx_inverter_readings_inverter_time
@@ -196,18 +216,25 @@ class RetentionStore:
             inserted = self._insert_snapshot_locked(snapshot)
             self._insert_inverter_reading_locked(snapshot)
             self._upsert_daily_energy_locked(snapshot)
+            self._recompute_tou_days_locked(self._tou_days_for(snapshot))
             self.connection.commit()
             return inserted
 
     def insert_snapshots(self, snapshots: list[dict[str, Any]]) -> int:
         with self._lock:
             inserted = 0
+            touched: set[date_type] = set()
             for snapshot in snapshots:
                 if not isinstance(snapshot, dict):
                     continue
                 inserted += self._insert_snapshot_locked(snapshot)
                 self._insert_inverter_reading_locked(snapshot)
                 self._upsert_daily_energy_locked(snapshot)
+                touched.update(self._tou_days_for(snapshot))
+            # One rollup pass per affected day, not per snapshot: a backfill page
+            # covering an hour of history would otherwise rebuild the same day
+            # sixty times over.
+            self._recompute_tou_days_locked(touched)
             self.connection.commit()
             return inserted
 
@@ -221,6 +248,9 @@ class RetentionStore:
             energy_cursor = self.connection.execute(
                 "DELETE FROM daily_energy WHERE energy_date < ?", (cutoff_date,)
             )
+            tou_cursor = self.connection.execute(
+                "DELETE FROM tou_energy WHERE day_start_unix < ?", (cutoff,)
+            )
             inverter_cursor = self.connection.execute(
                 "DELETE FROM inverter_readings WHERE captured_at_unix < ?", (cutoff,)
             )
@@ -228,6 +258,7 @@ class RetentionStore:
             return (
                 int(cursor.rowcount or 0)
                 + int(energy_cursor.rowcount or 0)
+                + int(tou_cursor.rowcount or 0)
                 + int(inverter_cursor.rowcount or 0)
             )
 
@@ -250,6 +281,7 @@ class RetentionStore:
             readings = self.connection.execute("DELETE FROM readings")
             inverter = self.connection.execute("DELETE FROM inverter_readings")
             energy = self.connection.execute("DELETE FROM daily_energy")
+            tou = self.connection.execute("DELETE FROM tou_energy")
             self.connection.commit()
             try:
                 self.connection.execute("VACUUM")
@@ -260,6 +292,7 @@ class RetentionStore:
                 "readings": int(readings.rowcount or 0),
                 "inverter_readings": int(inverter.rowcount or 0),
                 "daily_energy": int(energy.rowcount or 0),
+                "tou_energy": int(tou.rowcount or 0),
             }
 
     def backup_bytes(self) -> bytes:
@@ -618,6 +651,12 @@ class RetentionStore:
             key: {
                 **payload.get("totals", {}),
                 "observed_days": self._observed_solar_days(start, end, zone),
+                # Each reporting window also carries its time-of-use split, so
+                # the savings engine can price the window by the clock rather
+                # than by one blended rate.
+                "tou": self.tou_energy_totals(
+                    int(start.timestamp()), int(end.timestamp())
+                ),
             }
             for key, (payload, start, end) in periods.items()
         }
@@ -830,6 +869,193 @@ class RetentionStore:
             ],
             "totals": totals,
         }
+
+    # ----- Time-of-use rollup -------------------------------------------
+    # Schedule 327 prices a kilowatt-hour by the clock, so the savings engine
+    # needs each day split across on-peak, off-peak and super off-peak. Deriving
+    # that from raw readings costs seconds over a three-year window, far too slow
+    # for a polled endpoint, so each tariff-local day is rolled up once into
+    # tou_energy and every later query is a plain SUM over at most ~1095 days.
+
+    def tou_energy_totals(
+        self, start_unix: int, end_unix: int
+    ) -> dict[str, dict[str, float]]:
+        """Time-of-use split of the days starting inside a unix range."""
+        with self._lock:
+            rows = self.connection.execute(
+                """
+                SELECT tou_period,
+                       SUM(consumption_kwh) AS consumption_kwh,
+                       SUM(solar_generation_kwh) AS solar_generation_kwh,
+                       SUM(grid_import_kwh) AS grid_import_kwh
+                FROM tou_energy
+                WHERE day_start_unix >= ? AND day_start_unix < ?
+                GROUP BY tou_period
+                """,
+                (int(start_unix), int(end_unix)),
+            ).fetchall()
+        totals = {
+            period: {
+                "consumption_kwh": 0.0,
+                "solar_generation_kwh": 0.0,
+                "grid_import_kwh": 0.0,
+            }
+            for period in TOU_PERIODS
+        }
+        for row in rows:
+            period = str(row["tou_period"])
+            if period not in totals:
+                continue
+            totals[period] = {
+                "consumption_kwh": float(row["consumption_kwh"] or 0.0),
+                "solar_generation_kwh": float(row["solar_generation_kwh"] or 0.0),
+                "grid_import_kwh": float(row["grid_import_kwh"] or 0.0),
+            }
+        return totals
+
+    def backfill_tou_energy(self, budget_seconds: float = 5.0) -> int:
+        """Roll up days that have readings but no time-of-use split yet.
+
+        History logged before the rate change has no rollup, so it is rebuilt
+        here rather than at read time. The pass is bounded by a wall-clock
+        budget and picks up where it left off, so a three-year archive fills in
+        without blocking startup or a poll cycle.
+        """
+        deadline = time.monotonic() + max(0.0, budget_seconds)
+        rebuilt = 0
+        while time.monotonic() < deadline:
+            with self._lock:
+                day = self._next_unrolled_day_locked()
+                if day is None:
+                    return rebuilt
+                self._recompute_tou_days_locked({day})
+                self.connection.commit()
+            rebuilt += 1
+        return rebuilt
+
+    def _next_unrolled_day_locked(self) -> date_type | None:
+        """The oldest reading day with no rollup row, newest history first.
+
+        Recent days matter most on the dashboard, so the scan walks backwards
+        from the newest reading and returns the first day that is still missing.
+        """
+        rows = self.connection.execute(
+            """
+            SELECT DISTINCT captured_at_unix
+            FROM inverter_readings
+            ORDER BY captured_at_unix DESC
+            """
+        )
+        seen: set[date_type] = set()
+        for row in rows:
+            day = self._tariff_day(int(row["captured_at_unix"]))
+            if day in seen:
+                continue
+            seen.add(day)
+            covered = self.connection.execute(
+                "SELECT 1 FROM tou_energy WHERE energy_date = ? LIMIT 1",
+                (day.isoformat(),),
+            ).fetchone()
+            if covered is None:
+                return day
+        return None
+
+    def _tou_days_for(self, snapshot: dict[str, Any]) -> set[date_type]:
+        row = _daily_energy_row(snapshot)
+        if row is None:
+            return set()
+        return {self._tariff_day(int(row["captured_at_unix"]))}
+
+    def _tariff_day(self, unix: int) -> date_type:
+        return datetime.fromtimestamp(unix, self._tariff_zone).date()
+
+    def _day_bounds(self, day: date_type) -> tuple[int, int]:
+        """Unix span of one tariff-local day, 23 or 25 hours long across DST."""
+        start = datetime.combine(day, time_type.min, tzinfo=self._tariff_zone)
+        end = datetime.combine(
+            day + timedelta(days=1), time_type.min, tzinfo=self._tariff_zone
+        )
+        return int(start.timestamp()), int(end.timestamp())
+
+    def _recompute_tou_days_locked(self, days: set[date_type]) -> None:
+        for day in sorted(days):
+            self._recompute_tou_day_locked(day)
+
+    def _recompute_tou_day_locked(self, day: date_type) -> None:
+        """Rebuild one day's time-of-use split from its raw readings.
+
+        Rebuilding the whole day is deliberate: it costs about a thousand rows
+        and keeps the rollup self-healing, where an incremental counter would
+        drift the first time a reading arrived late or out of order. Each
+        reading's rise is credited to the period its own timestamp falls in,
+        and the timestamp is converted with a real timezone so an hour on a
+        daylight-saving boundary is priced the way the meter saw it.
+        """
+        day_start, day_end = self._day_bounds(day)
+        rows = self.connection.execute(
+            """
+            SELECT inverter_id, captured_at_unix, consumption_meter_kwh,
+                   solar_generation_meter_kwh, grid_import_meter_kwh
+            FROM inverter_readings
+            WHERE captured_at_unix >= ? AND captured_at_unix < ?
+            ORDER BY inverter_id, captured_at_unix
+            """,
+            (day_start, day_end),
+        ).fetchall()
+
+        buckets = {
+            period: {
+                "consumption_kwh": 0.0,
+                "solar_generation_kwh": 0.0,
+                "grid_import_kwh": 0.0,
+            }
+            for period in TOU_PERIODS
+        }
+        columns = (
+            ("consumption_kwh", "consumption_meter_kwh"),
+            ("solar_generation_kwh", "solar_generation_meter_kwh"),
+            ("grid_import_kwh", "grid_import_meter_kwh"),
+        )
+        previous: dict[str, dict[str, float | None]] = {}
+        for row in rows:
+            inverter = str(row["inverter_id"])
+            last = previous.setdefault(inverter, {})
+            moment = datetime.fromtimestamp(
+                int(row["captured_at_unix"]), self._tariff_zone
+            )
+            bucket = buckets[period_for(moment)]
+            for field, meter in columns:
+                value = row[meter]
+                if value is None:
+                    continue
+                meter_value = float(value)
+                bucket[field] += _counter_rise(last.get(field), meter_value)
+                last[field] = meter_value
+
+        self.connection.execute(
+            "DELETE FROM tou_energy WHERE energy_date = ?", (day.isoformat(),)
+        )
+        if not rows:
+            return
+        self.connection.executemany(
+            """
+            INSERT INTO tou_energy (
+                energy_date, day_start_unix, tou_period,
+                consumption_kwh, solar_generation_kwh, grid_import_kwh
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    day.isoformat(),
+                    day_start,
+                    period,
+                    round(values["consumption_kwh"], 6),
+                    round(values["solar_generation_kwh"], 6),
+                    round(values["grid_import_kwh"], 6),
+                )
+                for period, values in buckets.items()
+            ],
+        )
 
     def _energy_totals_locked(self) -> dict[str, float | None]:
         row = self.connection.execute(
@@ -1284,6 +1510,18 @@ def _energy_sample_time(
         except ValueError:
             continue
     return _snapshot_time(snapshot)
+
+
+def _counter_rise(previous: float | None, meter: float) -> float:
+    """Energy one reading adds to a resetting counter.
+
+    The Python twin of ``_counter_delta_expression``: the rise since the
+    previous reading, or the reading's own value when the counter dropped (it
+    reset) or when there is no previous reading yet.
+    """
+    if previous is None or meter < previous:
+        return max(0.0, meter)
+    return meter - previous
 
 
 def _counter_delta_expression(meter: str, previous: str) -> str:

@@ -17,15 +17,38 @@ class BatteryProfile:
 
 @dataclass(frozen=True)
 class UtilityTariff:
+    """PSE Schedule 327 prices, in USD per kWh.
+
+    Schedule 327 has no consumption tiers: the price of a kilowatt-hour is set
+    by the time period it crossed the meter and, for on-peak and off-peak, by
+    the season. Super off-peak carries one price year round. The period
+    structure itself lives in ``tariff.py``.
+    """
+
     provider: str
     schedule: str
     region: str
     effective_date: str
-    tier_1_usd_per_kwh: float
-    tier_2_usd_per_kwh: float
-    tier_1_limit_kwh: float
+    # The tariff's own clock. Schedule 327's hours are wall-clock hours in
+    # PSE's service territory, not the viewer's browser timezone.
+    timezone: str
+    on_peak_winter_usd_per_kwh: float
+    on_peak_summer_usd_per_kwh: float
+    off_peak_winter_usd_per_kwh: float
+    off_peak_summer_usd_per_kwh: float
+    super_off_peak_usd_per_kwh: float
     basic_charge_usd: float
     municipal_tax_percent: float
+
+    def rates(self) -> dict[str, float]:
+        """Prices keyed as ``tariff.rate_for`` expects them."""
+        return {
+            "on_peak_winter": self.on_peak_winter_usd_per_kwh,
+            "on_peak_summer": self.on_peak_summer_usd_per_kwh,
+            "off_peak_winter": self.off_peak_winter_usd_per_kwh,
+            "off_peak_summer": self.off_peak_summer_usd_per_kwh,
+            "super_off_peak": self.super_off_peak_usd_per_kwh,
+        }
 
 
 @dataclass(frozen=True)
@@ -111,17 +134,32 @@ def load_settings() -> Settings:
         battery_profiles=battery_profiles,
         utility_tariff=UtilityTariff(
             provider=os.getenv("BQM_UTILITY_PROVIDER", "Puget Sound Energy"),
-            schedule=os.getenv("BQM_UTILITY_SCHEDULE", "Residential Schedule 7"),
+            schedule=os.getenv(
+                "BQM_UTILITY_SCHEDULE",
+                "Residential Time-of-Use with Super Off-Peak (Schedule 327)",
+            ),
             region=os.getenv("BQM_UTILITY_REGION", "King County, WA"),
-            effective_date=os.getenv("BQM_UTILITY_RATE_EFFECTIVE_DATE", "2026-05-01"),
-            tier_1_usd_per_kwh=max(
-                0.0, float(os.getenv("BQM_UTILITY_TIER_1_USD_PER_KWH", "0.187465"))
+            effective_date=os.getenv("BQM_UTILITY_RATE_EFFECTIVE_DATE", "2026-01-29"),
+            timezone=os.getenv("BQM_UTILITY_TIMEZONE", "America/Los_Angeles"),
+            on_peak_winter_usd_per_kwh=max(
+                0.0,
+                float(os.getenv("BQM_UTILITY_ON_PEAK_WINTER_USD_PER_KWH", "0.504")),
             ),
-            tier_2_usd_per_kwh=max(
-                0.0, float(os.getenv("BQM_UTILITY_TIER_2_USD_PER_KWH", "0.206882"))
+            on_peak_summer_usd_per_kwh=max(
+                0.0,
+                float(os.getenv("BQM_UTILITY_ON_PEAK_SUMMER_USD_PER_KWH", "0.272")),
             ),
-            tier_1_limit_kwh=max(
-                0.0, float(os.getenv("BQM_UTILITY_TIER_1_LIMIT_KWH", "600"))
+            off_peak_winter_usd_per_kwh=max(
+                0.0,
+                float(os.getenv("BQM_UTILITY_OFF_PEAK_WINTER_USD_PER_KWH", "0.127")),
+            ),
+            off_peak_summer_usd_per_kwh=max(
+                0.0,
+                float(os.getenv("BQM_UTILITY_OFF_PEAK_SUMMER_USD_PER_KWH", "0.122")),
+            ),
+            super_off_peak_usd_per_kwh=max(
+                0.0,
+                float(os.getenv("BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH", "0.076")),
             ),
             basic_charge_usd=max(
                 0.0, float(os.getenv("BQM_UTILITY_BASIC_CHARGE_USD", "7.49"))
