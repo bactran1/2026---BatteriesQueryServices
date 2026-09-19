@@ -413,7 +413,7 @@
             <div class="savings-primary">
               <span id="savingsPeriodLabel" data-i18n="savings.monthLabel">This month</span>
               <strong id="savingsEstimate">--</strong>
-              <p data-i18n="savings.estimateDetail">Estimated electricity value at the current Schedule 7 tiers</p>
+              <p data-i18n="savings.estimateDetail">Estimated electricity value, each kilowatt-hour priced by the time period it was recorded in</p>
               <div class="savings-share">
                 <div>
                   <span data-i18n="savings.solarShare">Solar share of supplied energy</span>
@@ -427,7 +427,7 @@
             <dl class="savings-metrics">
               <div>
                 <dt data-i18n="savings.solarEnergy">Solar energy valued</dt>
-                <dd><strong id="savingsSolarEnergy">--</strong><small data-i18n="savings.solarEnergyDetail">Recorded inverter production</small></dd>
+                <dd><strong id="savingsSolarEnergy">--</strong><small id="savingsSolarEnergyDetail" data-i18n="savings.solarEnergyDetail">Recorded inverter production</small></dd>
               </div>
               <div>
                 <dt data-i18n="savings.gridEnergy">Grid energy purchased</dt>
@@ -443,10 +443,27 @@
               </div>
             </dl>
           </div>
+
+          <div class="savings-tou" aria-label="Time-of-use breakdown" data-i18n-aria-label="savings.touAria">
+            <div class="savings-tou__heading">
+              <span data-i18n="savings.touTitle">By time-of-use period</span>
+              <small id="savingsTouSeason" data-i18n="savings.touSeasonUnknown">Season rates</small>
+            </div>
+            <div class="savings-tou__table" role="table">
+              <div class="savings-tou__row savings-tou__row--head" role="row">
+                <span role="columnheader" data-i18n="savings.touPeriod">Period</span>
+                <span role="columnheader" data-i18n="savings.touRate">Rate</span>
+                <span role="columnheader" data-i18n="savings.touSolar">Solar</span>
+                <span role="columnheader" data-i18n="savings.touGrid">Grid</span>
+                <span role="columnheader" data-i18n="savings.touValue">Solar value</span>
+              </div>
+              <div id="savingsTouRows"></div>
+            </div>
+          </div>
           <div class="savings-tariff" aria-label="Utility rate assumptions" data-i18n-aria-label="savings.tariffAria">
             <div class="savings-tariff__identity">
               <span data-i18n="savings.utilityPlan">Utility plan</span>
-              <strong id="savingsUtilityPlan">Puget Sound Energy · Residential Schedule 7</strong>
+              <strong id="savingsUtilityPlan">Puget Sound Energy · Residential Time-of-Use with Super Off-Peak (Schedule 327)</strong>
               <small id="savingsUtilityRegion">King County, WA</small>
             </div>
             <div>
@@ -455,9 +472,9 @@
               <small id="savingsRateEffective">--</small>
             </div>
             <div>
-              <span data-i18n="savings.tierThreshold">Tier threshold</span>
-              <strong id="savingsTierLimit">600 kWh</strong>
-              <small data-i18n="savings.tierDetail">Tier 1 each billing month</small>
+              <span data-i18n="savings.rightNow">Right now</span>
+              <strong id="savingsCurrentPeriod">--</strong>
+              <small id="savingsCurrentRate">--</small>
             </div>
             <div>
               <span data-i18n="savings.fixedCharge">Basic charge</span>
@@ -465,7 +482,7 @@
               <small data-i18n="savings.fixedChargeDetail">Monthly · excluded from savings</small>
             </div>
           </div>
-          <p id="savingsMethodology" class="savings-methodology" data-i18n="savings.methodology">Uses current PSE rates and assumes recorded solar receives usable net-metering credit. Municipal utility tax is not included; banked credits expire March 31.</p>
+          <p id="savingsMethodology" class="savings-methodology" data-i18n="savings.methodology">Prices each recorded kilowatt-hour at its Schedule 327 time-of-use period and season, and assumes recorded solar receives usable net-metering credit. Municipal utility tax is not included; banked credits expire March 31.</p>
           <div id="savingsEmpty" class="savings-empty" data-i18n="savings.awaiting">Awaiting solar and grid energy readings</div>
         </section>
 

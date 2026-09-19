@@ -91,12 +91,30 @@ Defaults:
 - CSV export: dashboard download button or `GET /api/export.csv`
 - Energy history: grouped bars for hourly, monthly, and yearly consumption, solar generation, and grid import in kWh. Long timelines scroll within the chart with a fixed value axis. The Date view shows hourly bars for a local calendar day selected with `GET /api/energy?view=date&date=YYYY-MM-DD&timezone=Area/City`
 - Power history: line charts near the top of the dashboard with separate grid, direct battery, solar, Home load (CT-side), Backup load (direct inverter output), and Rack SOC series. SOC uses a dashed teal line and its own fixed 0-100% right axis; each series can be toggled independently. Use `GET /api/power-history?range=date&date=YYYY-MM-DD&timezone=Area/City` for a fixed local 0:00–24:00 calendar day, or `range=24h` for a running 24 hours (direct battery charging and grid import are positive; discharge and export are negative)
-- Energy Savings: current-dollar estimates for today, this month, this year, and the retained three-year archive. The default PSE Residential Schedule 7 values use the May 1, 2026 total variable rates of `$0.187465/kWh` for the first 600 kWh and `$0.206882/kWh` above 600 kWh. The panel values recorded solar production as usable net-metering credit and shows a range because the actual marginal tier depends on the household's billing-month consumption. The unavoidable `$7.49` basic charge is excluded.
+- Energy Savings: current-dollar estimates for today, this month, this year, and the retained three-year archive, priced under PSE Schedule 327 (Residential Time-of-Use with Super Off-Peak). Each recorded kilowatt-hour is valued at the price of the time period it crossed the meter, so the panel shows one exact figure per window plus a per-period breakdown. The panel values recorded solar production as usable net-metering credit. The unavoidable `$7.49` basic charge is excluded.
 - Battery runtime: while the rack is discharging, the live home and inverter views estimate remaining support time until the inverter's 20% battery cutoff from direct pack voltage, usable amp-hours above the reserve, and discharge power
 
 The monitor owns one collector connection and serves a cached live snapshot to every browser. Opening more dashboard tabs does not create more requests to the Raspberry Pi. The dashboard refreshes live values every 5 seconds, pauses network work while its tab is hidden, and refreshes immediately when the tab becomes visible again.
 
 Every battery-facing dashboard value comes from the Eco-worthy battery bus: rack and pack SOC, voltage, current, power, capacity, cells, temperatures, state, alarms, and battery power history. The monitor does not substitute the Renogy inverter's battery registers when direct pack telemetry is missing. Solar, grid, load, and inverter-internal values continue to come from inverter telemetry.
+
+### Schedule 327 time-of-use pricing
+
+Schedule 327 prices a kilowatt-hour by when it crossed the meter, not by how many the month has already used, so the savings engine values energy by the clock rather than by a tier range.
+
+| Period | Hours | Winter (Oct 1 – Mar 31) | Summer (Apr 1 – Sep 30) |
+| --- | --- | --- | --- |
+| On-peak | Weekdays 7–10 a.m. and 5–8 p.m., excluding legal holidays | `$0.475269/kWh` | `$0.256559/kWh` |
+| Off-peak | All other hours between 7 a.m. and 11 p.m., including all weekend and holiday daytime | `$0.119944/kWh` | `$0.115194/kWh` |
+| Super off-peak | Every day 11 p.m. to 7 a.m. | `$0.071296/kWh` | `$0.071296/kWh` |
+
+**Verify these prices against your own bill before relying on the figures.** They are the defaults, set through `BQM_UTILITY_*` (see `.env.example`), and every rate filing moves them. The period structure lives in `tariff.py` because it changes only when PSE refiles the schedule; the prices live in configuration because they do not.
+
+Periods are resolved on the tariff's own clock (`BQM_UTILITY_TIMEZONE`, default `America/Los_Angeles`), not the browser's, and on wall-clock hours, so a daylight-saving change shifts them exactly as it shifts the meter. Legal holidays carry no on-peak hours; the six the schedule names are New Year's Day, Memorial Day, Independence Day, Labor Day, Thanksgiving and Christmas, observed on the nearest weekday when they land on a weekend.
+
+Pricing three years of history by the hour costs seconds per request, far too slow for a polled endpoint, so each tariff-local day is rolled up once into a `tou_energy` table and every later query sums at most about 1095 rows. A day is rebuilt from its raw readings whenever a snapshot lands in it, which keeps the rollup self-healing rather than drifting on a late or out-of-order reading. History logged before the switch has no rollup yet; the monitor backfills it in bounded slices in the background, and until a window is covered it falls back to that season's off-peak price.
+
+Because the schedule has no consumption tiers, `/api/savings` now reports one exact figure per window instead of a low/high pair. The `_low`/`_high` fields remain, both carrying that same figure, so clients written against the tiered payload keep rendering a value.
 
 Power history returns `battery_soc_percent` from the existing battery logs, with no database migration required. Each time bucket averages valid SOC readings per pack, then gives each available pack equal weight. Missing or invalid SOC stays unavailable, not 0%; inverter SOC is never used as a fallback.
 

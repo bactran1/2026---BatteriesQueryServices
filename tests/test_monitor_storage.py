@@ -7,6 +7,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from battery_monitor.storage import RetentionStore
 
@@ -800,3 +801,190 @@ def _energy_snapshot(
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TimeOfUseRollupTests(unittest.TestCase):
+    """The Schedule 327 rollup: each tariff-local day split by time period."""
+
+    ZONE = ZoneInfo("America/Los_Angeles")
+
+    def _store(self, directory: str) -> RetentionStore:
+        store = RetentionStore(
+            Path(directory) / "monitor.sqlite3", "America/Los_Angeles"
+        )
+        store.initialize()
+        return store
+
+    def _log_day(self, store: RetentionStore, day: datetime, hours: dict) -> None:
+        """Log five-minute readings for one local day.
+
+        ``hours`` maps a local hour to the (solar, grid) kWh produced or drawn in
+        each five-minute sample of that hour, so the counters rise the way an
+        inverter's energy-today registers do.
+        """
+        solar = grid = consumption = 0.0
+        snapshots = []
+        for minute in range(0, 24 * 60, 5):
+            moment = day + timedelta(minutes=minute)
+            step_solar, step_grid = hours.get(moment.hour, (0.0, 0.0))
+            solar += step_solar
+            grid += step_grid
+            consumption += 0.01
+            snapshots.append(
+                _energy_snapshot(
+                    moment.astimezone(timezone.utc).isoformat(),
+                    consumption_kwh=round(consumption, 6),
+                    solar_generation_kwh=round(solar, 6),
+                    grid_import_kwh=round(grid, 6),
+                )
+            )
+        store.insert_snapshots(snapshots)
+
+    def test_a_day_is_split_across_the_three_periods(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            day = datetime(2026, 1, 14, tzinfo=self.ZONE)  # a winter Wednesday
+            # Solar 9am-4pm, grid draw in the evening peak and overnight.
+            hours = {hour: (0.05, 0.0) for hour in range(9, 16)}
+            for hour in (17, 18, 19):
+                hours[hour] = (0.0, 0.04)
+            for hour in list(range(0, 7)) + [23]:
+                hours[hour] = (0.0, 0.02)
+            self._log_day(store, day, hours)
+
+            start = int(day.timestamp())
+            end = int((day + timedelta(days=1)).timestamp())
+            totals = store.tou_energy_totals(start, end)
+            store.close()
+
+            # 9am and 5-8pm are on-peak; the rest of the daylight is off-peak;
+            # 11pm-7am is super off-peak.
+            self.assertAlmostEqual(totals["on_peak"]["solar_generation_kwh"], 0.6, 3)
+            self.assertAlmostEqual(totals["off_peak"]["solar_generation_kwh"], 3.6, 3)
+            self.assertAlmostEqual(
+                totals["super_off_peak"]["solar_generation_kwh"], 0.0, 3
+            )
+            self.assertAlmostEqual(totals["on_peak"]["grid_import_kwh"], 1.44, 3)
+            self.assertAlmostEqual(totals["off_peak"]["grid_import_kwh"], 0.0, 3)
+            self.assertAlmostEqual(
+                totals["super_off_peak"]["grid_import_kwh"], 1.92, 3
+            )
+            # Nothing is created or lost by the split.
+            self.assertAlmostEqual(
+                sum(v["solar_generation_kwh"] for v in totals.values()), 4.2, 3
+            )
+            self.assertAlmostEqual(
+                sum(v["grid_import_kwh"] for v in totals.values()), 3.36, 3
+            )
+
+    def test_a_weekend_day_has_no_on_peak_energy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            day = datetime(2026, 1, 17, tzinfo=self.ZONE)  # a Saturday
+            self._log_day(store, day, {hour: (0.05, 0.0) for hour in range(8, 20)})
+
+            totals = store.tou_energy_totals(
+                int(day.timestamp()), int((day + timedelta(days=1)).timestamp())
+            )
+            store.close()
+            self.assertEqual(totals["on_peak"]["solar_generation_kwh"], 0.0)
+            self.assertAlmostEqual(totals["off_peak"]["solar_generation_kwh"], 7.2, 3)
+
+    def test_the_rollup_is_rebuilt_rather_than_accumulated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            day = datetime(2026, 1, 14, tzinfo=self.ZONE)
+            hours = {hour: (0.05, 0.0) for hour in range(9, 16)}
+            self._log_day(store, day, hours)
+            first = store.tou_energy_totals(
+                int(day.timestamp()), int((day + timedelta(days=1)).timestamp())
+            )
+            # Re-logging the same day must not double it: each write rebuilds the
+            # day from its readings instead of adding to a running total.
+            self._log_day(store, day, hours)
+            second = store.tou_energy_totals(
+                int(day.timestamp()), int((day + timedelta(days=1)).timestamp())
+            )
+            store.close()
+            self.assertEqual(first, second)
+
+    def test_backfill_rolls_up_history_that_predates_the_rate_change(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            day = datetime(2026, 1, 14, tzinfo=self.ZONE)
+            self._log_day(store, day, {hour: (0.05, 0.0) for hour in range(9, 16)})
+            # Drop the rollup the way an archive written before the switch looks.
+            store.connection.execute("DELETE FROM tou_energy")
+            store.connection.commit()
+            start = int(day.timestamp())
+            end = int((day + timedelta(days=1)).timestamp())
+            self.assertEqual(
+                store.tou_energy_totals(start, end)["off_peak"][
+                    "solar_generation_kwh"
+                ],
+                0.0,
+            )
+
+            self.assertEqual(store.backfill_tou_energy(budget_seconds=5.0), 1)
+            self.assertAlmostEqual(
+                store.tou_energy_totals(start, end)["off_peak"][
+                    "solar_generation_kwh"
+                ],
+                3.6,
+                3,
+            )
+            # A second pass finds nothing left to do.
+            self.assertEqual(store.backfill_tou_energy(budget_seconds=5.0), 0)
+            store.close()
+
+    def test_savings_energy_carries_the_split_for_every_window(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            today = datetime.now(self.ZONE).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            self._log_day(store, today, {hour: (0.05, 0.0) for hour in range(9, 16)})
+
+            savings = store.savings_energy(
+                "America/Los_Angeles", selected_date=today.date().isoformat()
+            )
+            store.close()
+            for window in ("date", "today", "month", "year", "retained"):
+                with self.subTest(window=window):
+                    split = savings[window]["tou"]
+                    self.assertEqual(
+                        set(split), {"on_peak", "off_peak", "super_off_peak"}
+                    )
+                    self.assertAlmostEqual(
+                        sum(v["solar_generation_kwh"] for v in split.values()), 4.2, 3
+                    )
+
+    def test_pruning_and_purging_clear_the_rollup_too(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            day = datetime.now(self.ZONE).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ) - timedelta(days=400)
+            self._log_day(store, day, {hour: (0.05, 0.0) for hour in range(9, 16)})
+            self.assertTrue(
+                store.connection.execute("SELECT COUNT(*) FROM tou_energy").fetchone()[0]
+            )
+            store.prune_older_than_days(30)
+            self.assertEqual(
+                store.connection.execute(
+                    "SELECT COUNT(*) FROM tou_energy"
+                ).fetchone()[0],
+                0,
+            )
+
+            self._log_day(
+                store,
+                datetime.now(self.ZONE).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ),
+                {hour: (0.05, 0.0) for hour in range(9, 16)},
+            )
+            purged = store.purge_all()
+            store.close()
+            self.assertIn("tou_energy", purged)
+            self.assertGreater(purged["tou_energy"], 0)
