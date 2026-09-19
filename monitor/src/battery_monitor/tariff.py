@@ -16,8 +16,9 @@ Period structure:
 * Super off-peak -- every day, 11:00 p.m. to 7:00 a.m., one price year round.
 * On-peak -- weekdays only, 7:00-10:00 a.m. and 5:00-8:00 p.m., priced by
   season. Legal holidays are never on-peak.
-* Off-peak -- everything else, which is the rest of 7:00 a.m. to 11:00 p.m.
-  on weekdays plus all of 7:00 a.m. to 11:00 p.m. on weekends and holidays.
+* Off-peak -- everything else: 10:00 a.m. to 5:00 p.m. and 8:00 to 11:00 p.m.
+  on a weekday, and the whole 7:00 a.m. to 11:00 p.m. block on a weekend or
+  holiday, where the on-peak windows do not apply.
 
 Seasons follow the schedule's calendar: winter is October 1 through March 31,
 summer is April 1 through September 30.
