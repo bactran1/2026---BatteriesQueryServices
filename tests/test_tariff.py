@@ -109,16 +109,17 @@ class TariffPeriodTests(unittest.TestCase):
 
     def test_rate_lookup_prefers_a_year_round_price(self) -> None:
         rates = {
-            "on_peak_winter": 0.475269,
-            "on_peak_summer": 0.256559,
-            "off_peak_winter": 0.119944,
-            "off_peak_summer": 0.115194,
-            "super_off_peak": 0.071296,
+            "on_peak_winter": 0.504,
+            "on_peak_summer": 0.272,
+            "off_peak_winter": 0.127,
+            "off_peak_summer": 0.122,
+            "super_off_peak": 0.076,
         }
-        self.assertEqual(rate_for(ON_PEAK, WINTER, rates), 0.475269)
-        self.assertEqual(rate_for(ON_PEAK, SUMMER, rates), 0.256559)
-        self.assertEqual(rate_for(SUPER_OFF_PEAK, WINTER, rates), 0.071296)
-        self.assertEqual(rate_for(SUPER_OFF_PEAK, SUMMER, rates), 0.071296)
+        self.assertEqual(rate_for(ON_PEAK, WINTER, rates), 0.504)
+        self.assertEqual(rate_for(ON_PEAK, SUMMER, rates), 0.272)
+        # Super off-peak carries one price, so the season does not change it.
+        self.assertEqual(rate_for(SUPER_OFF_PEAK, WINTER, rates), 0.076)
+        self.assertEqual(rate_for(SUPER_OFF_PEAK, SUMMER, rates), 0.076)
         self.assertIsNone(rate_for("nonsense", WINTER, rates))
 
 

@@ -47,7 +47,7 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual(settings.utility_tariff.on_peak_winter_usd_per_kwh, 0.52)
         # Unset prices keep the Schedule 327 defaults, and the tariff carries its
         # own clock so time-of-use periods do not follow the viewer's timezone.
-        self.assertEqual(settings.utility_tariff.super_off_peak_usd_per_kwh, 0.071296)
+        self.assertEqual(settings.utility_tariff.super_off_peak_usd_per_kwh, 0.076)
         self.assertEqual(settings.utility_tariff.timezone, "America/Los_Angeles")
         self.assertEqual(settings.utility_tariff.municipal_tax_percent, 6.5)
         self.assertTrue(settings.weather_enabled)

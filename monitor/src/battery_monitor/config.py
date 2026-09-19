@@ -143,23 +143,23 @@ def load_settings() -> Settings:
             timezone=os.getenv("BQM_UTILITY_TIMEZONE", "America/Los_Angeles"),
             on_peak_winter_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_ON_PEAK_WINTER_USD_PER_KWH", "0.475269")),
+                float(os.getenv("BQM_UTILITY_ON_PEAK_WINTER_USD_PER_KWH", "0.504")),
             ),
             on_peak_summer_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_ON_PEAK_SUMMER_USD_PER_KWH", "0.256559")),
+                float(os.getenv("BQM_UTILITY_ON_PEAK_SUMMER_USD_PER_KWH", "0.272")),
             ),
             off_peak_winter_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_OFF_PEAK_WINTER_USD_PER_KWH", "0.119944")),
+                float(os.getenv("BQM_UTILITY_OFF_PEAK_WINTER_USD_PER_KWH", "0.127")),
             ),
             off_peak_summer_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_OFF_PEAK_SUMMER_USD_PER_KWH", "0.115194")),
+                float(os.getenv("BQM_UTILITY_OFF_PEAK_SUMMER_USD_PER_KWH", "0.122")),
             ),
             super_off_peak_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH", "0.071296")),
+                float(os.getenv("BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH", "0.076")),
             ),
             basic_charge_usd=max(
                 0.0, float(os.getenv("BQM_UTILITY_BASIC_CHARGE_USD", "7.49"))

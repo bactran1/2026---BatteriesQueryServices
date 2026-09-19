@@ -104,11 +104,11 @@ Schedule 327 prices a kilowatt-hour by when it crossed the meter, not by how man
 
 | Period | Hours | Winter (Oct 1 – Mar 31) | Summer (Apr 1 – Sep 30) |
 | --- | --- | --- | --- |
-| On-peak | Weekdays 7–10 a.m. and 5–8 p.m., excluding legal holidays | `$0.475269/kWh` | `$0.256559/kWh` |
-| Off-peak | All other hours between 7 a.m. and 11 p.m., including all weekend and holiday daytime | `$0.119944/kWh` | `$0.115194/kWh` |
-| Super off-peak | Every day 11 p.m. to 7 a.m. | `$0.071296/kWh` | `$0.071296/kWh` |
+| Peak | Weekdays 7–10 a.m. and 5–8 p.m., excluding legal holidays | `$0.504/kWh` | `$0.272/kWh` |
+| Off-peak | Weekdays 10 a.m.–5 p.m. and 8 p.m.–11 p.m.; weekends and holidays 7 a.m.–11 p.m. | `$0.127/kWh` | `$0.122/kWh` |
+| Super off-peak | Every day 11 p.m.–7 a.m. | `$0.076/kWh` | `$0.076/kWh` |
 
-**Verify these prices against your own bill before relying on the figures.** They are the defaults, set through `BQM_UTILITY_*` (see `.env.example`), and every rate filing moves them. The period structure lives in `tariff.py` because it changes only when PSE refiles the schedule; the prices live in configuration because they do not.
+These are the prices PSE publishes for the plan, set through `BQM_UTILITY_*` (see `.env.example`); re-check them at each rate filing. The period structure lives in `tariff.py` because it changes only when PSE refiles the schedule; the prices live in configuration because they do not.
 
 Periods are resolved on the tariff's own clock (`BQM_UTILITY_TIMEZONE`, default `America/Los_Angeles`), not the browser's, and on wall-clock hours, so a daylight-saving change shifts them exactly as it shifts the meter. Legal holidays carry no on-peak hours; the six the schedule names are New Year's Day, Memorial Day, Independence Day, Labor Day, Thanksgiving and Christmas, observed on the nearest weekday when they land on a weekend.
 

@@ -32,11 +32,11 @@ class SavingsTests(unittest.TestCase):
             region="King County, WA",
             effective_date="2026-01-29",
             timezone="America/Los_Angeles",
-            on_peak_winter_usd_per_kwh=0.475269,
-            on_peak_summer_usd_per_kwh=0.256559,
-            off_peak_winter_usd_per_kwh=0.119944,
-            off_peak_summer_usd_per_kwh=0.115194,
-            super_off_peak_usd_per_kwh=0.071296,
+            on_peak_winter_usd_per_kwh=0.504,
+            on_peak_summer_usd_per_kwh=0.272,
+            off_peak_winter_usd_per_kwh=0.127,
+            off_peak_summer_usd_per_kwh=0.122,
+            super_off_peak_usd_per_kwh=0.076,
             basic_charge_usd=7.49,
             municipal_tax_percent=0,
         )
@@ -60,13 +60,13 @@ class SavingsTests(unittest.TestCase):
         )
         month = payload["periods"]["month"]
         # 20 kWh on-peak + 80 kWh off-peak, at the winter prices.
-        self.assertEqual(month["tou"]["on_peak"]["savings_usd"], 9.51)
-        self.assertEqual(month["tou"]["off_peak"]["savings_usd"], 9.6)
-        self.assertEqual(month["estimated_savings_usd"], 19.11)
+        self.assertEqual(month["tou"]["on_peak"]["savings_usd"], 10.08)
+        self.assertEqual(month["tou"]["off_peak"]["savings_usd"], 10.16)
+        self.assertEqual(month["estimated_savings_usd"], 20.24)
         # Grid: 10 on-peak, 15 off-peak, 25 super off-peak.
-        self.assertEqual(month["estimated_grid_cost_usd"], 8.33)
-        self.assertEqual(month["tou"]["super_off_peak"]["grid_cost_usd"], 1.78)
-        self.assertEqual(month["average_savings_per_observed_day_usd"], 1.91)
+        self.assertEqual(month["estimated_grid_cost_usd"], 8.85)
+        self.assertEqual(month["tou"]["super_off_peak"]["grid_cost_usd"], 1.9)
+        self.assertEqual(month["average_savings_per_observed_day_usd"], 2.02)
         self.assertEqual(month["solar_share_percent"], 66.7)
         self.assertTrue(month["tou_classified"])
         self.assertTrue(payload["methodology"]["fixed_charge_excluded"])
@@ -80,9 +80,9 @@ class SavingsTests(unittest.TestCase):
             now=WINTER_NOON,
         )
         month = payload["periods"]["month"]
-        # 19.11 / 100 kWh, well above the off-peak price the same energy would
+        # 20.24 / 100 kWh, well above the off-peak price the same energy would
         # have earned on a flat plan.
-        self.assertEqual(month["blended_solar_rate_usd_per_kwh"], 0.1911)
+        self.assertEqual(month["blended_solar_rate_usd_per_kwh"], 0.2024)
 
     def test_season_selects_the_on_peak_price(self) -> None:
         energy = {"month": {"solar_generation_kwh": 10, "observed_days": 1,
@@ -91,8 +91,8 @@ class SavingsTests(unittest.TestCase):
         summer = build_savings_payload(energy, self.tariff, now=SUMMER_NOON)
         self.assertEqual(winter["tariff"]["season"], "winter")
         self.assertEqual(summer["tariff"]["season"], "summer")
-        self.assertEqual(winter["periods"]["month"]["estimated_savings_usd"], 4.75)
-        self.assertEqual(summer["periods"]["month"]["estimated_savings_usd"], 2.57)
+        self.assertEqual(winter["periods"]["month"]["estimated_savings_usd"], 5.04)
+        self.assertEqual(summer["periods"]["month"]["estimated_savings_usd"], 2.72)
         # Super off-peak carries one price all year.
         self.assertEqual(
             winter["tariff"]["season_rates_usd_per_kwh"]["super_off_peak"],
@@ -117,8 +117,8 @@ class SavingsTests(unittest.TestCase):
 
     def test_the_rate_line_spans_the_cheapest_and_dearest_hour(self) -> None:
         tariff = build_savings_payload({}, self.tariff, now=WINTER_NOON)["tariff"]
-        self.assertEqual(tariff["effective_rate_low_usd_per_kwh"], 0.071296)
-        self.assertEqual(tariff["effective_rate_high_usd_per_kwh"], 0.475269)
+        self.assertEqual(tariff["effective_rate_low_usd_per_kwh"], 0.076)
+        self.assertEqual(tariff["effective_rate_high_usd_per_kwh"], 0.504)
 
     def test_a_window_with_no_rollup_yet_falls_back_to_the_off_peak_price(self) -> None:
         payload = build_savings_payload(
@@ -129,8 +129,8 @@ class SavingsTests(unittest.TestCase):
         )
         retained = payload["periods"]["retained"]
         self.assertFalse(retained["tou_classified"])
-        self.assertEqual(retained["estimated_savings_usd"], 11.99)
-        self.assertEqual(retained["estimated_grid_cost_usd"], 1.2)
+        self.assertEqual(retained["estimated_savings_usd"], 12.7)
+        self.assertEqual(retained["estimated_grid_cost_usd"], 1.27)
         self.assertIsNone(retained["blended_solar_rate_usd_per_kwh"])
 
     def test_missing_data_stays_missing_and_zero_stays_zero(self) -> None:
@@ -154,7 +154,7 @@ class SavingsTests(unittest.TestCase):
             now=WINTER_NOON,
         )
         # 10 kWh at the winter off-peak price plus 10% tax.
-        self.assertEqual(payload["periods"]["year"]["estimated_savings_usd"], 1.32)
+        self.assertEqual(payload["periods"]["year"]["estimated_savings_usd"], 1.4)
         self.assertEqual(payload["tariff"]["basic_charge_usd"], 7.49)
         self.assertTrue(payload["methodology"]["municipal_tax_included"])
 
