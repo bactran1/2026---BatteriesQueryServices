@@ -29,6 +29,14 @@
   --purple: #bf5af2;
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.08);
   --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.08);
+  /* Time-of-use chart palette. Held apart from the UI status colours because a
+     categorical chart palette has to clear colour-vision, lightness-band and
+     contrast checks that the interface tokens are not built for. These steps
+     were validated against this surface; re-validate before changing one. */
+  --tou-on-peak: #ac2f27;
+  --tou-off-peak: #4a71e0;
+  --tou-super-off-peak: #26a746;
+  --tou-solar: #7c848f;
 }
 
 :root[data-theme="dark"] {
@@ -60,6 +68,12 @@
   --orange: #ff9f0a;
   --red: #ff453a;
   --purple: #bf5af2;
+  /* Dark mode gets its own steps from the same hues, validated against the dark
+     panel surface -- not a lightened flip of the light-mode values. */
+  --tou-on-peak: #ff453a;
+  --tou-off-peak: #6183e4;
+  --tou-super-off-peak: #239840;
+  --tou-solar: #8a919b;
   --shadow: 0 20px 70px rgba(0, 0, 0, 0.36);
   --shadow-soft: 0 10px 32px rgba(0, 0, 0, 0.28);
 }
@@ -1767,9 +1781,20 @@ button {
   font-weight: 620;
 }
 
+.savings-tou__layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.62fr) minmax(0, 1fr);
+  gap: 22px 28px;
+  align-items: start;
+}
+
+.savings-tou__table {
+  min-width: 0;
+}
+
 .savings-tou__row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.6fr) repeat(4, minmax(72px, 1fr));
+  grid-template-columns: minmax(130px, 1.5fr) repeat(5, minmax(62px, 1fr));
   gap: 8px 14px;
   align-items: baseline;
   padding: 9px 0;
@@ -1814,20 +1839,24 @@ button {
   height: 7px;
   margin-right: 7px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--tou-colour, var(--muted));
   content: "";
 }
 
-.savings-tou__row[data-tou="on_peak"] strong::before {
-  background: var(--red);
+[data-tou="on_peak"] {
+  --tou-colour: var(--tou-on-peak);
 }
 
-.savings-tou__row[data-tou="off_peak"] strong::before {
-  background: var(--orange);
+[data-tou="off_peak"] {
+  --tou-colour: var(--tou-off-peak);
 }
 
-.savings-tou__row[data-tou="super_off_peak"] strong::before {
-  background: var(--green);
+[data-tou="super_off_peak"] {
+  --tou-colour: var(--tou-super-off-peak);
+}
+
+[data-tou="solar"] {
+  --tou-colour: var(--tou-solar);
 }
 
 .savings-tou__row small {
@@ -1838,21 +1867,169 @@ button {
   line-height: 1.3;
 }
 
+.savings-tou__row--total {
+  border-bottom: 0;
+  border-top: 1px solid var(--line-strong, var(--line));
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.savings-tou__row--total > span:not(:first-child) {
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ===== Electricity-value donut =====
+   One whole -- what this window's electricity was worth at Schedule 327 prices
+   -- split into the three periods that were bought and the share solar covered.
+   Every slice is direct-labelled in the legend, and the table beside it repeats
+   the same figures, so identity never rests on colour alone. */
+.savings-donut {
+  display: grid;
+  /* The plot and its legend share one width so they read as one block rather
+     than a centred ring above a full-width list. */
+  width: min(272px, 100%);
+  min-width: 0;
+  margin: 0;
+  gap: 11px;
+  justify-self: center;
+}
+
+.savings-donut__caption {
+  align-self: start;
+  justify-self: start;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.savings-donut__plot {
+  position: relative;
+  width: min(196px, 100%);
+  margin: 0 auto;
+  aspect-ratio: 1;
+}
+
+.savings-donut__svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.savings-donut__arc {
+  fill: var(--tou-colour, var(--muted));
+  /* The 2px surface ring keeps touching arcs separable. */
+  stroke: var(--panel-strong);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.savings-donut__centre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  pointer-events: none;
+  text-align: center;
+}
+
+.savings-donut__centre strong {
+  font-size: 25px;
+  font-weight: 760;
+  line-height: 1.05;
+}
+
+.savings-donut__centre small {
+  max-width: 96px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 640;
+  line-height: 1.25;
+}
+
+.savings-donut__legend {
+  display: grid;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  gap: 5px;
+  list-style: none;
+}
+
+.savings-donut__item {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto auto;
+  gap: 0 9px;
+  align-items: baseline;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.savings-donut__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--tou-colour, var(--muted));
+}
+
+.savings-donut__name {
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.savings-donut__value {
+  font-weight: 730;
+}
+
+.savings-donut__share {
+  min-width: 42px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.savings-donut__empty {
+  color: var(--muted);
+  font-size: 12px;
+  list-style: none;
+}
+
 .savings-tou__empty {
   padding: 12px 0;
   color: var(--muted);
   font-size: 12px;
 }
 
-@media (max-width: 760px) {
-  .savings-tou__row {
-    grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(60px, 1fr));
+@media (max-width: 1120px) {
+  .savings-tou__layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  /* Grid energy and solar value drop out first; the rate and solar kWh that
-     explain the number stay. */
-  .savings-tou__row > span:nth-child(4),
-  .savings-tou__row > span:nth-child(5) {
+  .savings-donut {
+    justify-self: center;
+  }
+}
+
+@media (max-width: 760px) {
+  .savings-tou__row {
+    grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(56px, 1fr));
+  }
+
+  /* The kWh columns drop out first: on a time-of-use bill the rate and the two
+     dollar figures are what the row is for. */
+  .savings-tou__row > span:nth-child(3),
+  .savings-tou__row > span:nth-child(4) {
     display: none;
   }
 }

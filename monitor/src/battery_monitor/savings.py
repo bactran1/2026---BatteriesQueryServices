@@ -124,29 +124,42 @@ def _period_value(
     classified_grid = sum(item["grid_import_kwh"] for item in priced.values())
     has_split = classified_solar > 0 or classified_grid > 0
 
-    # With no rollup yet (a window older than the archive, or one still being
-    # backfilled) the honest fallback is the season's off-peak price: solar and
-    # household draw both sit mostly in the off-peak block.
+    # Each side is settled on its own: a window can have its solar rolled up
+    # while its grid draw is not, and an unknown reading has to stay unknown
+    # rather than be reported as a confident zero. With no rollup for a side
+    # (a window older than the archive, or one still being backfilled) the
+    # honest fallback is the season's off-peak price, where both solar and
+    # household draw mostly sit.
     fallback = season_rates[OFF_PEAK]
-    savings = (
-        round(sum(item["savings_usd"] for item in priced.values()), 2)
-        if has_split
-        else _money(solar, fallback)
-    )
-    grid_cost = (
-        round(sum(item["grid_cost_usd"] for item in priced.values()), 2)
-        if has_split
-        else _money(grid, fallback)
-    )
+
+    def settle(total: float | None, classified: float, field: str) -> float | None:
+        if total is None:
+            return None
+        if classified <= 0:
+            return _money(total, fallback)
+        return round(sum(item[field] for item in priced.values()), 2)
+
+    savings = settle(solar, classified_solar, "savings_usd")
+    grid_cost = settle(grid, classified_grid, "grid_cost_usd")
     solar_rate = (
         round(savings / classified_solar, 6)
-        if has_split and classified_solar > 0 and savings is not None
+        if classified_solar > 0 and savings is not None
         else None
     )
     daily = (
         None
         if savings is None or observed_days <= 0
         else round(savings / observed_days, 2)
+    )
+
+    # What the window's electricity was worth at Schedule 327 prices: the part
+    # bought from the grid plus the part solar covered. This is the whole the
+    # dashboard's donut divides, so it is computed once here rather than added
+    # up again by every client.
+    cost_without_solar = (
+        None
+        if grid_cost is None and savings is None
+        else round((grid_cost or 0.0) + (savings or 0.0), 2)
     )
 
     return {
@@ -156,6 +169,7 @@ def _period_value(
         "observed_days": observed_days,
         "estimated_savings_usd": savings,
         "estimated_grid_cost_usd": grid_cost,
+        "cost_without_solar_usd": cost_without_solar,
         "average_savings_per_observed_day_usd": daily,
         "solar_share_percent": solar_share,
         "blended_solar_rate_usd_per_kwh": solar_rate,

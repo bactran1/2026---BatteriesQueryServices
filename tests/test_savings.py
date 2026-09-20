@@ -72,6 +72,75 @@ class SavingsTests(unittest.TestCase):
         self.assertTrue(payload["methodology"]["fixed_charge_excluded"])
         self.assertTrue(payload["methodology"]["priced_by_clock"])
 
+    def test_each_period_carries_the_cost_of_the_grid_it_bought(self) -> None:
+        payload = build_savings_payload(
+            {
+                "month": {
+                    "solar_generation_kwh": 214.6,
+                    "grid_import_kwh": 163.4,
+                    "observed_days": 18,
+                    "tou": split(on_grid=28.7, off_grid=52.1, super_grid=82.6,
+                                 on_solar=31.2, off_solar=183.4),
+                }
+            },
+            self.tariff,
+            now=WINTER_NOON,
+        )
+        month = payload["periods"]["month"]
+        # Each period's purchase at its own winter price.
+        self.assertEqual(month["tou"]["on_peak"]["grid_cost_usd"], 14.46)
+        self.assertEqual(month["tou"]["off_peak"]["grid_cost_usd"], 6.62)
+        self.assertEqual(month["tou"]["super_off_peak"]["grid_cost_usd"], 6.28)
+        # The parts add up to the window's grid charge.
+        self.assertEqual(
+            round(sum(v["grid_cost_usd"] for v in month["tou"].values()), 2),
+            month["estimated_grid_cost_usd"],
+        )
+        # On-peak is 17.6% of the kilowatt-hours bought but 52.9% of the money,
+        # which is the whole point of showing cost per period and not just kWh.
+        on_peak_kwh_share = 28.7 / 163.4
+        on_peak_cost_share = 14.46 / month["estimated_grid_cost_usd"]
+        self.assertLess(on_peak_kwh_share, 0.2)
+        self.assertGreater(on_peak_cost_share, 0.5)
+
+    def test_the_donut_whole_is_the_grid_bill_plus_what_solar_covered(self) -> None:
+        payload = build_savings_payload(
+            {
+                "month": {
+                    "solar_generation_kwh": 214.6,
+                    "grid_import_kwh": 163.4,
+                    "observed_days": 18,
+                    "tou": split(on_grid=28.7, off_grid=52.1, super_grid=82.6,
+                                 on_solar=31.2, off_solar=183.4),
+                }
+            },
+            self.tariff,
+            now=WINTER_NOON,
+        )
+        month = payload["periods"]["month"]
+        self.assertEqual(month["estimated_grid_cost_usd"], 27.36)
+        self.assertEqual(month["estimated_savings_usd"], 39.01)
+        self.assertEqual(month["cost_without_solar_usd"], 66.37)
+
+    def test_the_whole_survives_a_window_with_only_one_side_recorded(self) -> None:
+        # Solar but no grid reading, and the reverse: the total is still the sum
+        # of what is known rather than collapsing to nothing.
+        solar_only = build_savings_payload(
+            {"date": {"solar_generation_kwh": 10, "grid_import_kwh": None,
+                      "observed_days": 1, "tou": split(off_solar=10)}},
+            self.tariff, now=WINTER_NOON,
+        )["periods"]["date"]
+        self.assertEqual(solar_only["estimated_savings_usd"], 1.27)
+        self.assertIsNone(solar_only["estimated_grid_cost_usd"])
+        self.assertEqual(solar_only["cost_without_solar_usd"], 1.27)
+
+        nothing = build_savings_payload(
+            {"date": {"solar_generation_kwh": None, "grid_import_kwh": None,
+                      "observed_days": 0}},
+            self.tariff, now=WINTER_NOON,
+        )["periods"]["date"]
+        self.assertIsNone(nothing["cost_without_solar_usd"])
+
     def test_the_blended_rate_reports_what_the_solar_actually_earned(self) -> None:
         payload = build_savings_payload(
             {"month": {"solar_generation_kwh": 100, "observed_days": 1,
