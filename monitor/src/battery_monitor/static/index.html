@@ -449,15 +449,40 @@
               <span data-i18n="savings.touTitle">By time-of-use period</span>
               <small id="savingsTouSeason" data-i18n="savings.touSeasonUnknown">Season rates</small>
             </div>
-            <div class="savings-tou__table" role="table">
-              <div class="savings-tou__row savings-tou__row--head" role="row">
-                <span role="columnheader" data-i18n="savings.touPeriod">Period</span>
-                <span role="columnheader" data-i18n="savings.touRate">Rate</span>
-                <span role="columnheader" data-i18n="savings.touSolar">Solar</span>
-                <span role="columnheader" data-i18n="savings.touGrid">Grid</span>
-                <span role="columnheader" data-i18n="savings.touValue">Solar value</span>
+            <div class="savings-tou__layout">
+              <figure class="savings-donut">
+                <figcaption class="savings-donut__caption" data-i18n="savings.donutTitle">Where the electricity value went</figcaption>
+                <div class="savings-donut__plot">
+                  <svg id="savingsDonutChart" class="savings-donut__svg" viewBox="0 0 200 200" role="img" aria-labelledby="savingsDonutTitle savingsDonutDesc">
+                    <title id="savingsDonutTitle" data-i18n="savings.donutTitle">Where the electricity value went</title>
+                    <desc id="savingsDonutDesc" data-i18n="savings.donutDesc">Grid purchase cost by time-of-use period, plus the share solar covered. The table beside it lists the same figures.</desc>
+                  </svg>
+                  <div class="savings-donut__centre" aria-hidden="true">
+                    <strong id="savingsDonutTotal">--</strong>
+                    <small data-i18n="savings.donutTotal">Electricity value</small>
+                  </div>
+                </div>
+                <ul id="savingsDonutLegend" class="savings-donut__legend"></ul>
+              </figure>
+              <div class="savings-tou__table" role="table">
+                <div class="savings-tou__row savings-tou__row--head" role="row">
+                  <span role="columnheader" data-i18n="savings.touPeriod">Period</span>
+                  <span role="columnheader" data-i18n="savings.touRate">Rate</span>
+                  <span role="columnheader" data-i18n="savings.touSolar">Solar</span>
+                  <span role="columnheader" data-i18n="savings.touGrid">Grid</span>
+                  <span role="columnheader" data-i18n="savings.touGridCost">Grid cost</span>
+                  <span role="columnheader" data-i18n="savings.touValue">Solar value</span>
+                </div>
+                <div id="savingsTouRows"></div>
+                <div class="savings-tou__row savings-tou__row--total" role="row">
+                  <span role="cell" data-i18n="savings.touTotal">All periods</span>
+                  <span role="cell"></span>
+                  <span role="cell" id="savingsTouTotalSolar">--</span>
+                  <span role="cell" id="savingsTouTotalGrid">--</span>
+                  <span role="cell" id="savingsTouTotalGridCost">--</span>
+                  <span role="cell" id="savingsTouTotalValue">--</span>
+                </div>
               </div>
-              <div id="savingsTouRows"></div>
             </div>
           </div>
           <div class="savings-tariff" aria-label="Utility rate assumptions" data-i18n-aria-label="savings.tariffAria">

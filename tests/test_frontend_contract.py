@@ -7,6 +7,7 @@ from pathlib import Path
 from battery_monitor.assets import BUILD_TOKEN, asset_version, cache_control_for, render_index
 
 ROOT = Path(__file__).resolve().parents[1]
+MONITOR = Path(__file__).resolve().parents[1] / "monitor/src/battery_monitor"
 STATIC = ROOT / "monitor" / "src" / "battery_monitor" / "static"
 
 
@@ -444,7 +445,29 @@ class FrontendContractTests(unittest.TestCase):
             javascript,
         )
         self.assertIn(".savings-tou__row", css)
-        self.assertIn('.savings-tou__row[data-tou="on_peak"]', css)
+
+        # Grid purchase cost per period, and the donut that divides the whole.
+        self.assertIn('data-i18n="savings.touGridCost"', html)
+        self.assertIn('id="savingsTouTotalGridCost"', html)
+        self.assertIn('id="savingsDonutChart"', html)
+        self.assertIn('id="savingsDonutLegend"', html)
+        self.assertIn('id="savingsDonutTotal"', html)
+        self.assertIn("function renderSavingsDonut", javascript)
+        self.assertIn("function donutArcPath", javascript)
+        self.assertIn("cost_without_solar_usd", (MONITOR / "savings.py").read_text(encoding="utf-8"))
+        self.assertIn('"savings.donutSolar": "Solar offset"', javascript)
+        self.assertIn('"savings.donutSolar": "Mặt trời bù đắp"', javascript)
+        # The chart palette is its own token set, validated against each surface
+        # rather than reusing the interface status colours.
+        for token in ("--tou-on-peak", "--tou-off-peak", "--tou-super-off-peak", "--tou-solar"):
+            self.assertEqual(css.count(f"{token}:"), 2, f"{token} needs a light and a dark step")
+        self.assertIn(".savings-donut__arc", css)
+        # The donut is described for screen readers and repeated as a table.
+        self.assertIn('id="savingsDonutDesc"', html)
+        self.assertIn('role="img"', html)
+        # One period-colour mapping, shared by the table dots and the donut.
+        self.assertIn('[data-tou="on_peak"] {', css)
+        self.assertIn("--tou-colour: var(--tou-on-peak)", css)
         # The tier range is gone from the markup, the strings and the code.
         for retired in ("savingsTierLimit", "savings.tierThreshold", "Schedule 7"):
             self.assertNotIn(retired, html)

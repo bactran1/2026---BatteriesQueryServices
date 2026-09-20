@@ -284,7 +284,15 @@ const translations = {
     "savings.touRate": "Rate",
     "savings.touSolar": "Solar",
     "savings.touGrid": "Grid",
+    "savings.touGridCost": "Grid cost",
     "savings.touValue": "Solar value",
+    "savings.touTotal": "All periods",
+    "savings.donutTitle": "Where the electricity value went",
+    "savings.donutDesc": "Grid purchase cost by time-of-use period, plus the share solar covered. The table beside it lists the same figures.",
+    "savings.donutTotal": "Electricity value",
+    "savings.donutSolar": "Solar offset",
+    "savings.donutGridShare": "{share}% bought from the grid",
+    "savings.donutAwaiting": "Awaiting priced energy for this period",
     "savings.touSeasonUnknown": "Season rates",
     "savings.touSeasonWinter": "Winter rates · Oct 1 – Mar 31",
     "savings.touSeasonSummer": "Summer rates · Apr 1 – Sep 30",
@@ -692,7 +700,15 @@ const translations = {
     "savings.touRate": "Đơn giá",
     "savings.touSolar": "Mặt trời",
     "savings.touGrid": "Lưới điện",
+    "savings.touGridCost": "Chi phí lưới",
     "savings.touValue": "Giá trị mặt trời",
+    "savings.touTotal": "Tất cả khung giờ",
+    "savings.donutTitle": "Giá trị điện đã đi về đâu",
+    "savings.donutDesc": "Chi phí mua điện từ lưới theo khung giờ, cùng phần do điện mặt trời bù đắp. Bảng bên cạnh liệt kê cùng các số liệu.",
+    "savings.donutTotal": "Giá trị điện",
+    "savings.donutSolar": "Mặt trời bù đắp",
+    "savings.donutGridShare": "{share}% mua từ lưới điện",
+    "savings.donutAwaiting": "Đang chờ dữ liệu đã tính giá cho kỳ này",
     "savings.touSeasonUnknown": "Giá theo mùa",
     "savings.touSeasonWinter": "Giá mùa đông · 1/10 – 31/3",
     "savings.touSeasonSummer": "Giá mùa hè · 1/4 – 30/9",
@@ -2541,9 +2557,110 @@ function renderSavingsTou(period, tariff) {
         <span role="cell">${escapeHtml(formatRate(values.rate_usd_per_kwh))}</span>
         <span role="cell">${escapeHtml(formatEnergyWithUnit(values.solar_generation_kwh))}</span>
         <span role="cell">${escapeHtml(formatEnergyWithUnit(values.grid_import_kwh))}</span>
+        <span role="cell">${escapeHtml(formatCurrency(values.grid_cost_usd))}</span>
         <span role="cell">${escapeHtml(formatCurrency(values.savings_usd))}</span>
       </div>`)
     .join("");
+
+  const sum = (field) => rows.reduce((total, row) => total + (finiteNumber(row.values[field]) ?? 0), 0);
+  $("savingsTouTotalSolar").textContent = formatEnergyWithUnit(sum("solar_generation_kwh"));
+  $("savingsTouTotalGrid").textContent = formatEnergyWithUnit(sum("grid_import_kwh"));
+  $("savingsTouTotalGridCost").textContent = formatCurrency(sum("grid_cost_usd"));
+  $("savingsTouTotalValue").textContent = formatCurrency(sum("savings_usd"));
+  renderSavingsDonut(period, rows);
+}
+
+// The donut divides one whole: what this window's electricity was worth at
+// Schedule 327 prices. Three slices are the grid purchase, split by the period
+// that priced it; the fourth is the part solar covered, which is money that was
+// never spent -- so it wears the neutral, not a fourth category hue.
+const DONUT_GAP_DEGREES = 1.6;
+
+function renderSavingsDonut(period, rows) {
+  const svg = $("savingsDonutChart");
+  const legend = $("savingsDonutLegend");
+  const centre = $("savingsDonutTotal");
+  if (!svg || !legend || !centre) return;
+
+  const slices = rows
+    .map(({ key, values }) => ({
+      key,
+      label: t(TOU_PERIOD_LABELS[key]),
+      value: Math.max(0, finiteNumber(values.grid_cost_usd) ?? 0),
+    }))
+    .filter((slice) => slice.value > 0);
+  const savings = Math.max(0, finiteNumber(period.estimated_savings_usd) ?? 0);
+  if (savings > 0) {
+    slices.push({ key: "solar", label: t("savings.donutSolar"), value: savings });
+  }
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  centre.textContent = total > 0 ? formatCurrency(total) : "--";
+
+  if (!total) {
+    svg.replaceChildren(...svg.querySelectorAll("title, desc"));
+    legend.innerHTML = `<li class="savings-donut__empty">${escapeHtml(t("savings.donutAwaiting"))}</li>`;
+    return;
+  }
+
+  // One 2px surface gap between neighbouring arcs, so touching slices stay
+  // separable without relying on their colours alone.
+  const gap = slices.length > 1 ? DONUT_GAP_DEGREES : 0;
+  let cursor = -90;
+  const arcs = slices.map((slice) => {
+    const sweep = (slice.value / total) * 360;
+    const start = cursor + gap / 2;
+    const end = cursor + sweep - gap / 2;
+    cursor += sweep;
+    return { ...slice, path: donutArcPath(start, Math.max(start + 0.01, end)) };
+  });
+
+  svg.replaceChildren(
+    ...svg.querySelectorAll("title, desc"),
+    ...arcs.map((arc) => {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("class", "savings-donut__arc");
+      path.setAttribute("d", arc.path);
+      path.dataset.tou = arc.key;
+      return path;
+    }),
+  );
+
+  // Four slices, so every one is direct-labelled with its share and dollars:
+  // identity never rests on colour alone.
+  legend.innerHTML = arcs
+    .map((arc) => `
+      <li class="savings-donut__item" data-tou="${escapeHtml(arc.key)}">
+        <span class="savings-donut__swatch" aria-hidden="true"></span>
+        <span class="savings-donut__name">${escapeHtml(arc.label)}</span>
+        <span class="savings-donut__value">${escapeHtml(formatCurrency(arc.value))}</span>
+        <span class="savings-donut__share">${escapeHtml(formatPercent(arc.value / total * 100))}</span>
+      </li>`)
+    .join("");
+}
+
+// A donut arc as an SVG path: outer edge clockwise, inner edge back.
+function donutArcPath(startDegrees, endDegrees, outer = 84, inner = 56) {
+  const point = (radius, degrees) => {
+    const radians = (degrees * Math.PI) / 180;
+    return `${(100 + radius * Math.cos(radians)).toFixed(2)} ${(100 + radius * Math.sin(radians)).toFixed(2)}`;
+  };
+  const large = endDegrees - startDegrees > 180 ? 1 : 0;
+  return [
+    `M ${point(outer, startDegrees)}`,
+    `A ${outer} ${outer} 0 ${large} 1 ${point(outer, endDegrees)}`,
+    `L ${point(inner, endDegrees)}`,
+    `A ${inner} ${inner} 0 ${large} 0 ${point(inner, startDegrees)}`,
+    "Z",
+  ].join(" ");
+}
+
+function formatPercent(value) {
+  const number = finiteNumber(value);
+  if (number === null) return "--";
+  return `${new Intl.NumberFormat(currentLocale(), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: number < 10 ? 1 : 0,
+  }).format(number)}%`;
 }
 
 function formatRate(value) {
