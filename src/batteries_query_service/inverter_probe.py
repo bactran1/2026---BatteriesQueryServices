@@ -6,6 +6,11 @@ import sys
 import time
 from typing import Sequence
 
+from .register_discovery import (
+    classify_samples,
+    compare_snapshots,
+)
+from .register_discovery import parse_ranges as parse_discovery_ranges
 from .renogy_x import (
     UNDEFINED_REGISTER,
     RenogyXModbusClient,
@@ -14,6 +19,13 @@ from .renogy_x import (
     describe_modbus_frame,
     utc_now,
 )
+from .solarman_v5 import SolarmanV5ModbusClient, SolarmanV5Settings
+
+# Where a Megarevo-family inverter's settings plausibly live. The telemetry this
+# service reads sits at 0x3100+; the protocol version and serial number answer
+# from 0x1219 and 0x1234, so the surrounding blocks are the first place to look
+# for the work-mode register. Widen with --range if nothing turns up.
+DISCOVERY_RANGES = ("0x1000:0x13FF", "0x2000:0x20FF")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -29,6 +41,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return dump(args)
         if args.command == "watch":
             return watch(args)
+        if args.command == "snapshot":
+            return snapshot(args)
+        if args.command == "compare":
+            return compare(args)
     except KeyboardInterrupt:
         return 130
     except Exception as exc:
@@ -74,6 +90,50 @@ def build_parser() -> argparse.ArgumentParser:
     watch_parser.add_argument("--duration", type=float, default=60.0)
     watch_parser.add_argument("--json", action="store_true")
 
+    snapshot_parser = subparsers.add_parser(
+        "snapshot",
+        help=(
+            "sample settings registers repeatedly and record which ones hold "
+            "still (read-only; run once per work mode)"
+        ),
+    )
+    add_transport_arguments(snapshot_parser)
+    add_active_argument(snapshot_parser)
+    add_discovery_range_arguments(snapshot_parser)
+    snapshot_parser.add_argument(
+        "--label",
+        required=True,
+        help="what the inverter is set to right now, e.g. SELFCONSUME",
+    )
+    snapshot_parser.add_argument(
+        "--out", required=True, help="file to write the snapshot to"
+    )
+    snapshot_parser.add_argument("--samples", type=int, default=4)
+    snapshot_parser.add_argument("--interval", type=float, default=3.0)
+
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help=(
+            "take a second snapshot and report which stable register the mode "
+            "change moved (read-only)"
+        ),
+    )
+    add_transport_arguments(compare_parser)
+    add_active_argument(compare_parser)
+    add_discovery_range_arguments(compare_parser)
+    compare_parser.add_argument(
+        "--baseline", required=True, help="snapshot file taken before the change"
+    )
+    compare_parser.add_argument(
+        "--label",
+        required=True,
+        help="what the inverter is set to now, e.g. BAT PRIORITY",
+    )
+    compare_parser.add_argument("--out", help="optional file to write this snapshot to")
+    compare_parser.add_argument("--samples", type=int, default=4)
+    compare_parser.add_argument("--interval", type=float, default=3.0)
+    compare_parser.add_argument("--json", action="store_true")
+
     capture_parser = subparsers.add_parser(
         "capture",
         help="passively capture Modbus frames without transmitting",
@@ -100,6 +160,162 @@ def add_active_argument(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="confirm this tool may transmit read-only Modbus requests",
     )
+
+
+def add_transport_arguments(parser: argparse.ArgumentParser) -> None:
+    """Serial or the SOLARMAN logger.
+
+    Discovery has to work over whichever link the inverter is actually on. This
+    deployment reads it through the LSW-5 logger, so serial-only would make the
+    tool useless here.
+    """
+    parser.add_argument(
+        "--transport",
+        choices=("serial", "solarman"),
+        default="serial",
+        help="how to reach the inverter (default: serial)",
+    )
+    parser.add_argument("--port", help="serial device, e.g. /dev/ttyUSB1")
+    parser.add_argument("--baudrate", type=int, choices=(9600, 19200), default=9600)
+    parser.add_argument("--parity", choices=("N", "E", "O"), default="N")
+    parser.add_argument("--host", help="SOLARMAN logger address")
+    parser.add_argument("--logger-serial", type=int, help="serial printed on the logger")
+    parser.add_argument("--logger-port", type=int, default=8899)
+    parser.add_argument("--address", type=int, default=1)
+    parser.add_argument("--timeout", type=float, default=2.0)
+
+
+def add_discovery_range_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--range",
+        action="append",
+        dest="ranges",
+        metavar="START:END",
+        help=(
+            "inclusive register range; may be repeated (default: "
+            + ", ".join(DISCOVERY_RANGES)
+            + ")"
+        ),
+    )
+    parser.add_argument("--chunk-size", type=int, default=60)
+
+
+def discovery_client(args: argparse.Namespace):
+    if args.transport == "solarman":
+        if not args.host or args.logger_serial is None:
+            raise ValueError(
+                "--host and --logger-serial are required for --transport solarman"
+            )
+        return SolarmanV5ModbusClient(
+            SolarmanV5Settings(
+                host=args.host,
+                logger_serial=args.logger_serial,
+                port=args.logger_port,
+                timeout_seconds=args.timeout,
+            )
+        )
+    if not args.port:
+        raise ValueError("--port is required for --transport serial")
+    return RenogyXModbusClient(
+        RenogyXSerialSettings(
+            port=args.port,
+            baudrate=args.baudrate,
+            timeout_seconds=args.timeout,
+            parity=args.parity,
+        )
+    )
+
+
+def collect_snapshot(args: argparse.Namespace, label: str) -> dict:
+    """Read the ranges several times so telemetry can be told from settings."""
+    if args.samples < 2:
+        raise ValueError("at least two samples are needed to spot a moving register")
+    if args.interval <= 0:
+        raise ValueError("sample interval must be greater than zero")
+
+    ranges = parse_discovery_ranges(args.ranges, DISCOVERY_RANGES)
+    client = discovery_client(args)
+    samples: list[dict[int, int]] = []
+    errors: list[dict[str, object]] = []
+    for index in range(args.samples):
+        if index:
+            time.sleep(args.interval)
+        registers, read_errors = client.read_ranges(
+            args.address,
+            ranges,
+            chunk_size=args.chunk_size,
+            continue_on_error=True,
+        )
+        samples.append(registers)
+        errors.extend(read_errors)
+        print(
+            f"sample {index + 1}/{args.samples}: {len(registers)} registers",
+            file=sys.stderr,
+        )
+
+    classified = classify_samples(samples)
+    return {
+        "captured_at": utc_now(),
+        "label": label,
+        "transport": args.transport,
+        "address": args.address,
+        "ranges": [[start, count] for start, count in ranges],
+        "interval_seconds": args.interval,
+        "read_errors": errors,
+        **classified,
+    }
+
+
+def snapshot(args: argparse.Namespace) -> int:
+    result = collect_snapshot(args, args.label)
+    with open(args.out, "w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2, sort_keys=True)
+    print(
+        f"{args.label}: {len(result['stable'])} stable, "
+        f"{len(result['volatile'])} moving on their own -> {args.out}"
+    )
+    print(
+        "Now change the work mode on the inverter's LCD "
+        "(SYS SETTING > SETUP > WORK MODE), then run 'compare'."
+    )
+    return 0
+
+
+def compare(args: argparse.Namespace) -> int:
+    with open(args.baseline, encoding="utf-8") as handle:
+        baseline = json.load(handle)
+    current = collect_snapshot(args, args.label)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as handle:
+            json.dump(current, handle, indent=2, sort_keys=True)
+
+    result = compare_snapshots(baseline, current)
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+
+    print()
+    print(
+        f"{result['baseline_label']} -> {result['current_label']}: "
+        f"{len(result['candidates'])} candidate register(s) "
+        f"out of {result['compared_registers']} compared"
+    )
+    for candidate in result["candidates"]:
+        before, after = candidate["before"], candidate["after"]
+        print(
+            f"  register {candidate['register']:>6}  "
+            f"{before['hex']} -> {after['hex']}  "
+            f"({before['unsigned']} -> {after['unsigned']})"
+        )
+    for note in result["notes"]:
+        print(f"  - {note}")
+    if result["unreadable_on_one_side"]:
+        print(
+            f"  - {len(result['unreadable_on_one_side'])} register(s) were "
+            "readable on only one side and were not compared.",
+            file=sys.stderr,
+        )
+    return 0
 
 
 def add_range_arguments(parser: argparse.ArgumentParser) -> None:
