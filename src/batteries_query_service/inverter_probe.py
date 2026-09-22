@@ -7,8 +7,12 @@ import time
 from typing import Sequence
 
 from .register_discovery import (
+    READ_REFUSED,
+    classify_read_failure,
     classify_samples,
     compare_snapshots,
+    format_range,
+    map_readable_blocks,
 )
 from .register_discovery import parse_ranges as parse_discovery_ranges
 from .renogy_x import (
@@ -26,6 +30,12 @@ from .solarman_v5 import SolarmanV5ModbusClient, SolarmanV5Settings
 # from 0x1219 and 0x1234, so the surrounding blocks are the first place to look
 # for the work-mode register. Widen with --range if nothing turns up.
 DISCOVERY_RANGES = ("0x1000:0x13FF", "0x2000:0x20FF")
+
+# What `map` sweeps by default. The first two are where a setting plausibly
+# lives; 0x3100:0x31FF is the telemetry this service already reads every poll,
+# included as a positive control -- it has known gaps at 0x3183 and 0x319E, so a
+# map that does not show those blocks is not reporting the inverter faithfully.
+MAP_RANGES = ("0x1000:0x13FF", "0x2000:0x20FF", "0x3100:0x31FF")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -45,6 +55,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return snapshot(args)
         if args.command == "compare":
             return compare(args)
+        if args.command == "map":
+            return map_blocks(args)
     except KeyboardInterrupt:
         return 130
     except Exception as exc:
@@ -134,6 +146,35 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument("--interval", type=float, default=3.0)
     compare_parser.add_argument("--json", action="store_true")
 
+    map_parser = subparsers.add_parser(
+        "map",
+        help=(
+            "find which register blocks the inverter answers at all, by "
+            "halving refused reads (read-only)"
+        ),
+    )
+    add_transport_arguments(map_parser)
+    add_active_argument(map_parser)
+    add_discovery_range_arguments(map_parser, MAP_RANGES)
+    map_parser.add_argument(
+        "--stride",
+        type=int,
+        default=8,
+        help=(
+            "probe one register every STRIDE addresses; every block at least "
+            "this wide is found, narrower ones can slip between probes "
+            "(default: 8)"
+        ),
+    )
+    map_parser.add_argument(
+        "--max-reads",
+        type=int,
+        default=2000,
+        help="bound on the sweep; what is left over is reported (default: 2000)",
+    )
+    map_parser.add_argument("--out", help="file to write the map to")
+    map_parser.add_argument("--json", action="store_true")
+
     capture_parser = subparsers.add_parser(
         "capture",
         help="passively capture Modbus frames without transmitting",
@@ -185,7 +226,10 @@ def add_transport_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--timeout", type=float, default=2.0)
 
 
-def add_discovery_range_arguments(parser: argparse.ArgumentParser) -> None:
+def add_discovery_range_arguments(
+    parser: argparse.ArgumentParser,
+    default_ranges: Sequence[str] = DISCOVERY_RANGES,
+) -> None:
     parser.add_argument(
         "--range",
         action="append",
@@ -193,11 +237,35 @@ def add_discovery_range_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="START:END",
         help=(
             "inclusive register range; may be repeated (default: "
-            + ", ".join(DISCOVERY_RANGES)
+            + ", ".join(default_ranges)
             + ")"
         ),
     )
+    parser.add_argument(
+        "--ranges-from",
+        metavar="MAP",
+        help=(
+            "read the ranges from a 'map' result instead, so a snapshot asks "
+            "only for blocks the inverter answers"
+        ),
+    )
     parser.add_argument("--chunk-size", type=int, default=60)
+
+
+def resolve_ranges(
+    args: argparse.Namespace, default_ranges: Sequence[str]
+) -> list[tuple[int, int]]:
+    """Explicit --range wins, then a map file, then the built-in default."""
+    if args.ranges:
+        return parse_discovery_ranges(args.ranges, default_ranges)
+    source = getattr(args, "ranges_from", None)
+    if source:
+        with open(source, encoding="utf-8") as handle:
+            mapped = json.load(handle).get("ranges") or []
+        if not mapped:
+            raise ValueError(f"{source} lists no readable ranges")
+        return parse_discovery_ranges(mapped, default_ranges)
+    return parse_discovery_ranges(None, default_ranges)
 
 
 def discovery_client(args: argparse.Namespace):
@@ -233,7 +301,7 @@ def collect_snapshot(args: argparse.Namespace, label: str) -> dict:
     if args.interval <= 0:
         raise ValueError("sample interval must be greater than zero")
 
-    ranges = parse_discovery_ranges(args.ranges, DISCOVERY_RANGES)
+    ranges = resolve_ranges(args, DISCOVERY_RANGES)
     client = discovery_client(args)
     samples: list[dict[int, int]] = []
     errors: list[dict[str, object]] = []
@@ -274,6 +342,22 @@ def snapshot(args: argparse.Namespace) -> int:
         f"{args.label}: {len(result['stable'])} stable, "
         f"{len(result['volatile'])} moving on their own -> {args.out}"
     )
+    refused = sum(
+        int(error.get("count") or 0)
+        for error in result["read_errors"]
+        if classify_read_failure(RuntimeError(str(error.get("error"))))
+        == READ_REFUSED
+    )
+    if refused:
+        # Worth saying out loud: a refused chunk takes every register in it
+        # down with it, so a snapshot can look healthy while covering almost
+        # nothing. 'map' is what turns that back into usable ranges.
+        print(
+            f"  {refused} register read(s) were refused as out of range. "
+            "Run 'map' and rerun with --ranges-from to cover only the blocks "
+            "this inverter answers.",
+            file=sys.stderr,
+        )
     print(
         "Now change the work mode on the inverter's LCD "
         "(SYS SETTING > SETUP > WORK MODE), then run 'compare'."
@@ -303,7 +387,8 @@ def compare(args: argparse.Namespace) -> int:
     for candidate in result["candidates"]:
         before, after = candidate["before"], candidate["after"]
         print(
-            f"  register {candidate['register']:>6}  "
+            f"  register 0x{candidate['register']:04X} "
+            f"({candidate['register']})  "
             f"{before['hex']} -> {after['hex']}  "
             f"({before['unsigned']} -> {after['unsigned']})"
         )
@@ -316,6 +401,94 @@ def compare(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
     return 0
+
+
+def map_blocks(args: argparse.Namespace) -> int:
+    """Sweep for readable blocks so a snapshot can ask only for those."""
+    ranges = resolve_ranges(args, MAP_RANGES)
+    client = discovery_client(args)
+    scanned = sum(count for _, count in ranges)
+    print(
+        f"mapping {scanned} register(s) across {len(ranges)} range(s), "
+        f"probing every {args.stride}",
+        file=sys.stderr,
+    )
+
+    def read(start: int, count: int) -> list[int]:
+        return client.read_holding_registers(args.address, start, count)
+
+    def progress(start: int, count: int, outcome: str) -> None:
+        if outcome == "ok":
+            print(f"  {format_range(start, count)} answered", file=sys.stderr)
+
+    result = map_readable_blocks(
+        read,
+        ranges,
+        stride=args.stride,
+        edge_read=args.chunk_size,
+        max_reads=args.max_reads,
+        on_read=progress,
+    )
+    result["captured_at"] = utc_now()
+    result["address"] = args.address
+    result["transport"] = args.transport
+    result["scanned_ranges"] = [format_range(start, count) for start, count in ranges]
+
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as handle:
+            json.dump(_jsonable_map(result), handle, indent=2, sort_keys=True)
+    if args.json:
+        print(json.dumps(_jsonable_map(result), indent=2, sort_keys=True))
+        return 0
+
+    readable = result["readable"]
+    total = sum(count for _, count in readable)
+    print()
+    print(
+        f"{len(readable)} readable block(s), {total} register(s), "
+        f"in {result['reads']} read(s)"
+    )
+    for start, count in readable:
+        undefined = sum(
+            1
+            for address in range(start, start + count)
+            if result["values"].get(address) == UNDEFINED_REGISTER
+        )
+        suffix = f", {undefined} reading 0xFFFF" if undefined else ""
+        print(f"  {format_range(start, count)}  {count} register(s){suffix}")
+    if not readable:
+        print(
+            f"  none; nothing at least {result['stride']} register(s) wide "
+            "answered. Lower --stride or widen --range."
+        )
+    if result["unverified"]:
+        print(
+            f"  {len(result['unverified'])} block(s) failed on the link rather "
+            "than being refused; rerun those ranges before trusting the gaps"
+        )
+    if result["budget_exhausted"]:
+        print(
+            f"  budget spent with {len(result['unscanned'])} block(s) unscanned; "
+            "raise --max-reads or narrow --range"
+        )
+    if args.out:
+        print()
+        print(f"map written to {args.out}")
+        print(f"  reuse it with: snapshot --ranges-from {args.out}")
+    return 0
+
+
+def _jsonable_map(result: dict) -> dict:
+    """Tuples and integer keys do not survive JSON; ranges have to come back."""
+    blocks = ("readable", "refused", "unverified", "unscanned")
+    return {
+        **{key: value for key, value in result.items() if key not in blocks},
+        **{
+            key: [format_range(start, count) for start, count in result[key]]
+            for key in blocks
+        },
+        "values": {str(address): value for address, value in result["values"].items()},
+    }
 
 
 def add_range_arguments(parser: argparse.ArgumentParser) -> None:

@@ -3,12 +3,49 @@ from __future__ import annotations
 import unittest
 
 from batteries_query_service.register_discovery import (
+    READ_FAILED,
+    READ_REFUSED,
     UNDEFINED_REGISTER,
+    classify_read_failure,
     classify_samples,
     compare_snapshots,
+    format_range,
+    map_readable_blocks,
     parse_ranges,
     register_views,
 )
+
+
+class IllegalDataAddressError(Exception):
+    """umodbus raises this class, carrying its own docstring, through pysolarmanv5.
+
+    The data address received in the request is not an allowable address for
+    the server.
+    """
+
+
+class FakeInverter:
+    """An inverter that exposes islands and refuses any read touching a gap.
+
+    This is the behaviour that defeats a fixed-chunk sweep: the refusal is about
+    the whole request, so one undefined address hides every readable register
+    beside it.
+    """
+
+    def __init__(self, islands, values=None):
+        self.defined = {
+            address
+            for start, count in islands
+            for address in range(start, start + count)
+        }
+        self.values = values or {}
+        self.reads = []
+
+    def read(self, start, count):
+        self.reads.append((start, count))
+        if any(a not in self.defined for a in range(start, start + count)):
+            raise IllegalDataAddressError()
+        return [self.values.get(a, 0) for a in range(start, start + count)]
 
 
 def snapshot(label, stable, volatile=(), captured_at="2026-09-21T00:00:00Z"):
@@ -129,6 +166,150 @@ class HelperTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 with self.assertRaises(ValueError):
                     parse_ranges([bad], [])
+
+
+class ReadFailureTests(unittest.TestCase):
+    def test_a_refusal_is_told_apart_from_a_link_problem(self) -> None:
+        # Both stacks' wording for Modbus exception 0x02.
+        self.assertEqual(
+            classify_read_failure(IllegalDataAddressError()), READ_REFUSED
+        )
+        self.assertEqual(
+            classify_read_failure(
+                RuntimeError("Inverter rejected the read with Modbus exception 2")
+            ),
+            READ_REFUSED,
+        )
+        # Anything else is the link, and must not be read as a gap: a timeout
+        # that mapped to "refused" would carve a hole that is not in the
+        # inverter, and the next snapshot would skip real registers.
+        for other in (TimeoutError("timed out"), RuntimeError(""),
+                      RuntimeError("V5 frame contains an invalid checksum")):
+            with self.subTest(other=other):
+                self.assertEqual(classify_read_failure(other), READ_FAILED)
+
+
+class MapReadableBlocksTests(unittest.TestCase):
+    def test_it_finds_an_island_a_fixed_chunk_sweep_reports_as_refused(self) -> None:
+        # The shape a live run hit: the identity block is readable but sits
+        # across the 60-register chunk grid, so no whole chunk answers and the
+        # sweep concluded the whole 0x1000 range was unreadable.
+        inverter = FakeInverter([(0x1219, 1), (0x1230, 40)])
+        for offset in range(0, 0x400, 60):
+            with self.assertRaises(IllegalDataAddressError):
+                inverter.read(0x1000 + offset, min(60, 0x400 - offset))
+
+        result = map_readable_blocks(
+            inverter.read, [(0x1000, 0x400)], stride=8, max_reads=5000
+        )
+        # The wide block comes back with both edges exact; the single register
+        # is narrower than the stride, so it is the documented blind spot.
+        self.assertEqual(result["ranges"], ["0x1230:0x1257"])
+
+        fine = map_readable_blocks(
+            inverter.read, [(0x1000, 0x400)], stride=1, max_reads=5000
+        )
+        self.assertEqual(fine["ranges"], ["0x1219:0x1219", "0x1230:0x1257"])
+
+    def test_every_block_at_least_a_stride_wide_is_found(self) -> None:
+        # The guarantee the stride buys, checked at every offset a block of
+        # exactly that width could sit at.
+        for offset in range(0, 32):
+            inverter = FakeInverter([(0x2000 + offset, 8)])
+            result = map_readable_blocks(
+                inverter.read, [(0x2000, 0x80)], stride=8, max_reads=5000
+            )
+            with self.subTest(offset=offset):
+                self.assertEqual(
+                    result["ranges"], [format_range(0x2000 + offset, 8)]
+                )
+
+    def test_walking_the_edges_costs_far_less_than_reading_every_register(self) -> None:
+        inverter = FakeInverter([(0x3100, 0x53)])
+        result = map_readable_blocks(
+            inverter.read, [(0x3100, 0x100)], stride=8, max_reads=5000
+        )
+        self.assertEqual(result["ranges"], ["0x3100:0x3152"])
+        # 256 registers scanned, a 83-register block resolved to both edges,
+        # for a fraction of the reads a register-by-register walk would take.
+        self.assertLess(result["reads"], 60)
+
+    def test_a_probe_that_lands_mid_block_still_finds_both_edges(self) -> None:
+        inverter = FakeInverter([(0x1207, 0x51)])  # 0x1207..0x1257
+        result = map_readable_blocks(
+            inverter.read, [(0x1200, 0x100)], stride=8, max_reads=5000
+        )
+        self.assertEqual(result["ranges"], ["0x1207:0x1257"])
+
+    def test_an_answered_read_keeps_the_values_it_already_returned(self) -> None:
+        inverter = FakeInverter(
+            [(0x3100, 0x53)], values={0x3100: 7, 0x3152: UNDEFINED_REGISTER}
+        )
+        result = map_readable_blocks(
+            inverter.read, [(0x3100, 0x53)], stride=8, max_reads=5000
+        )
+        self.assertEqual(result["values"][0x3100], 7)
+        self.assertEqual(result["values"][0x3152], UNDEFINED_REGISTER)
+
+    def test_touching_blocks_are_reported_as_one_island(self) -> None:
+        inverter = FakeInverter([(0x2000, 0x40), (0x2040, 0x38)])
+        result = map_readable_blocks(
+            inverter.read, [(0x2000, 0x100)], stride=8, max_reads=5000
+        )
+        self.assertEqual(result["ranges"], ["0x2000:0x2077"])
+
+    def test_a_link_failure_is_not_recorded_as_a_gap(self) -> None:
+        def flaky(start, count):
+            raise TimeoutError("no response")
+
+        result = map_readable_blocks(
+            flaky, [(0x1000, 32)], stride=8, retries=1, max_reads=5000
+        )
+        self.assertEqual(result["readable"], [])
+        self.assertEqual(result["refused"], [])
+        # The four probe addresses, each tried twice, reported as unproven
+        # rather than as holes in the inverter's map.
+        self.assertEqual(result["unverified"], [(0x1000, 1), (0x1008, 1),
+                                                (0x1010, 1), (0x1018, 1)])
+        self.assertEqual(result["reads"], 8)
+
+    def test_the_budget_bounds_the_sweep_and_says_what_it_missed(self) -> None:
+        inverter = FakeInverter([])
+        result = map_readable_blocks(
+            inverter.read, [(0x1000, 0x400)], stride=8, max_reads=10
+        )
+        self.assertTrue(result["budget_exhausted"])
+        self.assertEqual(result["reads"], 10)
+        self.assertLessEqual(len(inverter.reads), 10)
+        # What it did not reach is named, not silently folded in with the gaps.
+        self.assertTrue(result["unscanned"])
+        self.assertGreater(sum(count for _, count in result["unscanned"]), 0)
+
+    def test_a_later_range_is_reported_unscanned_once_the_budget_is_gone(self) -> None:
+        inverter = FakeInverter([])
+        result = map_readable_blocks(
+            inverter.read, [(0x1000, 0x80), (0x2000, 0x80)], stride=8, max_reads=4
+        )
+        self.assertIn((0x2000, 0x80), result["unscanned"])
+
+    def test_a_map_range_can_be_handed_straight_back_to_the_scanner(self) -> None:
+        inverter = FakeInverter([(0x1234, 8)])
+        result = map_readable_blocks(
+            inverter.read, [(0x1200, 0x100)], stride=8, max_reads=5000
+        )
+        self.assertEqual(parse_ranges(result["ranges"], []), [(0x1234, 8)])
+
+    def test_format_range_is_inclusive_on_both_ends(self) -> None:
+        self.assertEqual(format_range(0x1234, 6), "0x1234:0x1239")
+        self.assertEqual(format_range(0x1219, 1), "0x1219:0x1219")
+
+    def test_it_refuses_a_nonsensical_sweep(self) -> None:
+        inverter = FakeInverter([])
+        for kwargs in ({"stride": 0}, {"max_reads": 0}, {"edge_read": 0},
+                       {"edge_read": 126}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(ValueError):
+                    map_readable_blocks(inverter.read, [(0, 8)], **kwargs)
 
 
 if __name__ == "__main__":

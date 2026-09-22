@@ -12,8 +12,9 @@ separate x86_64 Docker host, stores the battery telemetry for three years, and
 serves a local dashboard.
 
 The `renogy-x-probe` tool can also locate the register behind an LCD setting
-such as the work mode, by sampling the settings registers before and after a
-change on the panel and reporting what moved. It reads only. It is a console
+such as the work mode: it maps which register blocks the inverter answers for at
+all, then samples those before and after a change on the panel and reports what
+moved. It reads only. It is a console
 entry point installed with the package, so on the Pi it runs inside the
 collector container (`docker exec -it batteries-query-service renogy-x-probe
 --help`) rather than from the host shell; see
