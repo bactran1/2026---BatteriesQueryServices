@@ -106,23 +106,68 @@ holding one value across every sample, and **volatile**, moving on their own.
 A register is only reported as a candidate when it was stable before the
 change, stable after it, readable on both sides, and holds a different value.
 
+### Where to run it
+
+`renogy-x-probe` is a console entry point, so it exists only where this package
+has been pip-installed. On the Raspberry Pi the collector runs from a container
+and nothing is installed on the host, which is why the bare command answers
+`renogy-x-probe: command not found`. Run it inside the collector container,
+which already has the entry point, the SOLARMAN dependency, and a route to the
+logger:
+
+```bash
+docker exec -it batteries-query-service renogy-x-probe --help
+```
+
+Snapshots written under `/data` land in `data/collector/` beside this
+repository on the Pi, so they survive a redeploy and can be read from the host
+shell. Anywhere else, a checkout runs the same code without installing
+anything:
+
+```bash
+PYTHONPATH=src python3 -m batteries_query_service.inverter_probe --help
+```
+
+That form needs `pysolarmanv5` for `--transport solarman`, or `pyserial` for a
+direct RS-485 link. `pip install -e .` creates the `renogy-x-probe` command if
+you would rather have it on PATH.
+
+### The run
+
 Take the baseline with the inverter in its current mode:
 
 ```bash
-renogy-x-probe snapshot --active \
+docker exec -it batteries-query-service renogy-x-probe snapshot --active \
   --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
-  --label SELFCONSUME --out /tmp/selfconsume.json
+  --label SELFCONSUME --out /data/selfconsume.json
 ```
 
 Change the mode on the LCD, then compare:
 
 ```bash
-renogy-x-probe compare --active \
+docker exec -it batteries-query-service renogy-x-probe compare --active \
   --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
-  --label "BAT PRIORITY" --baseline /tmp/selfconsume.json
+  --label "BAT PRIORITY" --baseline /data/selfconsume.json
 ```
 
 Use `--transport serial --port /dev/ttyUSB1` instead for a direct RS-485 link.
+
+The LSW-5 logger is a small TCP server and the collector already holds a
+session on it. If the samples come back with read errors or time out, give the
+probe the logger to itself. A stopped container has nothing to `exec` into, so
+run a throwaway container from the same image instead, from the repository
+directory on the Pi:
+
+```bash
+image="$(docker inspect --format '{{.Config.Image}}' batteries-query-service)"
+docker stop batteries-query-service
+docker run --rm -v "$PWD/data/collector:/data" "$image" \
+  renogy-x-probe snapshot --active \
+  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
+  --label SELFCONSUME --out /data/selfconsume.json
+# ... change the mode on the LCD, then the same command with `compare` ...
+docker start batteries-query-service
+```
 
 The default ranges are `0x1000:0x13FF` and `0x2000:0x20FF`, chosen because the
 protocol version and serial number answer from `0x1219` and `0x1234` while the
