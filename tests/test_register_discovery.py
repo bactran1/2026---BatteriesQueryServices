@@ -10,8 +10,10 @@ from batteries_query_service.register_discovery import (
     classify_samples,
     compare_snapshots,
     format_range,
+    format_ranges_of,
     map_readable_blocks,
     parse_ranges,
+    read_blocks_resiliently,
     register_views,
 )
 
@@ -32,7 +34,7 @@ class FakeInverter:
     beside it.
     """
 
-    def __init__(self, islands, values=None, flaky=()):
+    def __init__(self, islands, values=None, flaky=(), boundaries=()):
         self.defined = {
             address
             for start, count in islands
@@ -42,15 +44,22 @@ class FakeInverter:
         # Any read touching one of these times out: a link that drops the
         # frame every time a particular register is asked for.
         self.flaky = set(flaky)
+        # A read may not straddle one of these: the inverter keeps the pages
+        # either side separate, and refuses a request that spans both even
+        # though each side reads fine on its own.
+        self.boundaries = set(boundaries)
         self.reads = []
 
     def read(self, start, count):
         self.reads.append((start, count))
-        if any(a in self.flaky for a in range(start, start + count)):
+        end = start + count
+        if any(a in self.flaky for a in range(start, end)):
             raise TimeoutError("no response")
-        if any(a not in self.defined for a in range(start, start + count)):
+        if any(a not in self.defined for a in range(start, end)):
             raise IllegalDataAddressError()
-        return [self.values.get(a, 0) for a in range(start, start + count)]
+        if any(start < b < end for b in self.boundaries):
+            raise IllegalDataAddressError()
+        return [self.values.get(a, 0) for a in range(start, end)]
 
 
 def snapshot(label, stable, volatile=(), captured_at="2026-09-21T00:00:00Z"):
@@ -194,6 +203,76 @@ class ReadFailureTests(unittest.TestCase):
                 self.assertEqual(classify_read_failure(other), READ_FAILED)
 
 
+class ResilientReadTests(unittest.TestCase):
+    def test_a_refused_chunk_is_split_until_its_pages_answer(self) -> None:
+        # A stale or joined map names 0x3100:0x3230 as one block; the inverter
+        # refuses any read across 0x3200. Every register still comes back.
+        inverter = FakeInverter([(0x3100, 0x131)], boundaries={0x3200})
+        values, errors = read_blocks_resiliently(
+            inverter.read, [(0x3100, 0x131)], chunk_size=60
+        )
+        self.assertEqual(len(values), 0x131)
+        self.assertEqual(errors, [])
+        # Six chunks plus a few halvings around the join: well under the 305
+        # reads a register-by-register walk would spend.
+        self.assertLess(len(inverter.reads), 20)
+
+    def test_a_dropped_frame_is_retried_not_recorded(self) -> None:
+        inverter = FakeInverter([(0x1000, 60)])
+        calls = {"n": 0}
+
+        def read(start, count):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise TimeoutError("dropped")
+            return inverter.read(start, count)
+
+        values, errors = read_blocks_resiliently(read, [(0x1000, 60)], retries=2)
+        self.assertEqual(len(values), 60)
+        self.assertEqual(errors, [])
+
+    def test_a_link_that_stays_down_is_reported_as_the_link(self) -> None:
+        inverter = FakeInverter([(0x1000, 60)], flaky={0x1010})
+        values, errors = read_blocks_resiliently(
+            inverter.read, [(0x1000, 60)], retries=1
+        )
+        self.assertEqual(values, {})
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]["kind"], READ_FAILED)
+        self.assertEqual(errors[0]["attempts"], 2)
+        # Not split: halving would only re-ask a question the link is not
+        # answering, and would spend the split budget doing it.
+        self.assertEqual(inverter.reads, [(0x1000, 60), (0x1000, 60)])
+
+    def test_a_genuinely_unmapped_register_is_named_and_the_rest_still_read(self) -> None:
+        inverter = FakeInverter([(0x1000, 30), (0x101F, 29)])  # 0x101E missing
+        values, errors = read_blocks_resiliently(
+            inverter.read, [(0x1000, 60)], chunk_size=60
+        )
+        self.assertEqual(len(values), 59)
+        self.assertNotIn(0x101E, values)
+        self.assertEqual(
+            [(e["start"], e["count"], e["kind"]) for e in errors],
+            [(0x101E, 1, READ_REFUSED)],
+        )
+
+    def test_splitting_is_bounded_so_a_dead_map_cannot_run_away(self) -> None:
+        inverter = FakeInverter([])
+        values, errors = read_blocks_resiliently(
+            inverter.read, [(0x1000, 0x400)], chunk_size=60, extra_reads=5
+        )
+        self.assertEqual(values, {})
+        self.assertLess(len(inverter.reads), 30)
+        self.assertEqual(sum(e["count"] for e in errors), 0x400)
+
+    def test_loose_addresses_collapse_into_ranges(self) -> None:
+        self.assertEqual(
+            format_ranges_of([0x1002, 0x1000, 0x1001, 0x2000, 0x1010]),
+            ["0x1000:0x1002", "0x1010:0x1010", "0x2000:0x2000"],
+        )
+        self.assertEqual(format_ranges_of([]), [])
+
+
 class MapReadableBlocksTests(unittest.TestCase):
     def test_it_finds_an_island_a_fixed_chunk_sweep_reports_as_refused(self) -> None:
         # The shape a live run hit: the identity block is readable but sits
@@ -256,12 +335,23 @@ class MapReadableBlocksTests(unittest.TestCase):
         self.assertEqual(result["values"][0x3100], 7)
         self.assertEqual(result["values"][0x3152], UNDEFINED_REGISTER)
 
-    def test_touching_blocks_are_reported_as_one_island(self) -> None:
-        inverter = FakeInverter([(0x2000, 0x40), (0x2040, 0x38)])
+    def test_one_block_is_one_island_however_many_reads_it_took(self) -> None:
+        inverter = FakeInverter([(0x2000, 0x78)])
         result = map_readable_blocks(
             inverter.read, [(0x2000, 0x100)], stride=8, max_reads=5000
         )
         self.assertEqual(result["ranges"], ["0x2000:0x2077"])
+
+    def test_two_pages_that_abut_are_kept_apart(self) -> None:
+        # The shape the live inverter has at 0x3200: every register either
+        # side answers, but a read spanning the join is refused. A map that
+        # joined them would hand the snapshot a chunk the inverter refuses
+        # whole, and sixty registers would vanish from every comparison.
+        inverter = FakeInverter([(0x3100, 0x131)], boundaries={0x3200})
+        result = map_readable_blocks(
+            inverter.read, [(0x3100, 0x200)], stride=8, max_reads=5000
+        )
+        self.assertEqual(result["ranges"], ["0x3100:0x31FF", "0x3200:0x3230"])
 
     def test_a_link_failure_is_not_recorded_as_a_gap(self) -> None:
         def flaky(start, count):

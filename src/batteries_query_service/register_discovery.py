@@ -32,6 +32,7 @@ the reads.
 from __future__ import annotations
 
 import re
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
@@ -323,7 +324,11 @@ def map_readable_blocks(
                 unverified.append((probe, 1))
             probe += stride
 
-    readable = _merge_blocks(islands)
+    # Two islands that touch were walked separately, which means a read
+    # spanning the join was refused: the inverter treats them as two pages.
+    # Joining them would hand the snapshot a range it cannot read in one
+    # chunk, and Modbus refuses the whole chunk. Only overlap is joined.
+    readable = _merge_blocks(islands, touching=False)
     return {
         "reads": state.reads,
         "probes": probes,
@@ -466,11 +471,17 @@ def _covering(islands: Sequence[tuple[int, int]], address: int) -> int | None:
     return None
 
 
-def _merge_blocks(blocks: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Join blocks that touch, so the map reads as islands rather than probes."""
+def _merge_blocks(
+    blocks: Iterable[tuple[int, int]], *, touching: bool = True
+) -> list[tuple[int, int]]:
+    """Join blocks that overlap, and with ``touching`` those that merely abut."""
     merged: list[tuple[int, int]] = []
     for start, count in sorted(blocks):
-        if merged and start <= merged[-1][0] + merged[-1][1]:
+        previous_end = merged[-1][0] + merged[-1][1] if merged else None
+        joins = previous_end is not None and (
+            start < previous_end or (touching and start == previous_end)
+        )
+        if joins:
             previous_start, previous_count = merged[-1]
             end = max(previous_start + previous_count, start + count)
             merged[-1] = (previous_start, end - previous_start)
@@ -497,6 +508,97 @@ def _subtract_blocks(
         if cursor < end:
             result.append((cursor, end - cursor))
     return result
+
+
+def read_blocks_resiliently(
+    read: Callable[[int, int], Sequence[int]],
+    ranges: Iterable[tuple[int, int]],
+    *,
+    chunk_size: int = 60,
+    retries: int = 2,
+    extra_reads: int = 200,
+    sleep: Callable[[float], None] | None = None,
+    retry_delay: float = 0.15,
+    inter_request_delay: float = 0.02,
+) -> tuple[dict[int, int], list[dict[str, Any]]]:
+    """Read ranges in chunks without letting one bad read take a chunk down.
+
+    A link failure is retried, since it says nothing about the addresses. A
+    refusal is split: Modbus refuses a read when any address in it is out of
+    range or when it crosses a page the inverter keeps separate, and either
+    way the halves usually answer. Splitting is bounded by ``extra_reads`` so a
+    stale map that names whole blocks the inverter no longer answers cannot
+    turn one snapshot into hundreds of reads; past the bound a refused chunk
+    is recorded as refused, whole.
+    """
+    if not 1 <= chunk_size <= 125:
+        raise ValueError("chunk size must be between 1 and 125 registers")
+    if retries < 0:
+        raise ValueError("retries cannot be negative")
+
+    queue: deque[tuple[int, int]] = deque()
+    for start, count in ranges:
+        for offset in range(0, count, chunk_size):
+            queue.append((start + offset, min(chunk_size, count - offset)))
+
+    values: dict[int, int] = {}
+    errors: list[dict[str, Any]] = []
+    splits_left = extra_reads
+    while queue:
+        start, count = queue.popleft()
+        outcome, block, attempts, text = _try_read(
+            read, start, count, retries, sleep, retry_delay
+        )
+        if sleep is not None and inter_request_delay:
+            sleep(inter_request_delay)
+        if outcome == READ_OK and block is not None:
+            for index, value in enumerate(block):
+                values[start + index] = int(value)
+        elif outcome == READ_REFUSED and count > 1 and splits_left > 0:
+            splits_left -= 1
+            half = count // 2
+            queue.appendleft((start + half, count - half))
+            queue.appendleft((start, half))
+        else:
+            errors.append(
+                {
+                    "start": start,
+                    "count": count,
+                    "attempts": attempts,
+                    "kind": outcome,
+                    "error": text,
+                }
+            )
+    return values, errors
+
+
+def _try_read(
+    read: Callable[[int, int], Sequence[int]],
+    start: int,
+    count: int,
+    retries: int,
+    sleep: Callable[[float], None] | None,
+    retry_delay: float,
+) -> tuple[str, Sequence[int] | None, int, str]:
+    outcome, text = READ_FAILED, ""
+    attempts = 0
+    while attempts <= retries:
+        attempts += 1
+        try:
+            return READ_OK, list(read(start, count)), attempts, ""
+        except Exception as exc:  # noqa: BLE001 - every failure is classified
+            outcome, text = classify_read_failure(exc), str(exc)
+            if outcome == READ_REFUSED:
+                break
+            if attempts <= retries and sleep is not None and retry_delay:
+                sleep(retry_delay)
+    return outcome, None, attempts, text
+
+
+def format_ranges_of(addresses: Iterable[int]) -> list[str]:
+    """Collapse loose addresses into the ``START:END`` form the tools speak."""
+    blocks = _merge_blocks((int(address), 1) for address in addresses)
+    return [format_range(start, count) for start, count in blocks]
 
 
 def format_range(start: int, count: int) -> str:
