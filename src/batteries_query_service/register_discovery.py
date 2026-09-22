@@ -18,13 +18,21 @@ times a few seconds apart and sorts registers into two groups:
   telemetry and can never be the answer.
 
 A register is only a candidate when it was stable before the change, stable
-after it, and holds a different value. Everything here reads; nothing in this
-module can write, and the caller supplies an already-read mapping.
+after it, and holds a different value.
+
+That still assumes the inverter will answer for the addresses being watched, and
+this one refuses most of its space. :func:`map_readable_blocks` finds the blocks
+it does answer for, so a snapshot can ask for those and nothing else; the reason
+a fixed-chunk sweep cannot do that job is set out above it.
+
+Everything here reads; nothing in this module can write, and the caller supplies
+the reads.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+import re
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 # Megarevo leaves unmapped addresses reading as 0xFFFF; they carry no setting.
@@ -139,13 +147,16 @@ def _notes(
     if not candidates:
         notes.append(
             "No stable register changed. The setting may live outside the "
-            "scanned range, or the mode may not have actually changed."
+            "scanned range, or the mode may not have actually changed. If the "
+            "snapshots were full of refused reads, run 'map' first: a range "
+            "that answers only in places reports almost nothing here."
         )
     elif len(candidates) == 1:
         only = candidates[0]
         notes.append(
-            f"Register {only['register']} is the single candidate: "
-            f"{only['before']['hex']} -> {only['after']['hex']}."
+            f"Register 0x{only['register']:04X} ({only['register']}) is the "
+            f"single candidate: {only['before']['hex']} -> "
+            f"{only['after']['hex']}."
         )
     else:
         notes.append(
@@ -201,3 +212,241 @@ def parse_ranges(values: Iterable[str] | None, default: Sequence[str]) -> list[t
             raise ValueError(f"Invalid register range {value!r}")
         ranges.append((start, end - start + 1))
     return ranges
+
+
+# ---------------------------------------------------------------------------
+# Finding which blocks answer at all
+# ---------------------------------------------------------------------------
+#
+# A snapshot can only classify registers the inverter agreed to return, and this
+# one answers "illegal data address" for most of the space. Modbus refuses a
+# read when *any* address in it is out of range, so a 60-register chunk laid
+# over a gap fails whole and hides every readable register beside it. A sweep in
+# fixed chunks therefore reports far less than the inverter exposes, which is
+# what makes a discovery run come back empty.
+#
+# A single-register read has no such ambiguity: it answers for exactly one
+# address. So the map probes one register every `stride` addresses, which finds
+# every block at least `stride` wide, and then walks each hit out to its edges.
+# Because a multi-register read succeeds only when the whole span is defined,
+# "does this span read?" is monotone in the span, and the edges come out of a
+# binary search rather than a register-by-register walk. Every read that lands
+# hands back the values it covered, so the map carries them at no extra cost.
+
+READ_OK = "ok"
+READ_REFUSED = "refused"
+READ_FAILED = "failed"
+
+# Modbus caps one read, and the existing driver reads in 60-register chunks over
+# this logger, so edge searches stay inside a width already known to work.
+DEFAULT_EDGE_READ = 60
+
+# The two stacks phrase the same Modbus exception 0x02 differently: umodbus
+# (under pysolarmanv5) raises IllegalDataAddressError carrying its docstring,
+# and the serial driver raises RenogyXProtocolError naming the numeric code.
+_REFUSAL_PATTERN = re.compile(
+    r"not an allowable address|illegal ?data ?address|modbus exception 0?2\b"
+)
+
+
+def classify_read_failure(error: BaseException) -> str:
+    """Tell a refusal from a link problem.
+
+    An inverter that answers "illegal data address" has said something true
+    about the address, so the map can act on it. A timeout or a mangled frame
+    has said only that the link wavered, and treating that as a gap would carve
+    a hole into the map that is not in the inverter -- the next snapshot would
+    then skip real registers and never find what it was looking for.
+    """
+    text = " ".join(f"{type(error).__name__} {error}".lower().split())
+    return READ_REFUSED if _REFUSAL_PATTERN.search(text) else READ_FAILED
+
+
+def map_readable_blocks(
+    read: Callable[[int, int], Sequence[int]],
+    ranges: Iterable[tuple[int, int]],
+    *,
+    stride: int = 8,
+    max_reads: int = 2000,
+    edge_read: int = DEFAULT_EDGE_READ,
+    retries: int = 1,
+    on_read: Callable[[int, int, str], None] | None = None,
+) -> dict[str, Any]:
+    """Map the blocks an inverter will answer for, within the given ranges.
+
+    ``read(start, count)`` returns the block's values or raises. Probing one
+    register every ``stride`` addresses finds every block at least ``stride``
+    wide; a narrower block can fall between two probes and be missed, so
+    ``stride`` is the map's resolution and lowering it is what widens the net.
+
+    ``max_reads`` bounds the sweep. Whatever it did not reach is reported as
+    unscanned rather than quietly folded in with the refusals.
+    """
+    if stride < 1:
+        raise ValueError("stride must be at least one register")
+    if max_reads < 1:
+        raise ValueError("at least one read is required")
+    if not 1 <= edge_read <= 125:
+        raise ValueError("edge read width must be between 1 and 125 registers")
+
+    state = _MapRun(read, max_reads, retries, on_read)
+    islands: list[tuple[int, int]] = []
+    refused: list[tuple[int, int]] = []
+    unverified: list[tuple[int, int]] = []
+    unscanned: list[tuple[int, int]] = []
+    probes = 0
+
+    for start, count in ranges:
+        limit = start + count - 1
+        probe = start
+        while probe <= limit:
+            if state.exhausted:
+                unscanned.append((probe, limit - probe + 1))
+                break
+            covered = _covering(islands, probe)
+            if covered is not None:
+                # Already inside a block the map walked out; nothing to ask.
+                probe = covered + stride
+                continue
+
+            probes += 1
+            outcome, _ = state.read(probe, 1)
+            if outcome == READ_OK:
+                low = _edge_down(state, probe, start, edge_read)
+                high = _edge_up(state, probe, limit, edge_read)
+                islands.append((low, high - low + 1))
+                probe = high + stride
+                continue
+            if outcome == READ_REFUSED:
+                refused.append((probe, 1))
+            else:
+                unverified.append((probe, 1))
+            probe += stride
+
+    readable = _merge_blocks(islands)
+    return {
+        "reads": state.reads,
+        "probes": probes,
+        "stride": stride,
+        "budget_exhausted": state.exhausted,
+        "readable": readable,
+        "refused": _merge_blocks(refused),
+        "unverified": _merge_blocks(unverified),
+        "unscanned": _merge_blocks(unscanned),
+        "ranges": [format_range(start, count) for start, count in readable],
+        "values": state.values,
+    }
+
+
+class _MapRun:
+    """The read budget, the retry rule, and the values collected along the way."""
+
+    def __init__(self, read, max_reads: int, retries: int, on_read) -> None:
+        self._read = read
+        self._max_reads = max_reads
+        self._retries = max(0, retries)
+        self._on_read = on_read
+        self.reads = 0
+        self.values: dict[int, int] = {}
+
+    @property
+    def exhausted(self) -> bool:
+        return self.reads >= self._max_reads
+
+    def read(self, start: int, count: int) -> tuple[str, Sequence[int] | None]:
+        outcome = READ_FAILED
+        attempted = False
+        for _ in range(self._retries + 1):
+            if self.exhausted:
+                break
+            attempted = True
+            self.reads += 1
+            try:
+                values = list(self._read(start, count))
+            except Exception as exc:  # noqa: BLE001 - every failure is classified
+                outcome = classify_read_failure(exc)
+                if outcome == READ_REFUSED:
+                    break
+                continue
+            self._report(start, count, READ_OK)
+            for index, value in enumerate(values):
+                self.values[start + index] = int(value)
+            return READ_OK, values
+        if attempted:
+            self._report(start, count, outcome)
+        return outcome, None
+
+    def _report(self, start: int, count: int, outcome: str) -> None:
+        if self._on_read is not None:
+            self._on_read(start, count, outcome)
+
+    def reads_ok(self, start: int, count: int) -> bool:
+        """Only a clean answer counts; a wavering link must not imply an edge."""
+        return self.read(start, count)[0] == READ_OK
+
+
+def _edge_up(state: "_MapRun", known: int, limit: int, edge_read: int) -> int:
+    """Walk up from a defined address to the last one still in the same block."""
+    end = known
+    while end < limit and not state.exhausted:
+        width = min(edge_read, limit - end)
+        if state.reads_ok(end + 1, width):
+            end += width
+            continue
+        # Somewhere in the next `width` registers the block stops. A read
+        # succeeds only when every address in it is defined, so the largest
+        # span that still answers is found by bisection.
+        low, high, best = 1, width - 1, 0
+        while low <= high and not state.exhausted:
+            middle = (low + high) // 2
+            if middle and state.reads_ok(end + 1, middle):
+                best, low = middle, middle + 1
+            else:
+                high = middle - 1
+        return end + best
+    return end
+
+
+def _edge_down(state: "_MapRun", known: int, floor: int, edge_read: int) -> int:
+    """The same walk downwards, since a probe can land anywhere in a block."""
+    start = known
+    while start > floor and not state.exhausted:
+        width = min(edge_read, start - floor)
+        if state.reads_ok(start - width, width):
+            start -= width
+            continue
+        low, high, best = 1, width - 1, 0
+        while low <= high and not state.exhausted:
+            middle = (low + high) // 2
+            if middle and state.reads_ok(start - middle, middle):
+                best, low = middle, middle + 1
+            else:
+                high = middle - 1
+        return start - best
+    return start
+
+
+def _covering(islands: Sequence[tuple[int, int]], address: int) -> int | None:
+    """The last address of the block holding ``address``, when one does."""
+    for start, count in islands:
+        if start <= address < start + count:
+            return start + count - 1
+    return None
+
+
+def _merge_blocks(blocks: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Join blocks that touch, so the map reads as islands rather than probes."""
+    merged: list[tuple[int, int]] = []
+    for start, count in sorted(blocks):
+        if merged and start <= merged[-1][0] + merged[-1][1]:
+            previous_start, previous_count = merged[-1]
+            end = max(previous_start + previous_count, start + count)
+            merged[-1] = (previous_start, end - previous_start)
+        else:
+            merged.append((start, count))
+    return merged
+
+
+def format_range(start: int, count: int) -> str:
+    """The inverse of :func:`parse_ranges`, so a map can be pasted into --range."""
+    return f"0x{start:04X}:0x{start + count - 1:04X}"

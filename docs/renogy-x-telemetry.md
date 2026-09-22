@@ -106,37 +106,132 @@ holding one value across every sample, and **volatile**, moving on their own.
 A register is only reported as a candidate when it was stable before the
 change, stable after it, readable on both sides, and holds a different value.
 
-Take the baseline with the inverter in its current mode:
+### Where to run it
+
+`renogy-x-probe` is a console entry point, so it exists only where this package
+has been pip-installed. On the Raspberry Pi the collector runs from a container
+and nothing is installed on the host, which is why the bare command answers
+`renogy-x-probe: command not found`. Run it inside the collector container,
+which already has the entry point, the SOLARMAN dependency, and a route to the
+logger:
 
 ```bash
-renogy-x-probe snapshot --active \
-  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
-  --label SELFCONSUME --out /tmp/selfconsume.json
+docker exec -it batteries-query-service renogy-x-probe --help
 ```
 
-Change the mode on the LCD, then compare:
+Snapshots written under `/data` land in `data/collector/` beside this
+repository on the Pi, so they survive a redeploy and can be read from the host
+shell. Anywhere else, a checkout runs the same code without installing
+anything:
 
 ```bash
-renogy-x-probe compare --active \
+PYTHONPATH=src python3 -m batteries_query_service.inverter_probe --help
+```
+
+That form needs `pysolarmanv5` for `--transport solarman`, or `pyserial` for a
+direct RS-485 link. `pip install -e .` creates the `renogy-x-probe` command if
+you would rather have it on PATH.
+
+### First, map what answers
+
+This inverter refuses most of its address space with Modbus exception `0x02`,
+"illegal data address". Modbus refuses a read when *any* address in it is out of
+range, so a 60-register chunk laid across a gap fails whole and takes every
+readable register in it down with it. A sweep in fixed chunks therefore reports
+far less than the inverter exposes: a first run here returned one block of 56
+registers around the serial number and nothing else, which is not a map of the
+inverter but a map of where the chunk grid happened to line up.
+
+`map` probes a single register every `--stride` addresses, which cannot be
+ambiguous because it asks about exactly one address, then walks each hit out to
+its edges by binary search. It finds every block at least `--stride` wide;
+narrower blocks can fall between two probes, which is what lowering the stride
+buys. Reads that land keep their values, so the map costs nothing extra to
+collect.
+
+```bash
+docker exec -it batteries-query-service renogy-x-probe map --active \
   --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
-  --label "BAT PRIORITY" --baseline /tmp/selfconsume.json
+  --out /data/registers.json
+```
+
+The default sweep covers `0x1000:0x13FF`, `0x2000:0x20FF` and `0x3100:0x31FF`.
+The last of those is the telemetry this service already polls, included as a
+positive control: it has known gaps at `0x3183` and `0x319E`, so a map that does
+not show those blocks and those gaps is not reporting the inverter faithfully.
+Widen with `--range`, lower `--stride` to catch narrow blocks, and raise
+`--max-reads` if the sweep reports blocks it did not reach.
+
+### The run
+
+Point the snapshots at the blocks the map found, so no read is spent on an
+address the inverter will refuse:
+
+```bash
+docker exec -it batteries-query-service renogy-x-probe snapshot --active \
+  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
+  --ranges-from /data/registers.json \
+  --label SELFCONSUME --out /data/selfconsume.json
+```
+
+Change the mode on the LCD, then:
+
+```bash
+docker exec -it batteries-query-service renogy-x-probe compare --active \
+  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
+  --ranges-from /data/registers.json \
+  --label "BAT PRIORITY" --baseline /data/selfconsume.json
+```
+
+Without a map, `--range` still works and the defaults are `0x1000:0x13FF` and
+`0x2000:0x20FF`. The older form of the run, for reference:
+
+```bash
+docker exec -it batteries-query-service renogy-x-probe snapshot --active \
+  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
+  --label SELFCONSUME --out /data/selfconsume.json
+```
+
+```bash
+docker exec -it batteries-query-service renogy-x-probe compare --active \
+  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
+  --label "BAT PRIORITY" --baseline /data/selfconsume.json
 ```
 
 Use `--transport serial --port /dev/ttyUSB1` instead for a direct RS-485 link.
+All three commands read only.
 
-The default ranges are `0x1000:0x13FF` and `0x2000:0x20FF`, chosen because the
-protocol version and serial number answer from `0x1219` and `0x1234` while the
-telemetry this service reads sits at `0x3100+`. Widen with `--range` if nothing
-turns up; reading an unmapped address is harmless and answers `0xFFFF`.
+The LSW-5 logger is a small TCP server and the collector already holds a
+session on it. If the samples come back with read errors or time out, give the
+probe the logger to itself. A stopped container has nothing to `exec` into, so
+run a throwaway container from the same image instead, from the repository
+directory on the Pi:
+
+```bash
+image="$(docker inspect --format '{{.Config.Image}}' batteries-query-service)"
+docker stop batteries-query-service
+docker run --rm -v "$PWD/data/collector:/data" "$image" \
+  renogy-x-probe snapshot --active \
+  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
+  --label SELFCONSUME --out /data/selfconsume.json
+# ... change the mode on the LCD, then the same command with `compare` ...
+docker start batteries-query-service
+```
+
+Those defaults were chosen because the protocol version and serial number
+answer from `0x1219` and `0x1234` while the telemetry this service reads sits at
+`0x3100+`. An address the inverter has mapped but left unset answers `0xFFFF`
+and is ignored; an address it has not mapped is refused outright, which is the
+case `map` exists to handle.
 
 Expect one candidate. If several registers changed, run it again switching back
 to the original mode: the work-mode register is the one that returns to its
 first value, and anything still drifting is not it. Confirm by switching a third
 time and reading the register back.
 
-Both commands read only. They inherit the same `--active` acknowledgement as the
-rest of the probe, and neither they nor any module they use can send function
-`0x06` or `0x10`.
+`map`, `snapshot` and `compare` all read only. They inherit the same `--active`
+acknowledgement as the rest of the probe, and neither they nor any module they
+use can send function `0x06` or `0x10`.
 
 **Do not write a register discovered this way without the vendor's register
 table.** This inverter is certified to IEEE 1547 and Rule 21; a write to a
