@@ -32,9 +32,11 @@ from .solarman_v5 import SolarmanV5ModbusClient, SolarmanV5Settings
 DISCOVERY_RANGES = ("0x1000:0x13FF", "0x2000:0x20FF")
 
 # What `map` sweeps by default. The first two are where a setting plausibly
-# lives; 0x3100:0x31FF is the telemetry this service already reads every poll,
-# included as a positive control -- it has known gaps at 0x3183 and 0x319E, so a
-# map that does not show those blocks is not reporting the inverter faithfully.
+# lives; 0x3100:0x31FF holds the telemetry this service reads every poll,
+# included as a positive control: 0x3100 through 0x31AD must come back readable,
+# or the map is not to be trusted. (The driver skips a few addresses inside that
+# span, but that is the driver's choice -- a live map showed the inverter
+# answers the whole block, and on past 0x31FF.)
 MAP_RANGES = ("0x1000:0x13FF", "0x2000:0x20FF", "0x3100:0x31FF")
 
 
@@ -417,9 +419,18 @@ def map_blocks(args: argparse.Namespace) -> int:
     def read(start: int, count: int) -> list[int]:
         return client.read_holding_registers(args.address, start, count)
 
+    reads_so_far = 0
+
     def progress(start: int, count: int, outcome: str) -> None:
+        # A long refused stretch is silent otherwise, and over the logger a
+        # wide sweep runs for minutes; say something now and then so it does
+        # not look hung.
+        nonlocal reads_so_far
+        reads_so_far += 1
         if outcome == "ok":
             print(f"  {format_range(start, count)} answered", file=sys.stderr)
+        elif reads_so_far % 100 == 0:
+            print(f"  ... {reads_so_far} reads, at 0x{start:04X}", file=sys.stderr)
 
     result = map_readable_blocks(
         read,
@@ -448,6 +459,7 @@ def map_blocks(args: argparse.Namespace) -> int:
         f"{len(readable)} readable block(s), {total} register(s), "
         f"in {result['reads']} read(s)"
     )
+    edges = {start for start, _ in ranges} | {start + count - 1 for start, count in ranges}
     for start, count in readable:
         undefined = sum(
             1
@@ -455,6 +467,10 @@ def map_blocks(args: argparse.Namespace) -> int:
             if result["values"].get(address) == UNDEFINED_REGISTER
         )
         suffix = f", {undefined} reading 0xFFFF" if undefined else ""
+        # The walk stops at the edge of the range it was given, so a block that
+        # ends exactly there has not been shown to end at all.
+        if start in edges or start + count - 1 in edges:
+            suffix += ", reaches the edge of the sweep and may continue"
         print(f"  {format_range(start, count)}  {count} register(s){suffix}")
     if not readable:
         print(
