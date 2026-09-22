@@ -11,6 +11,11 @@ a rolling replay buffer on the Raspberry Pi. A companion monitor app runs on a
 separate x86_64 Docker host, stores the battery telemetry for three years, and
 serves a local dashboard.
 
+The `renogy-x-probe` tool can also locate the register behind an LCD setting
+such as the work mode, by sampling the settings registers before and after a
+change on the panel and reporting what moved. It reads only; see
+[Finding a setting's register](docs/renogy-x-telemetry.md#finding-a-settings-register).
+
 The inverter driver is read-only and implements the Megarevo R8KLNA Modbus
 V2.12 telemetry profile that matches the Renogy X hardware and manuals. Because
 Renogy does not publish an explicit OEM declaration or model-specific register

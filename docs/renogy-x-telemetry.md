@@ -90,6 +90,60 @@ The V2.12 protocol specifies:
 The permanent driver has no register-write method and never sends function
 `0x06` or `0x10`.
 
+## Finding a setting's register
+
+The work mode (SELFCONSUME / PEAK SHIFT / BAT PRIORITY) is set from the LCD
+under `SYS SETTING > SETUP > WORK MODE`, and Megarevo's V2.12 register table is
+not part of this repository, so the register behind it is unknown. The probe can
+find it without writing anything: snapshot the settings registers, change the
+mode on the panel, snapshot again, and see what moved.
+
+A single read before and after does not work. The inverter keeps running, so
+power, voltage, temperature and the energy counters all differ between any two
+reads and bury the one register that matters. Each snapshot therefore samples
+the same range several times and sorts registers into two groups: **stable**,
+holding one value across every sample, and **volatile**, moving on their own.
+A register is only reported as a candidate when it was stable before the
+change, stable after it, readable on both sides, and holds a different value.
+
+Take the baseline with the inverter in its current mode:
+
+```bash
+renogy-x-probe snapshot --active \
+  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
+  --label SELFCONSUME --out /tmp/selfconsume.json
+```
+
+Change the mode on the LCD, then compare:
+
+```bash
+renogy-x-probe compare --active \
+  --transport solarman --host 192.168.20.138 --logger-serial 3503566593 \
+  --label "BAT PRIORITY" --baseline /tmp/selfconsume.json
+```
+
+Use `--transport serial --port /dev/ttyUSB1` instead for a direct RS-485 link.
+
+The default ranges are `0x1000:0x13FF` and `0x2000:0x20FF`, chosen because the
+protocol version and serial number answer from `0x1219` and `0x1234` while the
+telemetry this service reads sits at `0x3100+`. Widen with `--range` if nothing
+turns up; reading an unmapped address is harmless and answers `0xFFFF`.
+
+Expect one candidate. If several registers changed, run it again switching back
+to the original mode: the work-mode register is the one that returns to its
+first value, and anything still drifting is not it. Confirm by switching a third
+time and reading the register back.
+
+Both commands read only. They inherit the same `--active` acknowledgement as the
+rest of the probe, and neither they nor any module they use can send function
+`0x06` or `0x10`.
+
+**Do not write a register discovered this way without the vendor's register
+table.** This inverter is certified to IEEE 1547 and Rule 21; a write to a
+misidentified address could land on grid-protection, export or charge-limit
+settings. Discovery tells you where the value lives, not that writing it is
+safe.
+
 ## Raspberry Pi deployment
 
 List the battery adapter and identify its stable host path:
