@@ -32,17 +32,22 @@ class FakeInverter:
     beside it.
     """
 
-    def __init__(self, islands, values=None):
+    def __init__(self, islands, values=None, flaky=()):
         self.defined = {
             address
             for start, count in islands
             for address in range(start, start + count)
         }
         self.values = values or {}
+        # Any read touching one of these times out: a link that drops the
+        # frame every time a particular register is asked for.
+        self.flaky = set(flaky)
         self.reads = []
 
     def read(self, start, count):
         self.reads.append((start, count))
+        if any(a in self.flaky for a in range(start, start + count)):
+            raise TimeoutError("no response")
         if any(a not in self.defined for a in range(start, start + count)):
             raise IllegalDataAddressError()
         return [self.values.get(a, 0) for a in range(start, start + count)]
@@ -272,6 +277,60 @@ class MapReadableBlocksTests(unittest.TestCase):
         self.assertEqual(result["unverified"], [(0x1000, 1), (0x1008, 1),
                                                 (0x1010, 1), (0x1018, 1)])
         self.assertEqual(result["reads"], 8)
+
+    def test_a_link_failure_during_an_edge_walk_is_doubt_not_an_edge(self) -> None:
+        # A 20-register block whose last register the link never delivers.
+        # Every read that reaches 0x1013 times out; none is refused.
+        inverter = FakeInverter([(0x1000, 20)], flaky={0x1013})
+        result = map_readable_blocks(
+            inverter.read, [(0x1000, 0x40)], stride=8, max_reads=5000
+        )
+        # Treating that timeout as a refusal would have placed the block's
+        # edge one register short and said nothing -- the register is then
+        # missing from every snapshot built on the map. Instead the walk stops
+        # at the last address it proved and names what it could not settle.
+        self.assertEqual(result["ranges"], ["0x1000:0x1010"])
+        unverified = {
+            a for s, c in result["unverified"] for a in range(s, s + c)
+        }
+        self.assertIn(0x1013, unverified)
+        self.assertIn(0x1011, unverified)
+        # The register the link kept dropping is never written down as a gap;
+        # the only refusals are the probes past the block's true end.
+        refused = {a for s, c in result["refused"] for a in range(s, s + c)}
+        self.assertTrue(refused)
+        self.assertTrue(all(address > 0x1013 for address in refused))
+
+    def test_the_same_holds_walking_down_from_a_probe(self) -> None:
+        inverter = FakeInverter([(0x1000, 20)], flaky={0x1000})
+        result = map_readable_blocks(
+            inverter.read, [(0x1000, 0x40)], stride=8, max_reads=5000
+        )
+        self.assertEqual(result["ranges"], ["0x1008:0x1013"])
+        unverified = {
+            a for s, c in result["unverified"] for a in range(s, s + c)
+        }
+        self.assertTrue({0x1000, 0x1007} <= unverified)
+        refused = {a for s, c in result["refused"] for a in range(s, s + c)}
+        self.assertTrue(refused)
+        self.assertTrue(all(address > 0x1013 for address in refused))
+
+    def test_a_doubt_a_later_probe_settles_is_dropped(self) -> None:
+        # The link drops exactly one frame, on the first read past 0x1020, and
+        # is fine afterwards. The next probe walks the whole block, so nothing
+        # is left in doubt and the report says so.
+        calls = {"n": 0}
+        inverter = FakeInverter([(0x1000, 0x40)])
+
+        def read(start, count):
+            if 0x1020 in range(start, start + count) and calls["n"] < 2:
+                calls["n"] += 1
+                raise TimeoutError("dropped")
+            return inverter.read(start, count)
+
+        result = map_readable_blocks(read, [(0x1000, 0x40)], stride=8, max_reads=5000)
+        self.assertEqual(result["ranges"], ["0x1000:0x103F"])
+        self.assertEqual(result["unverified"], [])
 
     def test_the_budget_bounds_the_sweep_and_says_what_it_missed(self) -> None:
         inverter = FakeInverter([])

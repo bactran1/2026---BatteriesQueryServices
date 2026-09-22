@@ -331,7 +331,10 @@ def map_readable_blocks(
         "budget_exhausted": state.exhausted,
         "readable": readable,
         "refused": _merge_blocks(refused),
-        "unverified": _merge_blocks(unverified),
+        # A doubt another probe later settled is no longer a doubt.
+        "unverified": _subtract_blocks(
+            _merge_blocks(unverified + state.doubts), readable
+        ),
         "unscanned": _merge_blocks(unscanned),
         "ranges": [format_range(start, count) for start, count in readable],
         "values": state.values,
@@ -348,6 +351,7 @@ class _MapRun:
         self._on_read = on_read
         self.reads = 0
         self.values: dict[int, int] = {}
+        self.doubts: list[tuple[int, int]] = []
 
     @property
     def exhausted(self) -> bool:
@@ -380,29 +384,49 @@ class _MapRun:
         if self._on_read is not None:
             self._on_read(start, count, outcome)
 
-    def reads_ok(self, start: int, count: int) -> bool:
-        """Only a clean answer counts; a wavering link must not imply an edge."""
-        return self.read(start, count)[0] == READ_OK
+    def outcome(self, start: int, count: int) -> str:
+        return self.read(start, count)[0]
+
+    def doubt(self, start: int, count: int) -> None:
+        """Addresses an edge walk could not settle because the link failed."""
+        if count > 0:
+            self.doubts.append((start, count))
 
 
 def _edge_up(state: "_MapRun", known: int, limit: int, edge_read: int) -> int:
-    """Walk up from a defined address to the last one still in the same block."""
+    """Walk up from a defined address to the last one still in the same block.
+
+    Only a refusal marks an edge. A read that fails on the link has said
+    nothing about the addresses, so the walk stops at the last proven address
+    and reports the rest as unverified rather than cutting the block short
+    there: a snapshot built on a truncated block would skip real registers.
+    """
     end = known
     while end < limit and not state.exhausted:
         width = min(edge_read, limit - end)
-        if state.reads_ok(end + 1, width):
+        outcome = state.outcome(end + 1, width)
+        if outcome == READ_OK:
             end += width
             continue
+        if outcome != READ_REFUSED:
+            state.doubt(end + 1, width)
+            return end
         # Somewhere in the next `width` registers the block stops. A read
         # succeeds only when every address in it is defined, so the largest
         # span that still answers is found by bisection.
         low, high, best = 1, width - 1, 0
         while low <= high and not state.exhausted:
             middle = (low + high) // 2
-            if middle and state.reads_ok(end + 1, middle):
+            outcome = state.outcome(end + 1, middle)
+            if outcome == READ_OK:
                 best, low = middle, middle + 1
-            else:
+            elif outcome == READ_REFUSED:
                 high = middle - 1
+            else:
+                # Proven good up to end+best, proven refused past end+high;
+                # what lies between is what the failed read was asking about.
+                state.doubt(end + 1 + best, high - best)
+                break
         return end + best
     return end
 
@@ -412,16 +436,24 @@ def _edge_down(state: "_MapRun", known: int, floor: int, edge_read: int) -> int:
     start = known
     while start > floor and not state.exhausted:
         width = min(edge_read, start - floor)
-        if state.reads_ok(start - width, width):
+        outcome = state.outcome(start - width, width)
+        if outcome == READ_OK:
             start -= width
             continue
+        if outcome != READ_REFUSED:
+            state.doubt(start - width, width)
+            return start
         low, high, best = 1, width - 1, 0
         while low <= high and not state.exhausted:
             middle = (low + high) // 2
-            if middle and state.reads_ok(start - middle, middle):
+            outcome = state.outcome(start - middle, middle)
+            if outcome == READ_OK:
                 best, low = middle, middle + 1
-            else:
+            elif outcome == READ_REFUSED:
                 high = middle - 1
+            else:
+                state.doubt(start - high, high - best)
+                break
         return start - best
     return start
 
@@ -445,6 +477,26 @@ def _merge_blocks(blocks: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
         else:
             merged.append((start, count))
     return merged
+
+
+def _subtract_blocks(
+    blocks: Iterable[tuple[int, int]], remove: Iterable[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """``blocks`` with every address in ``remove`` taken out."""
+    result: list[tuple[int, int]] = []
+    removals = sorted(remove)
+    for start, count in blocks:
+        cursor, end = start, start + count
+        for gap_start, gap_count in removals:
+            gap_end = gap_start + gap_count
+            if gap_end <= cursor or gap_start >= end:
+                continue
+            if gap_start > cursor:
+                result.append((cursor, gap_start - cursor))
+            cursor = max(cursor, gap_end)
+        if cursor < end:
+            result.append((cursor, end - cursor))
+    return result
 
 
 def format_range(start: int, count: int) -> str:

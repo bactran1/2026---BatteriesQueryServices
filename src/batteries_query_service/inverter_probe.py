@@ -479,8 +479,16 @@ def map_blocks(args: argparse.Namespace) -> int:
         )
     if result["unverified"]:
         print(
-            f"  {len(result['unverified'])} block(s) failed on the link rather "
-            "than being refused; rerun those ranges before trusting the gaps"
+            f"  {len(result['unverified'])} span(s) failed on the link rather "
+            "than being refused, so they are neither in the map nor proven "
+            "absent. Rerun them with:"
+        )
+        print(
+            "    map "
+            + " ".join(
+                f"--range {format_range(start, count)}"
+                for start, count in result["unverified"]
+            )
         )
     if result["budget_exhausted"]:
         print(
