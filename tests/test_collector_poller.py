@@ -38,6 +38,31 @@ class CollectorPollerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(snapshot["batteries"], [])
 
+    async def test_the_snapshot_carries_the_host_readout(self) -> None:
+        settings = Settings(inverter=InverterSettings(enabled=False), batteries=[])
+        poller = BatteryPoller(settings, MetricsPublisher())
+        poller.host_stats.sample = lambda: {"cpu_temperature_c": 46.1, "cpu_percent": 4.0}
+        self.assertIsNone((await poller.snapshot())["host"])
+
+        await poller.poll_once()
+        self.assertEqual(
+            (await poller.snapshot())["host"],
+            {"cpu_temperature_c": 46.1, "cpu_percent": 4.0},
+        )
+
+    async def test_a_failing_host_sampler_cannot_break_the_poll(self) -> None:
+        settings = Settings(inverter=InverterSettings(enabled=False), batteries=[])
+        poller = BatteryPoller(settings, MetricsPublisher())
+
+        def explode():
+            raise RuntimeError("sysfs went away")
+
+        poller.host_stats.sample = explode
+        await poller.poll_once()
+        snapshot = await poller.snapshot()
+        self.assertIsNone(snapshot["host"])
+        self.assertEqual(snapshot["service"]["poll_count"], 1)
+
     async def test_inverter_failure_does_not_abort_the_collector_snapshot(self) -> None:
         settings = Settings(
             inverter=InverterSettings(enabled=True),

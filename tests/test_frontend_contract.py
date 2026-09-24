@@ -120,6 +120,23 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".language-toggle__track", css)
         self.assertIn(".preference-controls", css)
 
+    def test_collector_host_readout_is_present_and_localised(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        # One quiet line under the connection detail, hidden until it has data.
+        self.assertIn('id="collectorHost" class="connection-host" hidden', html)
+        self.assertIn("function renderHostStats(", javascript)
+        self.assertIn("renderHostStats(payload.snapshot?.host, payload.collector_status)", javascript)
+        # Every label exists in both languages.
+        for key in ("host.label", "host.cpu", "host.memory", "host.disk", "host.throttled", "host.tooltip"):
+            with self.subTest(key=key):
+                self.assertEqual(javascript.count(f'"{key}":'), 2)
+        for selector in (".connection-host {", ".connection-host__item--warm", ".connection-host__item--hot",
+                         ':root[data-theme="dark"] .connection-host__item--hot'):
+            with self.subTest(selector=selector):
+                self.assertIn(selector, css)
+
     def test_rack_overview_animates_eco_worthy_packs_and_their_flow(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
         scene = (STATIC / "rack-flow.js").read_text(encoding="utf-8")
