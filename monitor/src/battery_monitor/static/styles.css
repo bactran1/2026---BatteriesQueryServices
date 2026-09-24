@@ -183,27 +183,140 @@ button {
   text-transform: uppercase;
 }
 
+/* ---- Topbar, right side: one material cluster --------------------------------
+   Controls on the leading edge behind a hairline divider, the connection
+   stack on the trailing edge: a translucent panel with a hairline border and
+   a soft, low shadow, the way a macOS toolbar groups its items. Nothing in
+   it shouts; colour is reserved for the status dot and for the host line's
+   temperature when it matters. */
 .topbar__meta {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 14px;
+  padding: 9px 14px 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 16px 40px -26px rgba(0, 0, 0, 0.3);
+  transition:
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-theme="dark"] .topbar__meta {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 16px 40px -26px rgba(0, 0, 0, 0.7);
 }
 
 .preference-controls {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  align-self: stretch;
+  gap: 10px;
   flex: 0 0 auto;
+  padding-right: 14px;
+  border-right: 1px solid var(--line);
 }
 
 .connection-meta {
   display: grid;
   grid-template-columns: auto auto;
-  align-items: center;
+  justify-content: end;
+  align-items: baseline;
   min-width: 0;
-  gap: 4px 10px;
+  gap: 2px 12px;
+  text-align: right;
+}
+
+/* The status reads as a dot and a neutral label -- the dot carries the
+   colour, the words stay ink -- rather than a filled pill. Scoped to the
+   cluster; the inverter and inventory pills keep their own style. */
+.connection-meta .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The theme's own pill colours would tint the words; here the dot carries
+   the colour and the label stays ink, in both appearances. */
+:root[data-theme="dark"] .connection-meta .status-pill {
+  color: var(--ink);
+}
+
+.connection-meta .status-pill::before {
+  content: "";
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 3px rgba(110, 110, 115, 0.16);
+  transition:
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.connection-meta .status-pill--ok::before {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.22);
+  animation: status-breathe 3s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.connection-meta .status-pill--warning::before,
+.connection-meta .status-pill--stale::before {
+  background: var(--orange);
+  box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.22);
+}
+
+.connection-meta .status-pill--error::before {
+  background: var(--red);
+  box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.22);
+}
+
+@keyframes status-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.22);
+  }
+
+  50% {
+    box-shadow: 0 0 0 5px rgba(48, 209, 88, 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-meta .status-pill--ok::before {
+    animation: none;
+  }
+}
+
+.connection-meta .timestamp {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .connection-detail {
@@ -212,7 +325,6 @@ button {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
-  text-align: right;
   overflow-wrap: anywhere;
 }
 
@@ -264,13 +376,16 @@ button {
   color: #ff7770;
 }
 
+/* Language: a segmented control. A tertiary-fill track, a white (or graphite)
+   selection that slides between the two segments, the selected label in ink
+   and the other in the secondary colour. */
 .language-toggle {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
   min-height: 44px;
-  padding: 4px 0;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -285,30 +400,29 @@ button {
 .language-toggle__track {
   position: relative;
   display: grid;
-  width: 80px;
-  height: 36px;
+  width: 72px;
+  height: 28px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--control-bg);
-  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.26);
-  transition:
-    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  border-radius: 8px;
+  background: rgba(120, 120, 128, 0.12);
+  transition: background 320ms ease;
+}
+
+:root[data-theme="dark"] .language-toggle__track {
+  background: rgba(120, 120, 128, 0.24);
 }
 
 .language-toggle__option {
   position: relative;
   z-index: 1;
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 760;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0;
   line-height: 1;
   text-align: center;
-  transition: color 300ms ease;
+  transition: color 250ms ease;
 }
 
 .language-toggle__option:first-child {
@@ -317,22 +431,31 @@ button {
 
 .language-toggle__thumb {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 36px;
-  height: 28px;
-  border-radius: 999px;
-  background: var(--panel-strong);
-  box-shadow: 0 7px 16px rgba(0, 0, 0, 0.16);
+  top: 2px;
+  left: 2px;
+  width: 32px;
+  height: 24px;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.12),
+    0 3px 1px rgba(0, 0, 0, 0.04);
   transform: translateX(0);
   transition:
-    transform 460ms cubic-bezier(0.22, 1, 0.36, 1),
-    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background 320ms ease,
+    box-shadow 320ms ease;
+}
+
+:root[data-theme="dark"] .language-toggle__thumb {
+  background: #636366;
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.32),
+    0 3px 1px rgba(0, 0, 0, 0.12);
 }
 
 .language-toggle input:checked + .language-toggle__track .language-toggle__thumb {
-  transform: translateX(38px);
+  transform: translateX(36px);
 }
 
 .language-toggle input:checked + .language-toggle__track .language-toggle__option:first-child {
@@ -348,13 +471,15 @@ button {
   outline-offset: 3px;
 }
 
+/* Appearance: a switch. The knob is white on a tertiary-fill track; the sun
+   and a crescent moon sit in the track and the knob covers the one in use. */
 .theme-toggle {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
   min-height: 44px;
-  padding: 4px 0;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -369,86 +494,80 @@ button {
 .theme-toggle__track {
   position: relative;
   display: block;
-  width: 68px;
-  height: 36px;
-  border: 1px solid var(--line);
+  width: 46px;
+  height: 28px;
   border-radius: 999px;
-  background: var(--control-bg);
-  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.26);
-  transition:
-    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  background: rgba(120, 120, 128, 0.16);
+  transition: background 320ms ease;
+}
+
+:root[data-theme="dark"] .theme-toggle__track {
+  background: rgba(120, 120, 128, 0.32);
 }
 
 .theme-toggle__thumb {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 28px;
-  height: 28px;
+  z-index: 1;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.15),
+    0 3px 1px rgba(0, 0, 0, 0.06);
   transform: translateX(0);
   transition:
-    transform 460ms cubic-bezier(0.22, 1, 0.36, 1),
-    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 320ms ease;
 }
 
 .theme-toggle__sun,
 .theme-toggle__moon {
   position: absolute;
   top: 50%;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   transform: translateY(-50%);
   transition:
     opacity 320ms ease,
-    transform 460ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .theme-toggle__sun {
-  left: 10px;
+  left: 8px;
   background: #ff9f0a;
-  box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.16);
+  box-shadow: 0 0 0 2px rgba(255, 159, 10, 0.18);
   opacity: 1;
 }
 
 .theme-toggle__moon {
-  right: 10px;
-  background: #f5f5f7;
-  opacity: 0.44;
+  right: 8px;
+  background: transparent;
+  box-shadow: inset -4px 1.5px 0 0 var(--ink);
+  opacity: 0.42;
 }
 
 .theme-toggle__moon::after {
-  position: absolute;
-  top: -1px;
-  left: 4px;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--control-bg);
-  content: "";
-  transition: background 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  content: none;
 }
 
 .theme-toggle input:checked + .theme-toggle__track .theme-toggle__thumb {
-  background: #f5f5f7;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38);
-  transform: translateX(32px);
+  transform: translateX(18px);
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.4),
+    0 3px 1px rgba(0, 0, 0, 0.2);
 }
 
 .theme-toggle input:checked + .theme-toggle__track .theme-toggle__sun {
-  opacity: 0.46;
-  transform: translateY(-50%) scale(0.88);
+  opacity: 0.55;
+  transform: translateY(-50%) scale(0.9);
 }
 
 .theme-toggle input:checked + .theme-toggle__track .theme-toggle__moon {
-  opacity: 1;
-  transform: translateY(-50%) scale(1.05);
+  opacity: 0.9;
 }
 
 .theme-toggle:focus-within .theme-toggle__track {
@@ -3992,13 +4111,20 @@ select {
     flex-direction: column;
   }
 
+  /* The cluster hugs its content once it moves under the title, and only
+     stretches to the full width when it has to stack. */
   .topbar__meta {
-    width: 100%;
-    align-items: flex-start;
-    justify-content: flex-start;
+    width: fit-content;
+    max-width: 100%;
   }
 
-  .connection-detail {
+  /* Compact widths: the status, its timestamp and the two footnotes stack
+     into one left-aligned column beside the controls, so nothing has to
+     share a line it cannot fit on. */
+  .connection-meta {
+    flex: 1 1 auto;
+    grid-template-columns: 1fr;
+    justify-content: start;
     text-align: left;
   }
 
@@ -4301,9 +4427,20 @@ select {
     width: 100%;
   }
 
+  .topbar__meta {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 10px 0;
+    padding: 10px 12px;
+  }
+
   .preference-controls {
     width: 100%;
+    align-self: auto;
     justify-content: flex-start;
+    padding: 0 0 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .connection-detail,
