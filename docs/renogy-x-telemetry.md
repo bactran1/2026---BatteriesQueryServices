@@ -156,11 +156,20 @@ docker exec -it batteries-query-service renogy-x-probe map --active \
 ```
 
 The default sweep covers `0x1000:0x13FF`, `0x2000:0x20FF` and `0x3100:0x31FF`.
-The last of those is the telemetry this service already polls, included as a
-positive control: it has known gaps at `0x3183` and `0x319E`, so a map that does
-not show those blocks and those gaps is not reporting the inverter faithfully.
-Widen with `--range`, lower `--stride` to catch narrow blocks, and raise
-`--max-reads` if the sweep reports blocks it did not reach.
+The last of those holds the telemetry this service already polls, included as a
+positive control: `0x3100` through `0x31AD` must come back readable, or the map
+is not to be trusted. A block that ends exactly at the edge of the sweep has not
+been shown to end at all, and the summary says so; widen `--range` to follow it.
+Lower `--stride` to catch blocks narrower than eight registers, and raise
+`--max-reads` if the sweep reports blocks it did not reach. Over the logger a
+wide sweep takes minutes and prints a line every hundred reads while nothing is
+answering.
+
+What a live map of this inverter found, for reference: the nameplate block
+`0x1212:0x126C` (firmware words, the ASCII serial number at `0x1234`), single
+registers at `0x1008` and `0x1200`, six zero registers at `0x131C:0x1321`, and
+the telemetry block running from `0x3100` past `0x31FF`. Everything else in
+`0x1000:0x13FF` and all of `0x2000:0x20FF` is refused.
 
 ### The run
 

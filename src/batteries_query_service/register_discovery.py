@@ -32,6 +32,7 @@ the reads.
 from __future__ import annotations
 
 import re
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
@@ -323,7 +324,11 @@ def map_readable_blocks(
                 unverified.append((probe, 1))
             probe += stride
 
-    readable = _merge_blocks(islands)
+    # Two islands that touch were walked separately, which means a read
+    # spanning the join was refused: the inverter treats them as two pages.
+    # Joining them would hand the snapshot a range it cannot read in one
+    # chunk, and Modbus refuses the whole chunk. Only overlap is joined.
+    readable = _merge_blocks(islands, touching=False)
     return {
         "reads": state.reads,
         "probes": probes,
@@ -331,7 +336,10 @@ def map_readable_blocks(
         "budget_exhausted": state.exhausted,
         "readable": readable,
         "refused": _merge_blocks(refused),
-        "unverified": _merge_blocks(unverified),
+        # A doubt another probe later settled is no longer a doubt.
+        "unverified": _subtract_blocks(
+            _merge_blocks(unverified + state.doubts), readable
+        ),
         "unscanned": _merge_blocks(unscanned),
         "ranges": [format_range(start, count) for start, count in readable],
         "values": state.values,
@@ -348,6 +356,7 @@ class _MapRun:
         self._on_read = on_read
         self.reads = 0
         self.values: dict[int, int] = {}
+        self.doubts: list[tuple[int, int]] = []
 
     @property
     def exhausted(self) -> bool:
@@ -380,29 +389,49 @@ class _MapRun:
         if self._on_read is not None:
             self._on_read(start, count, outcome)
 
-    def reads_ok(self, start: int, count: int) -> bool:
-        """Only a clean answer counts; a wavering link must not imply an edge."""
-        return self.read(start, count)[0] == READ_OK
+    def outcome(self, start: int, count: int) -> str:
+        return self.read(start, count)[0]
+
+    def doubt(self, start: int, count: int) -> None:
+        """Addresses an edge walk could not settle because the link failed."""
+        if count > 0:
+            self.doubts.append((start, count))
 
 
 def _edge_up(state: "_MapRun", known: int, limit: int, edge_read: int) -> int:
-    """Walk up from a defined address to the last one still in the same block."""
+    """Walk up from a defined address to the last one still in the same block.
+
+    Only a refusal marks an edge. A read that fails on the link has said
+    nothing about the addresses, so the walk stops at the last proven address
+    and reports the rest as unverified rather than cutting the block short
+    there: a snapshot built on a truncated block would skip real registers.
+    """
     end = known
     while end < limit and not state.exhausted:
         width = min(edge_read, limit - end)
-        if state.reads_ok(end + 1, width):
+        outcome = state.outcome(end + 1, width)
+        if outcome == READ_OK:
             end += width
             continue
+        if outcome != READ_REFUSED:
+            state.doubt(end + 1, width)
+            return end
         # Somewhere in the next `width` registers the block stops. A read
         # succeeds only when every address in it is defined, so the largest
         # span that still answers is found by bisection.
         low, high, best = 1, width - 1, 0
         while low <= high and not state.exhausted:
             middle = (low + high) // 2
-            if middle and state.reads_ok(end + 1, middle):
+            outcome = state.outcome(end + 1, middle)
+            if outcome == READ_OK:
                 best, low = middle, middle + 1
-            else:
+            elif outcome == READ_REFUSED:
                 high = middle - 1
+            else:
+                # Proven good up to end+best, proven refused past end+high;
+                # what lies between is what the failed read was asking about.
+                state.doubt(end + 1 + best, high - best)
+                break
         return end + best
     return end
 
@@ -412,16 +441,24 @@ def _edge_down(state: "_MapRun", known: int, floor: int, edge_read: int) -> int:
     start = known
     while start > floor and not state.exhausted:
         width = min(edge_read, start - floor)
-        if state.reads_ok(start - width, width):
+        outcome = state.outcome(start - width, width)
+        if outcome == READ_OK:
             start -= width
             continue
+        if outcome != READ_REFUSED:
+            state.doubt(start - width, width)
+            return start
         low, high, best = 1, width - 1, 0
         while low <= high and not state.exhausted:
             middle = (low + high) // 2
-            if middle and state.reads_ok(start - middle, middle):
+            outcome = state.outcome(start - middle, middle)
+            if outcome == READ_OK:
                 best, low = middle, middle + 1
-            else:
+            elif outcome == READ_REFUSED:
                 high = middle - 1
+            else:
+                state.doubt(start - high, high - best)
+                break
         return start - best
     return start
 
@@ -434,17 +471,134 @@ def _covering(islands: Sequence[tuple[int, int]], address: int) -> int | None:
     return None
 
 
-def _merge_blocks(blocks: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Join blocks that touch, so the map reads as islands rather than probes."""
+def _merge_blocks(
+    blocks: Iterable[tuple[int, int]], *, touching: bool = True
+) -> list[tuple[int, int]]:
+    """Join blocks that overlap, and with ``touching`` those that merely abut."""
     merged: list[tuple[int, int]] = []
     for start, count in sorted(blocks):
-        if merged and start <= merged[-1][0] + merged[-1][1]:
+        previous_end = merged[-1][0] + merged[-1][1] if merged else None
+        joins = previous_end is not None and (
+            start < previous_end or (touching and start == previous_end)
+        )
+        if joins:
             previous_start, previous_count = merged[-1]
             end = max(previous_start + previous_count, start + count)
             merged[-1] = (previous_start, end - previous_start)
         else:
             merged.append((start, count))
     return merged
+
+
+def _subtract_blocks(
+    blocks: Iterable[tuple[int, int]], remove: Iterable[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """``blocks`` with every address in ``remove`` taken out."""
+    result: list[tuple[int, int]] = []
+    removals = sorted(remove)
+    for start, count in blocks:
+        cursor, end = start, start + count
+        for gap_start, gap_count in removals:
+            gap_end = gap_start + gap_count
+            if gap_end <= cursor or gap_start >= end:
+                continue
+            if gap_start > cursor:
+                result.append((cursor, gap_start - cursor))
+            cursor = max(cursor, gap_end)
+        if cursor < end:
+            result.append((cursor, end - cursor))
+    return result
+
+
+def read_blocks_resiliently(
+    read: Callable[[int, int], Sequence[int]],
+    ranges: Iterable[tuple[int, int]],
+    *,
+    chunk_size: int = 60,
+    retries: int = 2,
+    extra_reads: int = 200,
+    sleep: Callable[[float], None] | None = None,
+    retry_delay: float = 0.15,
+    inter_request_delay: float = 0.02,
+) -> tuple[dict[int, int], list[dict[str, Any]]]:
+    """Read ranges in chunks without letting one bad read take a chunk down.
+
+    A link failure is retried, since it says nothing about the addresses. A
+    refusal is split: Modbus refuses a read when any address in it is out of
+    range or when it crosses a page the inverter keeps separate, and either
+    way the halves usually answer. Splitting is bounded by ``extra_reads`` so a
+    stale map that names whole blocks the inverter no longer answers cannot
+    turn one snapshot into hundreds of reads; past the bound a refused chunk
+    is recorded as refused, whole.
+    """
+    if not 1 <= chunk_size <= 125:
+        raise ValueError("chunk size must be between 1 and 125 registers")
+    if retries < 0:
+        raise ValueError("retries cannot be negative")
+
+    queue: deque[tuple[int, int]] = deque()
+    for start, count in ranges:
+        for offset in range(0, count, chunk_size):
+            queue.append((start + offset, min(chunk_size, count - offset)))
+
+    values: dict[int, int] = {}
+    errors: list[dict[str, Any]] = []
+    splits_left = extra_reads
+    while queue:
+        start, count = queue.popleft()
+        outcome, block, attempts, text = _try_read(
+            read, start, count, retries, sleep, retry_delay
+        )
+        if sleep is not None and inter_request_delay:
+            sleep(inter_request_delay)
+        if outcome == READ_OK and block is not None:
+            for index, value in enumerate(block):
+                values[start + index] = int(value)
+        elif outcome == READ_REFUSED and count > 1 and splits_left > 0:
+            splits_left -= 1
+            half = count // 2
+            queue.appendleft((start + half, count - half))
+            queue.appendleft((start, half))
+        else:
+            errors.append(
+                {
+                    "start": start,
+                    "count": count,
+                    "attempts": attempts,
+                    "kind": outcome,
+                    "error": text,
+                }
+            )
+    return values, errors
+
+
+def _try_read(
+    read: Callable[[int, int], Sequence[int]],
+    start: int,
+    count: int,
+    retries: int,
+    sleep: Callable[[float], None] | None,
+    retry_delay: float,
+) -> tuple[str, Sequence[int] | None, int, str]:
+    outcome, text = READ_FAILED, ""
+    attempts = 0
+    while attempts <= retries:
+        attempts += 1
+        try:
+            return READ_OK, list(read(start, count)), attempts, ""
+        except Exception as exc:  # noqa: BLE001 - every failure is classified
+            outcome, text = classify_read_failure(exc), str(exc)
+            if outcome == READ_REFUSED:
+                break
+            if attempts <= retries and sleep is not None and retry_delay:
+                sleep(retry_delay)
+    return outcome, None, attempts, text
+
+
+def format_ranges_of(addresses: Iterable[int]) -> list[str]:
+    """Collapse loose addresses into the ``START:END`` form the tools speak."""
+    blocks = _merge_blocks((int(address), 1) for address in addresses)
+    return [format_range(start, count) for start, count in blocks]
 
 
 def format_range(start: int, count: int) -> str:

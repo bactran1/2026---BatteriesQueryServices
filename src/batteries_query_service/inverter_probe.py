@@ -8,11 +8,12 @@ from typing import Sequence
 
 from .register_discovery import (
     READ_REFUSED,
-    classify_read_failure,
     classify_samples,
     compare_snapshots,
     format_range,
+    format_ranges_of,
     map_readable_blocks,
+    read_blocks_resiliently,
 )
 from .register_discovery import parse_ranges as parse_discovery_ranges
 from .renogy_x import (
@@ -32,9 +33,11 @@ from .solarman_v5 import SolarmanV5ModbusClient, SolarmanV5Settings
 DISCOVERY_RANGES = ("0x1000:0x13FF", "0x2000:0x20FF")
 
 # What `map` sweeps by default. The first two are where a setting plausibly
-# lives; 0x3100:0x31FF is the telemetry this service already reads every poll,
-# included as a positive control -- it has known gaps at 0x3183 and 0x319E, so a
-# map that does not show those blocks is not reporting the inverter faithfully.
+# lives; 0x3100:0x31FF holds the telemetry this service reads every poll,
+# included as a positive control: 0x3100 through 0x31AD must come back readable,
+# or the map is not to be trusted. (The driver skips a few addresses inside that
+# span, but that is the driver's choice -- a live map showed the inverter
+# answers the whole block, and on past 0x31FF.)
 MAP_RANGES = ("0x1000:0x13FF", "0x2000:0x20FF", "0x3100:0x31FF")
 
 
@@ -303,21 +306,28 @@ def collect_snapshot(args: argparse.Namespace, label: str) -> dict:
 
     ranges = resolve_ranges(args, DISCOVERY_RANGES)
     client = discovery_client(args)
+    wanted = sum(count for _, count in ranges)
+
+    def read(start: int, count: int) -> list[int]:
+        return client.read_holding_registers(args.address, start, count)
+
     samples: list[dict[int, int]] = []
     errors: list[dict[str, object]] = []
     for index in range(args.samples):
         if index:
             time.sleep(args.interval)
-        registers, read_errors = client.read_ranges(
-            args.address,
-            ranges,
-            chunk_size=args.chunk_size,
-            continue_on_error=True,
+        # A chunk lost to one dropped frame would drop every register in it
+        # from the whole comparison, so reads here retry and split rather
+        # than give up on sixty registers at once.
+        registers, read_errors = read_blocks_resiliently(
+            read, ranges, chunk_size=args.chunk_size, sleep=time.sleep
         )
         samples.append(registers)
         errors.extend(read_errors)
+        missing = wanted - len(registers)
+        detail = f", {missing} not read" if missing else ""
         print(
-            f"sample {index + 1}/{args.samples}: {len(registers)} registers",
+            f"sample {index + 1}/{args.samples}: {len(registers)} registers{detail}",
             file=sys.stderr,
         )
 
@@ -342,27 +352,49 @@ def snapshot(args: argparse.Namespace) -> int:
         f"{args.label}: {len(result['stable'])} stable, "
         f"{len(result['volatile'])} moving on their own -> {args.out}"
     )
-    refused = sum(
-        int(error.get("count") or 0)
-        for error in result["read_errors"]
-        if classify_read_failure(RuntimeError(str(error.get("error"))))
-        == READ_REFUSED
-    )
-    if refused:
-        # Worth saying out loud: a refused chunk takes every register in it
-        # down with it, so a snapshot can look healthy while covering almost
-        # nothing. 'map' is what turns that back into usable ranges.
-        print(
-            f"  {refused} register read(s) were refused as out of range. "
-            "Run 'map' and rerun with --ranges-from to cover only the blocks "
-            "this inverter answers.",
-            file=sys.stderr,
-        )
+    _report_unread(result)
     print(
         "Now change the work mode on the inverter's LCD "
         "(SYS SETTING > SETUP > WORK MODE), then run 'compare'."
     )
     return 0
+
+
+def _report_unread(snapshot: dict) -> None:
+    """Name what a snapshot could not read, so the next run can be exact."""
+    errors = snapshot.get("read_errors") or []
+    refused = {
+        address
+        for error in errors
+        if error.get("kind") == READ_REFUSED
+        for address in range(int(error["start"]), int(error["start"]) + int(error["count"]))
+    }
+    dropped = {
+        address
+        for error in errors
+        if error.get("kind") != READ_REFUSED
+        for address in range(int(error["start"]), int(error["start"]) + int(error["count"]))
+    }
+    if refused:
+        print(
+            f"  refused as out of range ({len(refused)} register(s)): "
+            + ", ".join(format_ranges_of(refused)),
+            file=sys.stderr,
+        )
+        print("    remap those with 'map' before trusting a result there.", file=sys.stderr)
+    if dropped:
+        print(
+            f"  lost on the link after retries ({len(dropped)} register(s)): "
+            + ", ".join(format_ranges_of(dropped)),
+            file=sys.stderr,
+        )
+    incomplete = snapshot.get("incomplete") or []
+    if incomplete:
+        print(
+            f"  {len(incomplete)} register(s) missed at least one sample and "
+            "cannot be compared: " + ", ".join(format_ranges_of(incomplete)),
+            file=sys.stderr,
+        )
 
 
 def compare(args: argparse.Namespace) -> int:
@@ -395,11 +427,15 @@ def compare(args: argparse.Namespace) -> int:
     for note in result["notes"]:
         print(f"  - {note}")
     if result["unreadable_on_one_side"]:
+        # Say where, not just how many: whether the settings block was in the
+        # comparison at all is the first thing to check when nothing turns up.
         print(
             f"  - {len(result['unreadable_on_one_side'])} register(s) were "
-            "readable on only one side and were not compared.",
+            "readable on only one side and were not compared: "
+            + ", ".join(format_ranges_of(result["unreadable_on_one_side"])),
             file=sys.stderr,
         )
+    _report_unread(current)
     return 0
 
 
@@ -417,9 +453,18 @@ def map_blocks(args: argparse.Namespace) -> int:
     def read(start: int, count: int) -> list[int]:
         return client.read_holding_registers(args.address, start, count)
 
+    reads_so_far = 0
+
     def progress(start: int, count: int, outcome: str) -> None:
+        # A long refused stretch is silent otherwise, and over the logger a
+        # wide sweep runs for minutes; say something now and then so it does
+        # not look hung.
+        nonlocal reads_so_far
+        reads_so_far += 1
         if outcome == "ok":
             print(f"  {format_range(start, count)} answered", file=sys.stderr)
+        elif reads_so_far % 100 == 0:
+            print(f"  ... {reads_so_far} reads, at 0x{start:04X}", file=sys.stderr)
 
     result = map_readable_blocks(
         read,
@@ -448,6 +493,7 @@ def map_blocks(args: argparse.Namespace) -> int:
         f"{len(readable)} readable block(s), {total} register(s), "
         f"in {result['reads']} read(s)"
     )
+    edges = {start for start, _ in ranges} | {start + count - 1 for start, count in ranges}
     for start, count in readable:
         undefined = sum(
             1
@@ -455,6 +501,10 @@ def map_blocks(args: argparse.Namespace) -> int:
             if result["values"].get(address) == UNDEFINED_REGISTER
         )
         suffix = f", {undefined} reading 0xFFFF" if undefined else ""
+        # The walk stops at the edge of the range it was given, so a block that
+        # ends exactly there has not been shown to end at all.
+        if start in edges or start + count - 1 in edges:
+            suffix += ", reaches the edge of the sweep and may continue"
         print(f"  {format_range(start, count)}  {count} register(s){suffix}")
     if not readable:
         print(
@@ -463,8 +513,16 @@ def map_blocks(args: argparse.Namespace) -> int:
         )
     if result["unverified"]:
         print(
-            f"  {len(result['unverified'])} block(s) failed on the link rather "
-            "than being refused; rerun those ranges before trusting the gaps"
+            f"  {len(result['unverified'])} span(s) failed on the link rather "
+            "than being refused, so they are neither in the map nor proven "
+            "absent. Rerun them with:"
+        )
+        print(
+            "    map "
+            + " ".join(
+                f"--range {format_range(start, count)}"
+                for start, count in result["unverified"]
+            )
         )
     if result["budget_exhausted"]:
         print(
