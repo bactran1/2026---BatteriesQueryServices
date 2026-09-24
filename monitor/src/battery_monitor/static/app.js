@@ -64,6 +64,16 @@ const translations = {
     "status.starting": "Starting",
     "status.noReadings": "No readings yet",
     "status.connecting": "Connecting to collector",
+    "host.label": "Pi",
+    "host.cpu": "CPU",
+    "host.memory": "RAM",
+    "host.disk": "SD",
+    "host.underVoltage": "under-voltage",
+    "host.frequencyCapped": "clock capped",
+    "host.throttled": "throttled",
+    "host.softTemperatureLimit": "temperature limit",
+    "host.tooltip": "Collector host: load {load}, up {uptime}, {free} GB free on the data disk",
+    "host.tooltipOccurred": "Since boot: {flags}",
     "status.noLiveReadings": "No live readings yet",
     "status.dataRelative": "Data {relative}",
     "status.lastError": "Last error: {message}",
@@ -480,6 +490,16 @@ const translations = {
     "status.starting": "Đang khởi động",
     "status.noReadings": "Chưa có dữ liệu",
     "status.connecting": "Đang kết nối bộ thu thập",
+    "host.label": "Pi",
+    "host.cpu": "CPU",
+    "host.memory": "RAM",
+    "host.disk": "SD",
+    "host.underVoltage": "thiếu áp",
+    "host.frequencyCapped": "giới hạn xung nhịp",
+    "host.throttled": "bị hạn tốc",
+    "host.softTemperatureLimit": "giới hạn nhiệt",
+    "host.tooltip": "Máy thu thập: tải {load}, chạy {uptime}, còn trống {free} GB trên đĩa dữ liệu",
+    "host.tooltipOccurred": "Kể từ khi khởi động: {flags}",
     "status.noLiveReadings": "Chưa có số liệu trực tiếp",
     "status.dataRelative": "Dữ liệu {relative}",
     "status.lastError": "Lỗi gần nhất: {message}",
@@ -1248,6 +1268,82 @@ function renderStatus(payload) {
       rows: formatNumber(payload.storage?.row_count || 0),
     });
   }
+  renderHostStats(payload.snapshot?.host, payload.collector_status);
+}
+
+// The Pi's own health, one quiet line under the connection detail. It only
+// speaks up through colour when the SoC is near its 80 C throttle point or
+// the firmware reports a throttle condition; otherwise it reads as a footnote.
+const HOST_WARM_C = 70;
+const HOST_HOT_C = 80;
+const HOST_FLAG_LABELS = {
+  under_voltage: "host.underVoltage",
+  frequency_capped: "host.frequencyCapped",
+  throttled: "host.throttled",
+  soft_temperature_limit: "host.softTemperatureLimit",
+};
+
+function renderHostStats(host, collectorStatus) {
+  const strip = $("collectorHost");
+  if (!strip) return;
+  const stats = host && typeof host === "object" ? host : null;
+  const temperature = finiteNumber(stats?.cpu_temperature_c);
+  const cpu = finiteNumber(stats?.cpu_percent);
+  const memory = finiteNumber(stats?.memory_percent);
+  const disk = finiteNumber(stats?.disk_percent);
+  const active = Array.isArray(stats?.throttled?.active) ? stats.throttled.active : [];
+  const hasFigure = [temperature, cpu, memory, disk].some((value) => value !== null);
+
+  if (!stats || collectorStatus === "offline" || !hasFigure) {
+    strip.hidden = true;
+    strip.innerHTML = "";
+    strip.removeAttribute("title");
+    return;
+  }
+
+  const item = (text, modifier = "") =>
+    `<span class="connection-host__item${modifier ? ` connection-host__item--${modifier}` : ""}">${escapeHtml(text)}</span>`;
+  const parts = [`<span class="connection-host__label">${escapeHtml(t("host.label"))}</span>`];
+  if (temperature !== null) {
+    const heat = temperature >= HOST_HOT_C ? "hot" : temperature >= HOST_WARM_C ? "warm" : "";
+    parts.push(item(`${formatNumber(Math.round(temperature))} °C`, heat));
+  }
+  if (cpu !== null) parts.push(item(`${t("host.cpu")} ${formatPercent(cpu)}`));
+  if (memory !== null) parts.push(item(`${t("host.memory")} ${formatPercent(memory)}`));
+  if (disk !== null) parts.push(item(`${t("host.disk")} ${formatPercent(disk)}`));
+  for (const flag of active) {
+    const key = HOST_FLAG_LABELS[flag];
+    if (key) parts.push(item(t(key), "hot"));
+  }
+  strip.innerHTML = parts.join("");
+  strip.hidden = false;
+  strip.title = hostTooltip(stats);
+}
+
+function hostTooltip(stats) {
+  const load = finiteNumber(stats.load_1m);
+  const uptime = finiteNumber(stats.uptime_seconds);
+  const free = finiteNumber(stats.disk_free_gb);
+  const lines = [
+    t("host.tooltip", {
+      load: load === null ? "--" : load.toFixed(2),
+      uptime: uptime === null ? "--" : formatUptime(uptime),
+      free: free === null ? "--" : formatNumber(free),
+    }),
+  ];
+  const occurred = Array.isArray(stats.throttled?.occurred) ? stats.throttled.occurred : [];
+  const named = occurred.map((flag) => HOST_FLAG_LABELS[flag]).filter(Boolean).map((key) => t(key));
+  if (named.length) lines.push(t("host.tooltipOccurred", { flags: named.join(", ") }));
+  return lines.join("\n");
+}
+
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 function handleResourceFailure(resource, error) {
@@ -1298,6 +1394,7 @@ function renderLiveFailure(message) {
     : t("status.dataStale");
   $("collectorStatus").className = `status-pill ${presentation.className}`;
   $("collectorStatus").title = message;
+  renderHostStats(null, "offline");
   $("lastUpdated").textContent = state.lastLiveReceivedAt
     ? t("status.lastDashboardUpdate", {
         relative: formatRelativeTime(new Date(state.lastLiveReceivedAt).toISOString()),

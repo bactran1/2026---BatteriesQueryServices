@@ -4,12 +4,14 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from . import __version__
 from .buffer import SnapshotBuffer
 from .config import BatterySettings, InverterSettings, Settings
 from .ecoworthy import EcoWorthyModbusClient, SerialConnectionSettings
+from .host import HostStats
 from .megarevo import MegarevoR8KLNAClient, R8KLNA_PROFILE
 from .metrics import MetricsPublisher
 from .renogy_x import RenogyXSerialSettings
@@ -35,6 +37,10 @@ class BatteryPoller:
             battery.id: self._pending_state(battery) for battery in settings.batteries
         }
         self._inverter_state = self._pending_inverter_state(settings.inverter)
+        # The Pi's own health rides along with every poll; the data disk is
+        # wherever the replay buffer lives, which is the bind mount that fills.
+        self.host_stats = HostStats(Path(settings.buffer.path).parent)
+        self._host_state: dict[str, Any] | None = None
         self._poll_count = 0
         self._latest_sequence = 0
         self._last_completed_at: str | None = None
@@ -119,6 +125,7 @@ class BatteryPoller:
             )
 
         await self._poll_inverter()
+        await self._sample_host()
         self._last_completed_at = _utc_now()
         if self.snapshot_buffer is not None and self._buffer_sample_is_due():
             try:
@@ -146,6 +153,7 @@ class BatteryPoller:
         async with self._lock:
             batteries = [dict(state) for state in self._states.values()]
             inverter = dict(self._inverter_state)
+            host = self._host_state
         return {
             "service": {
                 "started_at": self.started_at,
@@ -162,7 +170,19 @@ class BatteryPoller:
             },
             "batteries": batteries,
             "inverter": inverter,
+            "host": dict(host) if host else None,
         }
+
+    async def _sample_host(self) -> None:
+        # Never let the host readout cost a battery reading: any failure here
+        # just leaves the readout blank until the next poll.
+        try:
+            sampled = await asyncio.to_thread(self.host_stats.sample)
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not break polling
+            logger.debug("host stats unavailable: %s", exc)
+            sampled = None
+        async with self._lock:
+            self._host_state = sampled
 
     async def health(self) -> dict[str, Any]:
         snapshot = await self.snapshot()

@@ -36,6 +36,7 @@ See [Renogy X inverter telemetry](docs/renogy-x-telemetry.md).
 - Inverter PV1-PV4 voltage, current, power, and total solar power
 - Grid import/export, L1/L2 voltage/current/power, frequency, backup load, and measured home load
 - Inverter operating state, alarms, faults, temperatures, and energy counters; inverter-side battery fields remain available in raw collector output for diagnostics only
+- The collector Pi's own health: CPU load, SoC temperature, memory, data-disk usage and the firmware's throttle flags, shown as a small readout under the dashboard's connection status
 
 ## Hardware assumptions
 
