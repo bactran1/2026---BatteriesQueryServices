@@ -840,6 +840,147 @@ class TimeOfUseRollupTests(unittest.TestCase):
             )
         store.insert_snapshots(snapshots)
 
+    def _log_steady_load(
+        self,
+        store: RetentionStore,
+        first_day: datetime,
+        days: int,
+        reset_offset_minutes: int,
+        kw: float = 0.5,
+    ) -> float:
+        """Log a constant load at 30-second readings across several days.
+
+        The inverter's "today" counters reset ``reset_offset_minutes`` after
+        each tariff-local midnight: zero for a clock that agrees with the
+        tariff, a few minutes for one running slow, minus eight hours for one
+        set to UTC. Returns the energy one reading adds.
+        """
+        per_reading = kw * 30 / 3600
+        resets = {
+            first_day + timedelta(days=offset, minutes=reset_offset_minutes)
+            for offset in range(-1, days + 1)
+        }
+        end = first_day + timedelta(days=days)
+        counter, moment, snapshots = 0.0, first_day, []
+        while moment < end:
+            if moment in resets:
+                counter = 0.0
+            counter += per_reading
+            snapshots.append(
+                _energy_snapshot(
+                    moment.astimezone(timezone.utc).isoformat(),
+                    consumption_kwh=round(counter, 6),
+                    solar_generation_kwh=0.0,
+                    grid_import_kwh=round(counter, 6),
+                )
+            )
+            moment += timedelta(seconds=30)
+        store.insert_snapshots(snapshots)
+        return per_reading
+
+    def _day_totals(self, store: RetentionStore, day: datetime) -> dict:
+        return store.tou_energy_totals(
+            int(day.timestamp()), int((day + timedelta(days=1)).timestamp())
+        )
+
+    def test_the_first_reading_after_midnight_is_measured_against_the_night_before(self) -> None:
+        # A weekday under a steady 0.5 kW: 8 h super off-peak = 4 kWh, 6 h
+        # on-peak = 3 kWh, 10 h off-peak = 5 kWh. The inverter's clock runs two
+        # minutes slow, so at tariff midnight its counter still holds all of
+        # yesterday. Measured against nothing, that whole day lands in the
+        # first reading -- and the first reading is super off-peak.
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            first = datetime(2026, 1, 13, tzinfo=self.ZONE)
+            self._log_steady_load(store, first, days=2, reset_offset_minutes=2)
+            totals = self._day_totals(store, first + timedelta(days=1))
+            store.close()
+        self.assertAlmostEqual(totals["super_off_peak"]["consumption_kwh"], 4.0, 2)
+        self.assertAlmostEqual(totals["on_peak"]["consumption_kwh"], 3.0, 2)
+        self.assertAlmostEqual(totals["off_peak"]["consumption_kwh"], 5.0, 2)
+        self.assertAlmostEqual(
+            sum(v["consumption_kwh"] for v in totals.values()), 12.0, 2
+        )
+
+    def test_an_inverter_on_a_utc_clock_is_still_split_by_the_tariff_clock(self) -> None:
+        # Reset at 16:00 PST instead of midnight. The counter has eight hours
+        # in it when the tariff day begins; none of that is tonight's.
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            first = datetime(2026, 1, 13, tzinfo=self.ZONE)
+            self._log_steady_load(store, first, days=2, reset_offset_minutes=-8 * 60)
+            totals = self._day_totals(store, first + timedelta(days=1))
+            store.close()
+        self.assertAlmostEqual(totals["super_off_peak"]["consumption_kwh"], 4.0, 2)
+        self.assertAlmostEqual(totals["on_peak"]["consumption_kwh"], 3.0, 2)
+        # The reset itself falls in off-peak and costs the one reading it lands on.
+        self.assertAlmostEqual(totals["off_peak"]["consumption_kwh"], 5.0, 2)
+
+    def test_a_reading_from_days_ago_does_not_seed_the_day(self) -> None:
+        # The last reading before the day is three days old: at least one
+        # reset lies between, so the counter's rise since then means nothing.
+        # The day's first reading has to fall back to its own value, which is
+        # what an unseeded day has always done.
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            day = datetime(2026, 1, 14, tzinfo=self.ZONE)
+            stale = day - timedelta(days=3, hours=1)
+            store.insert_snapshots([
+                _energy_snapshot(stale.astimezone(timezone.utc).isoformat(),
+                                 consumption_kwh=5.0, solar_generation_kwh=0.0,
+                                 grid_import_kwh=5.0),
+            ])
+            per_reading = 0.5 * 30 / 3600
+            snapshots, counter = [], 8.0
+            for step in range(120):  # one hour from 00:00:30
+                moment = day + timedelta(seconds=30 * (step + 1))
+                snapshots.append(_energy_snapshot(
+                    moment.astimezone(timezone.utc).isoformat(),
+                    consumption_kwh=round(counter, 6), solar_generation_kwh=0.0,
+                    grid_import_kwh=round(counter, 6)))
+                counter += per_reading
+            store.insert_snapshots(snapshots)
+            totals = self._day_totals(store, day)
+            store.close()
+        # 8.0 from the first reading, then 119 rises. Seeded from the stale
+        # reading it would have been 3.0 plus the rises.
+        self.assertAlmostEqual(
+            totals["super_off_peak"]["consumption_kwh"], 8.0 + 119 * per_reading, 3
+        )
+
+    def test_rollups_written_before_the_seed_are_dropped_and_rebuilt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            self.assertEqual(store.get_metadata("tou_rollup_version"), "2")
+            first = datetime(2026, 1, 13, tzinfo=self.ZONE)
+            self._log_steady_load(store, first, days=2, reset_offset_minutes=2)
+            day = first + timedelta(days=1)
+
+            # Make the archive look like one written by the unseeded rollup:
+            # the old version stamp and a super off-peak figure with a whole
+            # day's energy in it.
+            store.set_metadata("tou_rollup_version", "1")
+            store.connection.execute(
+                "UPDATE tou_energy SET consumption_kwh = consumption_kwh + 12.0 "
+                "WHERE tou_period = 'super_off_peak'"
+            )
+            store.connection.commit()
+            self.assertGreater(
+                self._day_totals(store, day)["super_off_peak"]["consumption_kwh"], 15.0
+            )
+
+            # Opening the store again is what a deploy does.
+            store.initialize()
+            self.assertEqual(store.get_metadata("tou_rollup_version"), "2")
+            self.assertEqual(
+                store.connection.execute("SELECT COUNT(*) FROM tou_energy").fetchone()[0],
+                0,
+            )
+            self.assertEqual(store.backfill_tou_energy(budget_seconds=5.0), 2)
+            totals = self._day_totals(store, day)
+            store.close()
+        self.assertAlmostEqual(totals["super_off_peak"]["consumption_kwh"], 4.0, 2)
+
     def test_a_day_is_split_across_the_three_periods(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)

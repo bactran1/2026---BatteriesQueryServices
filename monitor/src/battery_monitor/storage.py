@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -11,6 +12,8 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from .tariff import TOU_PERIODS, period_for
+
+logger = logging.getLogger(__name__)
 
 HistoryMetric = Literal[
     "voltage_v",
@@ -191,8 +194,39 @@ class RetentionStore:
                   AND collector_stream_id IS NOT NULL
                 """
             )
+            self._migrate_tou_rollup_locked()
             connection.execute("PRAGMA optimize")
             connection.commit()
+
+    # Bumped whenever the rollup's arithmetic changes. Rows carry no version of
+    # their own, so on mismatch every rollup is dropped and the bounded backfill
+    # rebuilds the archive from the raw readings, newest days first.
+    #   1  unseeded: a day's first reading credited with its whole counter
+    #   2  seeded from the last reading before the day (see _recompute_tou_day_locked)
+    TOU_ROLLUP_VERSION = 2
+
+    def _migrate_tou_rollup_locked(self) -> None:
+        row = self.connection.execute(
+            "SELECT value FROM monitor_metadata WHERE key = 'tou_rollup_version'"
+        ).fetchone()
+        stored = str(row["value"]) if row is not None else None
+        if stored == str(self.TOU_ROLLUP_VERSION):
+            return
+        dropped = self.connection.execute("DELETE FROM tou_energy").rowcount
+        self.connection.execute(
+            """
+            INSERT INTO monitor_metadata (key, value) VALUES ('tou_rollup_version', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (str(self.TOU_ROLLUP_VERSION),),
+        )
+        if dropped:
+            logger.info(
+                "dropped %s time-of-use rollup row(s) written by rollup version %s; "
+                "rebuilding from readings",
+                dropped,
+                stored or "unknown",
+            )
 
     @property
     def connection(self) -> sqlite3.Connection:
@@ -990,8 +1024,19 @@ class RetentionStore:
         reading's rise is credited to the period its own timestamp falls in,
         and the timestamp is converted with a real timezone so an hour on a
         daylight-saving boundary is priced the way the meter saw it.
+
+        The day's first reading is measured against the last reading before
+        the day began, not against nothing. The inverter's "today" counters
+        reset at *its* clock's midnight, which need not be the tariff's: a
+        clock a couple of minutes slow, or set to UTC, leaves yesterday's whole
+        total in the counter at 00:00 local. Without the seed that total is
+        credited to the first reading -- and midnight is super off-peak, so the
+        overnight period swallows a day's energy every day. The lookback is
+        bounded to six hours, as the hourly view's is: a reading from days ago
+        is on the far side of at least one reset and would only undercount.
         """
         day_start, day_end = self._day_bounds(day)
+        previous = self._counters_before_locked(day_start)
         rows = self.connection.execute(
             """
             SELECT inverter_id, captured_at_unix, consumption_meter_kwh,
@@ -1016,7 +1061,6 @@ class RetentionStore:
             ("solar_generation_kwh", "solar_generation_meter_kwh"),
             ("grid_import_kwh", "grid_import_meter_kwh"),
         )
-        previous: dict[str, dict[str, float | None]] = {}
         for row in rows:
             inverter = str(row["inverter_id"])
             last = previous.setdefault(inverter, {})
@@ -1056,6 +1100,40 @@ class RetentionStore:
                 for period, values in buckets.items()
             ],
         )
+
+    # How far back the day's seed reading may come from. Matches the hourly
+    # view's seed window: long enough to bridge a collector restart around
+    # midnight, short enough that the reading is on this side of the last reset.
+    TOU_SEED_LOOKBACK_SECONDS = 6 * 3600
+
+    def _counters_before_locked(
+        self, day_start: int
+    ) -> dict[str, dict[str, float | None]]:
+        """Each inverter's last counters before a day began, if recent enough."""
+        rows = self.connection.execute(
+            """
+            SELECT inverter_id,
+                   MAX(captured_at_unix) AS captured_at_unix,
+                   consumption_meter_kwh,
+                   solar_generation_meter_kwh,
+                   grid_import_meter_kwh
+            FROM inverter_readings
+            WHERE captured_at_unix >= ? AND captured_at_unix < ?
+            GROUP BY inverter_id
+            """,
+            (day_start - self.TOU_SEED_LOOKBACK_SECONDS, day_start),
+        ).fetchall()
+        seeds: dict[str, dict[str, float | None]] = {}
+        for row in rows:
+            seeds[str(row["inverter_id"])] = {
+                field: (None if row[meter] is None else float(row[meter]))
+                for field, meter in (
+                    ("consumption_kwh", "consumption_meter_kwh"),
+                    ("solar_generation_kwh", "solar_generation_meter_kwh"),
+                    ("grid_import_kwh", "grid_import_meter_kwh"),
+                )
+            }
+        return seeds
 
     def _energy_totals_locked(self) -> dict[str, float | None]:
         row = self.connection.execute(
