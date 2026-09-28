@@ -837,10 +837,10 @@ function flows() {
 const CALLOUTS = {
   solar: { anchor: [2.95, 5.6, 4.4], offset: [-46, -48], side: "left" },
   grid: { anchor: [NODES.grid.x, NODES.grid.y, 0.6], offset: [46, 46], side: "right" },
-  inverter: { anchor: [NODES.inverter.x, NODES.inverter.y, NODES.inverter.z + 0.5], offset: [44, -52], side: "right" },
+  inverter: { anchor: [NODES.inverter.x, NODES.inverter.y, NODES.inverter.z - 0.45], offset: [40, 24], side: "right" },
   load: { anchor: [2.5, HOUSE.Y1 + 0.05, 2.35], offset: [-46, -54], side: "left" },
   backup: { anchor: [ANNEX.X1 + 0.05, -1.6, 1.15], offset: [24, -78], side: "right" },
-  battery: { anchor: [NODES.battery.x + 0.06, NODES.battery.y + 0.1, 0.95], offset: [34, 72], side: "right" },
+  battery: { anchor: [NODES.battery.x + 0.06, NODES.battery.y + 0.1, 0.95], offset: [34, 86], side: "right" },
 };
 
 function calloutPoints(callout) {
