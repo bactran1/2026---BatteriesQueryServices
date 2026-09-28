@@ -143,11 +143,19 @@ async function closeReadout(page, id) {
           await page.waitForFunction(() => document.querySelector('#historyChart').dataset.socScale === '0-100');
           await page.waitForFunction(() => document.querySelector('#savingsEstimate').textContent !== '--');
           await page.waitForFunction(() => document.querySelector('#energyWeatherTemperature').textContent !== '--');
-          const energyFlowLayout = await page.locator("#energyFlowLeaders").evaluate(svg => {
-              const sectionRect = svg.closest("#energyFlowSection").getBoundingClientRect();
-              const copyRect = svg.closest("#energyFlowSection")
-                .querySelector(".energy-flow__copy").getBoundingClientRect();
-              const callouts = [...svg.closest("#energyFlowSection").querySelectorAll(".energy-flow__callout")]
+          const energyFlowLayout = await page.locator("#homeScene").evaluate(scene => {
+              const section = scene.closest("#energyFlowSection");
+              const sectionRect = section.getBoundingClientRect();
+              // The copy's text box: the title and the description, not the
+              // full-width block the weather chip also lives in.
+              const textRects = [section.querySelector(".energy-flow__copy h2"),
+                section.querySelector(".energy-flow__copy > p:last-of-type")]
+                .filter(Boolean).map(element => element.getBoundingClientRect());
+              const copyRect = {
+                right: Math.max(...textRects.map(rect => rect.right)),
+                bottom: Math.max(...textRects.map(rect => rect.bottom)),
+              };
+              const callouts = [...section.querySelectorAll(".energy-flow__callout")]
                 .map(element => {
                   const rect = element.getBoundingClientRect();
                   return {
@@ -159,22 +167,14 @@ async function closeReadout(page, id) {
                     bottom:rect.bottom - sectionRect.top,
                   };
                 });
-              const leaders = [...svg.querySelectorAll("line")].map(line => {
-                const x1 = Number(line.getAttribute("x1"));
-                const y1 = Number(line.getAttribute("y1"));
-                const x2 = Number(line.getAttribute("x2"));
-                const y2 = Number(line.getAttribute("y2"));
-                return {
-                  name:line.dataset.target,
-                  length:Math.hypot(x2 - x1, y2 - y1),
-                };
-              });
               return {
                 width:sectionRect.width,
                 height:sectionRect.height,
-                dividerBottom:copyRect.bottom - sectionRect.top,
+                textRight:copyRect.right - sectionRect.left,
+                textBottom:copyRect.bottom - sectionRect.top,
+                sceneMounted: Boolean(scene.querySelector("svg.hs")),
+                phase: section.dataset.phase,
                 callouts,
-                leaders,
               };
           });
           for (const callout of energyFlowLayout.callouts) {
@@ -192,26 +192,27 @@ async function closeReadout(page, id) {
                 `${width} ${theme} ${language}: ${a.name} and ${b.name} callouts overlap`);
             }
           }
+          assert.equal(energyFlowLayout.sceneMounted, true,
+            `${width} ${theme} ${language}: the illustrated home did not mount`);
+          assert.ok(["night", "dawn", "golden", "day"].includes(energyFlowLayout.phase),
+            `${width} ${theme} ${language}: scene phase is ${energyFlowLayout.phase}`);
+          // No callout sits on the title or the description.
+          for (const callout of energyFlowLayout.callouts) {
+            const clear = callout.left >= energyFlowLayout.textRight + 8
+              || callout.top >= energyFlowLayout.textBottom + 8;
+            assert.ok(clear, `${width} ${theme} ${language}: ${callout.name} callout covers the copy`);
+          }
           const topCallouts = energyFlowLayout.callouts
             .filter(callout => ["inverter", "solar", "grid"].includes(callout.name));
-          const dividerClearance = Math.min(...topCallouts.map(callout => callout.top))
-            - energyFlowLayout.dividerBottom;
-          assert.ok(dividerClearance >= 12,
-            `${width} ${theme} ${language}: title divider crosses the top callouts (${Math.round(dividerClearance)}px)`);
           const solarCallout = topCallouts.find(callout => callout.name === "solar");
           if (width > 480) {
             assert.ok(solarCallout.left >= energyFlowLayout.width * 0.4,
               `${width} ${theme} ${language}: solar callout is too far from the panel area`);
           }
           if (width <= 480) {
-            const lengths = energyFlowLayout.leaders.map(leader => leader.length);
-            assert.equal(lengths.length, 6, `${width} ${theme} ${language}: missing energy leader`);
-            assert.ok(Math.max(...lengths) <= 175,
-              `${width} ${theme} ${language}: energy leader is too long (${energyFlowLayout.leaders
-                .map(leader => `${leader.name}:${Math.round(leader.length)}`).join(", ")})`);
-            assert.ok(Math.max(...lengths) / Math.min(...lengths) <= 2.6,
-              `${width} ${theme} ${language}: energy leaders are visually unbalanced (${energyFlowLayout.leaders
-                .map(leader => `${leader.name}:${Math.round(leader.length)}`).join(", ")})`);
+            // On a phone the callouts leave the illustration for a strip along
+            // the foot of the scene.
+            assert.equal(energyFlowLayout.callouts.length, 6, `${width} ${theme} ${language}: missing energy callout`);
             const bottomGap = energyFlowLayout.height
               - Math.max(...energyFlowLayout.callouts.map(callout => callout.bottom));
             assert.ok(bottomGap >= 16 && bottomGap <= 80,
@@ -227,8 +228,8 @@ async function closeReadout(page, id) {
               ".energy-flow__callout--inverter",
               ".energy-flow__callout--solar",
               ".energy-flow__callout--grid",
-            ].map(selector => sectionRect.top
-              + element.closest("#energyFlowSection").querySelector(selector).offsetTop);
+            ].map(selector => element.closest("#energyFlowSection").querySelector(selector)
+              .getBoundingClientRect().top);
             return {
               inside: weatherRect.left >= sectionRect.left - 1
                 && weatherRect.right <= sectionRect.right + 1
@@ -247,14 +248,9 @@ async function closeReadout(page, id) {
           assert.ok(weatherBounds.calloutClearance >= 12,
             `${width} ${theme} ${language}: weather too close to power callouts`);
           if (width <= 390) {
-            assert.equal(weatherBounds.background, "rgba(0, 0, 0, 0)",
-              `${width} ${theme} ${language}: mobile weather should blend into scene`);
-            assert.ok(weatherBounds.height <= 90,
+            // The chip is glass at every size now; it just has to stay short.
+            assert.ok(weatherBounds.height <= 110,
               `${width} ${theme} ${language}: mobile weather is too tall (${Math.round(weatherBounds.height)}px)`);
-            assert.equal(weatherBounds.paddingLeft, "0px",
-              `${width} ${theme} ${language}: mobile weather left padding`);
-            assert.equal(weatherBounds.paddingRight, "0px",
-              `${width} ${theme} ${language}: mobile weather right padding`);
           }
           if ([320, 390, 480, 600, 1440].includes(width) && theme === "light" && language === "en") {
             await page.locator("#energyFlowSection").screenshot({

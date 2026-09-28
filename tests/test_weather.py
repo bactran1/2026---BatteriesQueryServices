@@ -73,6 +73,17 @@ class WeatherClientTests(unittest.TestCase):
         self.assertLess(first["solar_azimuth_degrees"], 210)
         self.assertEqual(first["observed_at"], "2026-09-15T12:15:00-07:00")
 
+    def test_the_payload_carries_the_coordinates_the_home_scene_needs(self) -> None:
+        # The dashboard's illustrated home keeps its sun moving between weather
+        # refreshes, and when the provider is down, from these alone.
+        client = WeatherClient(
+            enabled=True, latitude=47.3809, longitude=-122.2348, location="Kent, WA",
+            timeout_seconds=1, refresh_seconds=600,
+        )
+        unavailable = client._unavailable("offline")
+        self.assertEqual(unavailable["latitude"], 47.3809)
+        self.assertEqual(unavailable["longitude"], -122.2348)
+
     def test_solar_position_handles_day_night_and_missing_time(self) -> None:
         elevation, azimuth = _solar_position(
             "2026-06-21T12:00:00-07:00", 47.3809, -122.2348

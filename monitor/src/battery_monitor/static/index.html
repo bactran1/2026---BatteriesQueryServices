@@ -153,28 +153,15 @@
             </aside>
           </div>
           <div id="energyFlowStage" class="energy-flow__stage">
-            <canvas
-              id="energyFlowCanvas"
+            <div
+              id="homeScene"
+              class="home-scene"
               role="img"
-              aria-label="Three-dimensional home power flow"
+              aria-label="Illustrated home with solar panels, battery cabinet, inverter and grid connection, lit by the time of day"
               data-i18n-aria-label="energy.sceneAria"
-            ></canvas>
-            <div id="energyFlowFallback" class="energy-flow__fallback" aria-hidden="true">
-              <span class="energy-flow__fallback-node energy-flow__fallback-grid"></span>
-              <span class="energy-flow__fallback-link energy-flow__fallback-link--grid"></span>
-              <span class="energy-flow__fallback-node energy-flow__fallback-inverter"></span>
-              <span class="energy-flow__fallback-link energy-flow__fallback-link--load"></span>
-              <span class="energy-flow__fallback-node energy-flow__fallback-home"></span>
-              <span class="energy-flow__fallback-link energy-flow__fallback-link--battery"></span>
-              <span class="energy-flow__fallback-node energy-flow__fallback-battery">
-                <i></i>
-                <i></i>
-                <i></i>
-              </span>
-            </div>
+            ></div>
           </div>
           <div class="energy-flow__callouts" aria-live="polite">
-            <svg id="energyFlowLeaders" class="energy-flow__leaders" aria-hidden="true"></svg>
             <div class="energy-flow__callout energy-flow__callout--inverter">
               <strong id="energyInverterValue" data-i18n="energy.waitingShort">Waiting</strong>
               <span data-i18n="energy.inverter">Inverter</span>
@@ -678,7 +665,7 @@
       </main>
     </div>
     <script src="/static/app.js?v=__BUILD_COMMIT__"></script>
-    <script type="module" src="/static/energy-flow.js?v=__BUILD_COMMIT__"></script>
+    <script type="module" src="/static/home-scene.js?v=__BUILD_COMMIT__"></script>
     <script type="module" src="/static/rack-flow.js?v=__BUILD_COMMIT__"></script>
   </body>
 </html>

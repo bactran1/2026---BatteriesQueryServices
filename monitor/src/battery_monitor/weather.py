@@ -109,6 +109,9 @@ class WeatherClient:
             "status": "ok",
             "source": "Open-Meteo",
             "location": self.location,
+            # The dashboard's home scene recomputes the sun between refreshes.
+            "latitude": self.latitude,
+            "longitude": self.longitude,
             "observed_at": observed_at,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "temperature_c": _number(current.get("temperature_2m")),
@@ -137,6 +140,8 @@ class WeatherClient:
             "status": "unavailable",
             "source": "Open-Meteo",
             "location": self.location,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
             "observed_at": None,
             "fetched_at": None,
             "temperature_c": None,

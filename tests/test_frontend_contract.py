@@ -18,7 +18,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertNotIn(BUILD_TOKEN, html)
         self.assertIn("/static/app.js?v=abc123", html)
         self.assertIn("/static/styles.css?v=abc123", html)
-        self.assertIn("/static/energy-flow.js?v=abc123", html)
+        self.assertIn("/static/home-scene.js?v=abc123", html)
         self.assertIn("/static/vendor/three.module.min.js?v=abc123", html)
         self.assertEqual(cache_control_for("/", None, "abc123"), "no-store")
         self.assertEqual(
@@ -219,114 +219,79 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('.rack-summary[data-rack-mode="discharging"] .rack-flow', css)
         self.assertIn(".rack-flow__copy", css)
 
-    def test_three_dimensional_energy_flow_is_live_and_resilient(self) -> None:
+    def test_illustrated_home_scene_is_live_and_lit_by_the_sun(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
-        scene = (STATIC / "energy-flow.js").read_text(encoding="utf-8")
+        scene = (STATIC / "home-scene.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")
         html = (STATIC / "index.html").read_text(encoding="utf-8")
 
-        self.assertIn('id="energyFlowCanvas"', html)
-        self.assertIn('type="importmap"', html)
-        self.assertIn('type="module" src="/static/energy-flow.js', html)
+        # The hero is one illustrated SVG built by the scene module, fed by the
+        # same event and section attributes the dashboard already maintains.
+        self.assertIn('id="homeScene"', html)
+        self.assertIn('type="module" src="/static/home-scene.js', html)
+        self.assertNotIn("energy-flow.js", html)
+        self.assertNotIn('id="energyFlowCanvas"', html)
         self.assertIn('CustomEvent("battery-energy-flow"', javascript)
+        self.assertIn('CustomEvent("battery-weather"', javascript)
         self.assertIn("function renderEnergyFlow", javascript)
         self.assertIn("packTelemetry", javascript)
         self.assertIn('"energy.title": "Dòng điện trong nhà"', javascript)
-        self.assertIn('import * as THREE from "three"', scene)
-        self.assertIn("THREE.WebGLRenderer", scene)
-        self.assertIn("THREE.OrthographicCamera", scene)
-        self.assertIn("THREE.LineCurve3", scene)
-        self.assertIn("function createStraightPath", scene)
-        self.assertIn("function createRenogySystem", scene)
-        self.assertIn("function createHouseShell", scene)
-        self.assertIn("function createSolarArray", scene)
-        self.assertIn("function createPowerCenter", scene)
-        self.assertIn("function createUtilityPole", scene)
-        self.assertIn("function createFlowNetwork", scene)
-        self.assertIn("function createFlowRoute", scene)
-        self.assertIn("function configureRoute", scene)
-        self.assertIn("const activeCount = active ? 1 : 0", scene)
-        self.assertIn("particle.scale.setScalar(endpointFade)", scene)
-        self.assertIn("new THREE.TubeGeometry(curve, 64, 0.027, 6, false)", scene)
-        self.assertIn("new THREE.SphereGeometry(0.085, 16, 12)", scene)
-        self.assertIn('configureRoute(network.grid, "stale", 0, false, 1, false)', scene)
-        self.assertIn('configureRoute(network.load, "stale", 0, false, 1, false)', scene)
-        self.assertIn("const fillLight = new THREE.DirectionalLight", scene)
-        self.assertIn("fillLight.intensity = dark ?", scene)
-        self.assertIn("network.battery", scene)
-        self.assertIn('canvas.dataset.topology = "home-grid-solar-inverter-battery-load"', scene)
-        self.assertIn('canvas.dataset.sceneStyle = "modern-home-energy"', scene)
-        self.assertIn('id="energyBackupValue"', html)
-        self.assertIn('canvas.dataset.camera = "orthographic"', scene)
-        self.assertIn("const HOUSE_SCENE_SCALE = 0.8", scene)
-        self.assertIn("root.scale.setScalar(HOUSE_SCENE_SCALE)", scene)
-        # Pulses travel at one constant, admin-adjustable speed, not a power-scaled one.
-        self.assertIn("const speed = pulseProgressRate(route, pulseSpeed)", scene)
-        self.assertIn("length: Math.max(curve.getLength(), 0.001)", scene)
-        self.assertNotIn("route.magnitude * 0.009", scene)
-        self.assertIn('"energy-pulse-speed-change"', scene)
-        self.assertIn("canvas.dataset.sourceTelemetry = inverterMetered", scene)
-        self.assertIn("canvas.dataset.energyDirection = inverterMetered", scene)
-        self.assertNotIn("canvas.dataset.energyDirection = direct", scene)
-        self.assertIn('"inverter-and-direct-battery"', scene)
-        self.assertIn('"direct-battery-only"', scene)
-        self.assertIn('? "inverter-to-battery"', scene)
-        self.assertIn('? "battery-to-inverter"', scene)
-        self.assertIn("canvas.dataset.activeRoutes", scene)
+        self.assertIn('window.addEventListener("battery-energy-flow"', scene)
+        self.assertIn('window.addEventListener("battery-weather"', scene)
+
+        # Lit by the real sun: the NOAA position, recomputed from the feed's
+        # coordinates, with a clock fallback and a preview override.
+        self.assertIn("function solarPosition(date, latitude, longitude)", scene)
+        self.assertIn("function clockSolarPosition", scene)
+        self.assertIn("function scenePhase", scene)
+        self.assertIn("function skyPalette", scene)
+        self.assertIn("function sunScreenPosition", scene)
+        self.assertIn('params.get("sceneClock")', scene)
+        for phase in ("night", "dawn", "golden", "day"):
+            with self.subTest(phase=phase):
+                self.assertIn(f'.energy-flow[data-phase="{phase}"]', css)
+
+        # The parts that answer to data: sky, stars, sun and moon, clouds by
+        # cover, windows and porch lamp by light, panel glints while producing,
+        # the cabinet's charge gauge and LEDs, and the five conduits.
+        for marker in ("function buildScene", "function house", "function batteryCabinet",
+                       "function inverterBox", "function utilityPole", "function flows",
+                       "function flowsFor", "hs-panel-glint", "hsSocFill", "hs-led",
+                       "hsLampGlow", "hs-window", "animateMotion"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, scene)
+        self.assertIn("const ROUTES = {", scene)
+        for route in ("solar", "battery", "home", "backup", "grid"):
+            with self.subTest(route=route):
+                self.assertIn(f"\n  {route}: `M ", scene)
+
+        # Motion respects the viewer and the viewport.
         self.assertIn("IntersectionObserver", scene)
         self.assertIn('matchMedia("(prefers-reduced-motion: reduce)")', scene)
-        self.assertIn('canvas.addEventListener("webglcontextlost"', scene)
-        self.assertIn("gl.readPixels", scene)
-        self.assertIn('.energy-flow[data-mode="charging"]', css)
-        self.assertIn('.energy-flow[data-mode="discharging"]', css)
-        self.assertIn(".energy-flow.is-fallback", css)
-        self.assertIn("@keyframes energy-flow-fallback-horizontal", css)
-        self.assertIn("@keyframes energy-flow-fallback-vertical", css)
-        self.assertIn("border-radius: 50%", css)
-        self.assertIn('id="energyGridValue"', html)
-        self.assertIn('id="energySolarValue"', html)
-        self.assertIn('id="energySolarDetail"', html)
+        self.assertIn("@keyframes hs-flow-dash", css)
+        self.assertIn("@keyframes hs-twinkle", css)
+        self.assertIn("@keyframes hs-drift", css)
+        self.assertIn("@keyframes hs-glint", css)
+        self.assertIn(".energy-flow.is-offscreen", css)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", css)
+
+        # The callouts keep their ids, so the live renderers are untouched.
+        for element_id in ("energyGridValue", "energySolarValue", "energySolarDetail",
+                           "energyInverterValue", "energyBatteryValue", "energyLoadValue",
+                           "energyBackupValue", "energyWeather", "energyWeatherTemperature",
+                           "energyWeatherSolar"):
+            with self.subTest(element_id=element_id):
+                self.assertIn(f'id="{element_id}"', html)
         self.assertIn(
             '`${formatValue(inverter.solarVoltage, "V")} · '
             '${formatValue(inverter.solarCurrent, "A")}`',
             javascript,
         )
-        self.assertIn('id="energyInverterValue"', html)
-        self.assertIn('id="energyBatteryValue"', html)
-        self.assertIn('id="energyLoadValue"', html)
-        self.assertIn('id="energyWeather"', html)
-        self.assertIn('id="energyWeatherTemperature"', html)
-        self.assertIn('id="energyWeatherSolar"', html)
         self.assertIn('href="https://open-meteo.com/"', html)
-        self.assertIn('getJson("/api/weather", "weather")', javascript)
-        self.assertIn("function renderWeather", javascript)
-        self.assertIn("function weatherCondition", javascript)
-        self.assertIn(".energy-flow__weather", css)
-        self.assertIn('@keyframes weather-rain-fall', css)
-        self.assertIn("energy-flow__system-state", html)
-        self.assertIn("energy-flow__callout--bottom", html)
-        self.assertIn(".energy-flow__callout--solar", css)
-        self.assertIn("--callout-color: #f2ef50", css)
-        self.assertIn("--callout-color: #ffdf87", css)
-        self.assertIn("@keyframes energy-flow-leader-pulse", css)
-        self.assertIn("text-shadow: 0 1px 2px rgba(0, 0, 0, 0.94)", css)
-        # Callout leaders are projected onto the 3D devices each frame, not fixed bars.
-        self.assertIn('id="energyFlowLeaders"', html)
-        self.assertIn(".energy-flow__leader-line", css)
-        self.assertIn("root.localToWorld(leaderVec)", scene)
-        self.assertIn("leaderVec.project(camera)", scene)
-
-        self.assertTrue((STATIC / "vendor" / "three.module.min.js").is_file())
-        self.assertTrue((STATIC / "vendor" / "three.core.min.js").is_file())
-        self.assertTrue((STATIC / "vendor" / "three-LICENSE.txt").is_file())
-        self.assertIn(
-            "Version: `0.185.1`",
-            (STATIC / "vendor" / "README.md").read_text(encoding="utf-8"),
-        )
 
     def test_inverter_telemetry_drives_live_metrics_and_power_routes(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
-        scene = (STATIC / "energy-flow.js").read_text(encoding="utf-8")
+        scene = (STATIC / "home-scene.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")
         html = (STATIC / "index.html").read_text(encoding="utf-8")
 
@@ -356,14 +321,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('data-inverter-available="false"', html)
         self.assertIn(".inverter-band", css)
         self.assertIn('.energy-flow[data-inverter-available="false"]', css)
-        self.assertIn("flowState.inverterAvailable", scene)
-        self.assertIn("routeMagnitude(flowState.gridPower)", scene)
-        self.assertIn("routeMagnitude(flowState.solarPower)", scene)
-        self.assertIn("routeMagnitude(flowState.loadPower)", scene)
-        self.assertIn("routeMagnitude(flowState.batteryPower)", scene)
-        self.assertIn("NODE_COLORS.grid", scene)
-        self.assertIn("NODE_COLORS.solar", scene)
-        self.assertIn("NODE_COLORS.load", scene)
+        # The scene routes power only from the inverter's meters, and rests the
+        # solar, grid and home conduits when the inverter is not reporting.
+        self.assertIn("const inverter = Boolean(input.inverterAvailable)", scene)
+        self.assertIn('flow("solar", inverter ? solar : 0', scene)
+        self.assertIn('flow("grid", inverter ? grid : 0', scene)
+        self.assertIn('flow("home", inverter ? load : 0', scene)
+        self.assertIn('flow("battery", batteryKnown ? battery : 0', scene)
+        self.assertIn("FLOW_COLORS.grid", scene)
+        self.assertIn("FLOW_COLORS.solar", scene)
+        self.assertIn("FLOW_COLORS.load", scene)
         self.assertIn('"inverter.state.bypass": "Điện lưới chuyển thẳng"', javascript)
 
     def test_energy_history_has_hour_date_month_and_year_views(self) -> None:

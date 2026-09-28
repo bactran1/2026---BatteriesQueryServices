@@ -127,7 +127,7 @@ const translations = {
     "energy.title": "Home power flow",
     "energy.waiting": "Waiting for live energy telemetry",
     "energy.waitingShort": "Waiting",
-    "energy.sceneAria": "Three-dimensional home with solar, CT-side home load, grid, hybrid inverter, three rack batteries, and separate backup load",
+    "energy.sceneAria": "Illustrated home with solar panels, battery cabinet, inverter and grid connection, lit by the time of day",
     "weather.clearDay": "Clear sky",
     "weather.clearNight": "Clear night",
     "weather.mainlyClear": "Mostly clear",
@@ -553,7 +553,7 @@ const translations = {
     "energy.title": "Dòng điện trong nhà",
     "energy.waiting": "Đang chờ dữ liệu năng lượng trực tiếp",
     "energy.waitingShort": "Đang chờ",
-    "energy.sceneAria": "Nhà ba chiều với điện mặt trời, phụ tải nhà phía CT, lưới điện, biến tần hybrid, ba bộ pin và phụ tải dự phòng riêng",
+    "energy.sceneAria": "Ngôi nhà minh họa với tấm pin mặt trời, tủ pin, biến tần và kết nối lưới, chiếu sáng theo thời gian trong ngày",
     "weather.clearDay": "Trời quang",
     "weather.clearNight": "Đêm quang",
     "weather.mainlyClear": "Ít mây",
@@ -2784,6 +2784,10 @@ function renderWeather() {
   const container = $("energyWeather");
   if (!container) return;
   const weather = state.weather || {};
+  // The illustrated home lights itself from the same feed: sun position,
+  // cloud cover and rain, plus the coordinates it needs to keep the sun
+  // moving between refreshes.
+  window.dispatchEvent(new CustomEvent("battery-weather", { detail: weather }));
   const temperature = finiteNumber(weather.temperature_c);
   const apparent = finiteNumber(weather.apparent_temperature_c);
   const humidity = finiteNumber(weather.relative_humidity_percent);
