@@ -742,28 +742,70 @@ function annex() {
   return g;
 }
 
-// A red car on the drive, in front of the garage.
+// A Tesla Model Y (the Juniper refresh) on the drive, nose to the garage's
+// far end: a low-poly build from its side profile, so the fastback roof,
+// the glass roof, the full-width tail light bar and the wheel arches read.
 function car() {
-  const g = el("g", { class: "hs-car hs-lit" });
-  const X0 = 8.25, X1 = 9.0, Y0 = -2.95, Y1 = -1.3;
-  const wheel = (x, y) => {
-    const [cx, cy] = P(x, y, 0.18);
-    g.append(el("ellipse", { cx, cy, rx: 5.2, ry: 3.4, fill: "#0b0c0f" }));
-  };
-  wheel(X1 + 0.02, Y0 + 0.35); wheel(X1 + 0.02, Y1 - 0.35);
-  // Body.
-  g.append(el("polygon", { points: pts([X0, Y1, 0.16], [X1, Y1, 0.16], [X1, Y1, 0.55], [X0, Y1, 0.55]), fill: "#8f1d17" }));
-  g.append(el("polygon", { points: pts([X1, Y0, 0.16], [X1, Y1, 0.16], [X1, Y1, 0.55], [X1, Y0, 0.55]), fill: "#a5241c" }));
-  g.append(el("polygon", { points: pts([X0, Y0, 0.55], [X1, Y0, 0.55], [X1, Y1, 0.55], [X0, Y1, 0.55]), fill: "#c8332a" }));
-  // Cabin: glass sides and windscreen under a red roof.
-  const c0 = Y0 + 0.4, c1 = Y1 - 0.3, t0 = Y0 + 0.62, t1 = Y1 - 0.5, CX0 = X0 + 0.08, CX1 = X1 - 0.08, Z0 = 0.55, Z1 = 0.86;
-  g.append(el("polygon", { points: pts([CX1, c0, Z0], [CX1, c1, Z0], [CX1, t1, Z1], [CX1, t0, Z1]), fill: "#1a222e" }));
-  g.append(el("polygon", { points: pts([CX0, c1, Z0], [CX1, c1, Z0], [CX1, t1, Z1], [CX0, t1, Z1]), fill: "#22303f" }));
-  g.append(el("polygon", { points: pts([CX0, t0, Z1], [CX1, t0, Z1], [CX1, t1, Z1], [CX0, t1, Z1]), fill: "#b52a22" }));
-  // Tail light.
-  const tail = P(X1 + 0.01, Y1 - 0.06, 0.42);
-  g.append(el("rect", { x: tail[0] - 4, y: tail[1] - 1.5, width: 5, height: 2.4, rx: 1, fill: "#ff5a4f", opacity: 0.9 }));
-  return g;
+  const root = el("g", { class: "hs-car" });
+  const g = el("g", { class: "hs-car-body hs-lit" });
+  // The tail light bar is its own light, so it stays lit after dark.
+  const lights = el("g", { class: "hs-car-lights" });
+  root.append(g, lights);
+  const X0 = 8.3, X1 = 9.02, Y0 = -3.05;
+  const y = (offset) => Y0 + offset;
+  // Side profile, nose to tail: (length along the car, height).
+  const profile = [
+    [0.0, 0.10], [0.0, 0.29], [0.05, 0.35], [0.5, 0.41], [0.8, 0.61],
+    [0.98, 0.635], [1.56, 0.5], [1.68, 0.46], [1.75, 0.41], [1.75, 0.10],
+  ];
+  const side = (points, attributes) => g.append(el("polygon", { points: pts(...points.map(([l, z]) => [X1, y(l), z])), ...attributes }));
+  const top = (l0, z0, l1, z1, inset, attributes) => g.append(el("polygon", {
+    points: pts([X0 + inset, y(l0), z0], [X1 - inset, y(l0), z0], [X1 - inset, y(l1), z1], [X0 + inset, y(l1), z1]), ...attributes,
+  }));
+
+  // Body side, its skirt, and the wheel arches cut into it.
+  side(profile, { fill: "#a8261d" });
+  side([[0.0, 0.10], [1.75, 0.10], [1.75, 0.17], [0.0, 0.17]], { fill: "#6f1712" });
+  for (const wheel of [0.4, 1.36]) {
+    const [ax, ay] = P(X1 + 0.01, y(wheel), 0.19);
+    g.append(el("ellipse", { cx: ax, cy: ay, rx: 8.6, ry: 5.6, fill: "#7a1a13" }));
+  }
+  // Side glass and the pillars, then the door seam and the mirror.
+  side([[0.56, 0.425], [0.8, 0.595], [0.98, 0.615], [1.54, 0.49], [1.56, 0.44]], { fill: "#1b2430" });
+  // The shoulder crease along the belt line.
+  g.append(el("polyline", { points: pts([X1 + 0.005, y(0.5), 0.415], [X1 + 0.005, y(1.68), 0.462]), stroke: "rgba(255,255,255,0.22)", "stroke-width": 0.9, fill: "none" }));
+  const pillar = (l0, z0, l1, z1) => g.append(el("line", { x1: P(X1, y(l0), z0)[0], y1: P(X1, y(l0), z0)[1], x2: P(X1, y(l1), z1)[0], y2: P(X1, y(l1), z1)[1], stroke: "#a8261d", "stroke-width": 1.3 }));
+  pillar(1.02, 0.44, 1.04, 0.612);
+  g.append(el("line", { x1: P(X1, y(1.05), 0.17)[0], y1: P(X1, y(1.05), 0.17)[1], x2: P(X1, y(1.05), 0.42)[0], y2: P(X1, y(1.05), 0.42)[1], stroke: "rgba(0,0,0,0.35)", "stroke-width": 0.8 }));
+  const mirror = P(X1 + 0.02, y(0.6), 0.47);
+  g.append(el("rect", { x: mirror[0] - 1, y: mirror[1] - 2, width: 4, height: 3, rx: 1, fill: "#7a1a13" }));
+
+  // Rear: the body, the darker bumper, the light bar across its width.
+  const rear = (z0, z1, inset, attributes, target = g) => target.append(el("polygon", {
+    points: pts([X0 + inset, y(1.75), z0], [X1 - inset, y(1.75), z0], [X1 - inset, y(1.75), z1], [X0 + inset, y(1.75), z1]), ...attributes,
+  }));
+  rear(0.10, 0.41, 0, { fill: "#8f1d16" });
+  rear(0.10, 0.2, 0, { fill: "#24272d" });
+  rear(0.31, 0.365, 0.03, { fill: "#ff4d3f", filter: "url(#hsGlow)" }, lights);
+  rear(0.33, 0.345, 0.05, { fill: "#ffd0c8", opacity: 0.8 }, lights);
+  rear(0.22, 0.29, 0.26, { fill: "#d9dde3", opacity: 0.8 });
+
+  // Top: hood, the glass house set in from the shoulders, trunk and lip.
+  top(0.05, 0.35, 0.5, 0.41, 0, { fill: "#d63a2e" });
+  top(0.5, 0.41, 1.68, 0.46, 0, { fill: "#c9352a" });
+  top(0.5, 0.41, 0.8, 0.61, 0.06, { fill: "#22303f" });
+  top(0.8, 0.61, 0.98, 0.635, 0.06, { fill: "#141a23" });
+  top(0.98, 0.635, 1.56, 0.5, 0.06, { fill: "#1d2835" });
+  top(1.68, 0.46, 1.75, 0.41, 0, { fill: "#b52d23" });
+
+  // Wheels: tyre and rim.
+  for (const wheel of [0.4, 1.36]) {
+    const [ax, ay] = P(X1 + 0.02, y(wheel), 0.13);
+    g.append(el("ellipse", { cx: ax, cy: ay, rx: 7.2, ry: 4.7, fill: "#0b0c0f" }));
+    g.append(el("ellipse", { cx: ax + 0.4, cy: ay - 0.2, rx: 3.6, ry: 2.3, fill: "#585d66" }));
+    g.append(el("ellipse", { cx: ax + 0.4, cy: ay - 0.2, rx: 1.2, ry: 0.8, fill: "#22252b" }));
+  }
+  return root;
 }
 
 function inverterBox() {
@@ -803,13 +845,17 @@ function batteryCabinet() {
 // The conduits: straight iso runs, along the ground and along the walls, the
 // way the panel draws them. A faint track always shows the topology; a dashed
 // overlay moves with power; two dots ride each path so direction is plain.
+// Each path is drawn in its "forward" direction: solar into the inverter,
+// grid import from the pole to the inverter, the inverter out to the home and
+// the backup circuit, and the inverter into the cabinet, so a charging
+// battery fills and a discharging one (reverse) empties.
 function route(...points) {
   return points.map((point, index) => `${index ? "L" : "M"} ${P(...point).map((v) => v.toFixed(1)).join(" ")}`).join(" ");
 }
 const WALL = HOUSE.X1 + 0.06;
 const ROUTES = {
   solar: route([WALL, 2.6, 2.95], [WALL, 2.6, 2.2]),
-  battery: route([WALL, 3.45, 0.55], [WALL, 2.6, 0.55], [WALL, 2.6, 1.2]),
+  battery: route([WALL, 2.6, 1.2], [WALL, 2.6, 0.55], [WALL, 3.45, 0.55]),
   home: route([WALL, 2.6, 1.5], [WALL, 7.5, 1.5], [WALL, 7.5, 2.3]),
   backup: route([WALL, 2.6, 1.0], [WALL, 0.06, 1.0], [ANNEX.X1 - 0.1, 0.06, 1.0], [ANNEX.X1 + 0.06, -0.3, 1.0]),
   grid: route([NODES.grid.x, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, 2.6, 0.02], [WALL, 2.6, 0.02], [WALL, 2.6, 1.2]),

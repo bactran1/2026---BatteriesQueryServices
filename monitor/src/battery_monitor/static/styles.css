@@ -1264,6 +1264,11 @@ button {
   filter: drop-shadow(0 0 6px rgba(255, 214, 120, 0.9));
 }
 
+.hs-car-lights {
+  opacity: calc(0.6 + var(--hs-lamps) * 0.4);
+  transition: opacity 1400ms ease;
+}
+
 .hs-panel-glint {
   opacity: calc(var(--hs-glint) * var(--hs-glint-wave));
   animation: hs-glint 6.5s ease-in-out infinite;
