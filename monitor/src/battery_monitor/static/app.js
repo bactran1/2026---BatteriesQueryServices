@@ -128,6 +128,24 @@ const translations = {
     "energy.waiting": "Waiting for live energy telemetry",
     "energy.waitingShort": "Waiting",
     "energy.sceneAria": "Illustrated home with solar panels, battery cabinet, inverter and grid connection, lit by the time of day",
+    "nav.sections": "Sections",
+    "nav.preferences": "Preferences",
+    "nav.home": "Home",
+    "nav.history": "History",
+    "nav.savings": "Financial impact",
+    "nav.rack": "Battery rack",
+    "nav.events": "Events and archive",
+    "title.menu": "Dashboard menu",
+    "stat.aria": "Today at a glance",
+    "stat.value": "Energy value",
+    "stat.consumption": "Consumption",
+    "stat.solar": "Solar generation",
+    "stat.import": "Import",
+    "stat.today": "Today",
+    "stat.monthTotal": "{value} this month",
+    "stat.awaiting": "Awaiting data",
+    "weather.humidityTitle": "Relative humidity",
+    "weather.irradianceTitle": "Solar irradiance on the panels",
     "weather.clearDay": "Clear sky",
     "weather.clearNight": "Clear night",
     "weather.mainlyClear": "Mostly clear",
@@ -554,6 +572,24 @@ const translations = {
     "energy.waiting": "Đang chờ dữ liệu năng lượng trực tiếp",
     "energy.waitingShort": "Đang chờ",
     "energy.sceneAria": "Ngôi nhà minh họa với tấm pin mặt trời, tủ pin, biến tần và kết nối lưới, chiếu sáng theo thời gian trong ngày",
+    "nav.sections": "Các mục",
+    "nav.preferences": "Tùy chọn",
+    "nav.home": "Trang chủ",
+    "nav.history": "Lịch sử",
+    "nav.savings": "Hiệu quả tài chính",
+    "nav.rack": "Tủ pin",
+    "nav.events": "Sự kiện và lưu trữ",
+    "title.menu": "Trình đơn bảng điều khiển",
+    "stat.aria": "Hôm nay nhìn nhanh",
+    "stat.value": "Giá trị điện năng",
+    "stat.consumption": "Tiêu thụ",
+    "stat.solar": "Sản lượng mặt trời",
+    "stat.import": "Mua từ lưới",
+    "stat.today": "Hôm nay",
+    "stat.monthTotal": "{value} trong tháng",
+    "stat.awaiting": "Đang chờ dữ liệu",
+    "weather.humidityTitle": "Độ ẩm tương đối",
+    "weather.irradianceTitle": "Bức xạ mặt trời trên tấm pin",
     "weather.clearDay": "Trời quang",
     "weather.clearNight": "Đêm quang",
     "weather.mainlyClear": "Ít mây",
@@ -1655,11 +1691,15 @@ function renderEnergyFlow(flow) {
         ? t("energy.routing")
         : t("energy.standby");
   const socLabel = soc === null ? null : formatValue(soc, "%");
-  $("energyBatteryValue").textContent = mode === "stale"
-    ? t("energy.unavailable")
-    : [socLabel, formatBatteryPower(power)]
-        .filter(Boolean)
-        .join(" · ");
+  const batteryValue = $("energyBatteryValue");
+  if (mode === "stale") {
+    batteryValue.textContent = t("energy.unavailable");
+  } else {
+    batteryValue.innerHTML = [
+      escapeHtml(formatBatteryPower(power)),
+      socLabel === null ? null : `<b class="energy-flow__soc">${escapeHtml(socLabel)}</b>`,
+    ].filter(Boolean).join(" · ");
+  }
   const energyRuntime = $("energyBatteryRuntime");
   energyRuntime.hidden = !batteryEstimate.callout;
   energyRuntime.textContent = batteryEstimate.callout ?? "";
@@ -2185,6 +2225,11 @@ function renderRackOverview() {
   $("builderLine").textContent = t("brand.builder", {
     builder: rack.builder || "Tran Thanh Tuan",
   });
+  const rackName = $("titleRackName");
+  if (rackName) {
+    rackName.textContent = rack.name || "";
+    rackName.hidden = !rack.name;
+  }
   $("rackDescription").textContent = expected
     ? online === expected
       ? t("rack.allOnline")
@@ -2600,6 +2645,41 @@ function renderSavings() {
   empty.textContent = state.resourceErrors.savings
     ? t("savings.unavailable")
     : t("savings.awaiting");
+  renderStatCards();
+}
+
+// The four cards under the home: today's figures, always today whatever
+// period the savings panel is set to, with the month's value as context.
+function renderStatCards() {
+  const periods = state.savings?.periods || {};
+  const today = periods.today || {};
+  const month = periods.month || {};
+  const value = savingsFigure(today, "estimated_savings_usd");
+  const monthValue = savingsFigure(month, "estimated_savings_usd");
+  $("statValueNumber").textContent = value === null ? "--" : formatStatNumber(value);
+  $("statValueNote").textContent = monthValue === null
+    ? t("stat.awaiting")
+    : t("stat.monthTotal", { value: formatCurrency(monthValue) });
+  const cards = [
+    ["statConsumption", today.consumption_kwh],
+    ["statSolar", today.solar_generation_kwh],
+    ["statImport", today.grid_import_kwh],
+  ];
+  for (const [id, raw] of cards) {
+    const number = finiteNumber(raw);
+    $(`${id}Number`).textContent = number === null ? "--" : formatStatNumber(number);
+    $(`${id}Note`).textContent = number === null ? t("stat.awaiting") : t("stat.today");
+  }
+}
+
+// Big-number formatting for the cards: whole numbers past ten, one decimal
+// under it, two under one, so "14", "3.4" and "0.39" all read at a glance.
+function formatStatNumber(value) {
+  const digits = Math.abs(value) >= 10 ? 0 : Math.abs(value) >= 1 ? 1 : 2;
+  return new Intl.NumberFormat(currentLocale(), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  }).format(value);
 }
 
 // The time-of-use payload carries an exact figure; a dashboard still serving the
@@ -2827,6 +2907,18 @@ function renderWeather() {
   }
   if (weather.status === "stale") details.push(t("weather.stale"));
   $("energyWeatherDetails").textContent = details.join(" · ") || t("weather.detailsUnavailable");
+  // The chips carry one figure each; the condition and the sentence above
+  // are the first chip's tooltip.
+  $("energyWeatherNow").title = [
+    available ? t(condition.labelKey) : t("weather.unavailable"),
+    $("energyWeatherDetails").textContent,
+  ].join(" · ");
+  $("energyWeatherHumidity").textContent = available && humidity !== null
+    ? `${formatNumber(Math.round(humidity))}%`
+    : "--";
+  $("energyWeatherIrradiance").textContent = available && irradiance !== null
+    ? `${formatNumber(Math.max(0, Math.round(irradiance)))} W/m²`
+    : "--";
 
   const solarDetails = [];
   if (available && irradiance !== null) {
@@ -4178,23 +4270,59 @@ function setStoredLanguage(language) {
   }
 }
 
+// The left rail: one icon per section, the one in view marked, and the
+// title pill's menu, which closes when the page is clicked elsewhere.
+function initRail() {
+  const links = Array.from(document.querySelectorAll(".rail__link[data-rail]"));
+  const menu = $("titleMenu");
+  if (menu) {
+    document.addEventListener("click", (event) => {
+      if (menu.open && !menu.contains(event.target)) menu.open = false;
+    });
+    menu.addEventListener("click", (event) => {
+      if (event.target.closest("a")) menu.open = false;
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && menu.open) menu.open = false;
+    });
+  }
+  if (!links.length || !("IntersectionObserver" in window)) return;
+  const sections = links
+    .map((link) => document.getElementById(link.dataset.rail))
+    .filter(Boolean);
+  // Sections the rail does not list belong to the nearest listed one above.
+  const owner = new Map();
+  let current = null;
+  for (const section of Array.from(document.querySelectorAll("main > section"))) {
+    if (sections.includes(section)) current = section.id;
+    if (current) owner.set(section, current);
+  }
+  const visible = new Map();
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) visible.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0);
+    let best = null;
+    let bestRatio = 0;
+    for (const [section, ratio] of visible) {
+      if (ratio > bestRatio) { best = section; bestRatio = ratio; }
+    }
+    if (!best) return;
+    const active = owner.get(best);
+    for (const link of links) link.classList.toggle("is-active", link.dataset.rail === active);
+  }, { threshold: [0.1, 0.25, 0.5, 0.75], rootMargin: "-10% 0px -40% 0px" });
+  for (const section of owner.keys()) observer.observe(section);
+}
+
 function initTheme() {
   const storedTheme = getStoredTheme();
-  const systemTheme = window.matchMedia?.("(prefers-color-scheme: dark)");
-  const prefersDark = systemTheme?.matches;
-  const theme = storedTheme || (prefersDark ? "dark" : "light");
+  // Dark is the dashboard's own appearance; light is a choice the viewer
+  // makes with the switch, and the system setting is not consulted.
+  const theme = storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark";
   applyTheme(theme, false);
 
   const toggle = $("themeToggle");
   toggle.checked = theme === "dark";
   toggle.addEventListener("change", () => {
     applyTheme(toggle.checked ? "dark" : "light", true);
-  });
-
-  systemTheme?.addEventListener?.("change", (event) => {
-    if (getStoredTheme()) return;
-    applyTheme(event.matches ? "dark" : "light", true);
-    toggle.checked = event.matches;
   });
 }
 
@@ -4302,6 +4430,7 @@ function bindChartInspection(chart, tooltip, queueHover, hideTooltip, moveSelect
 function bindControls() {
   initLanguage();
   initTheme();
+  initRail();
 
   const powerDateInput = $("powerDateInput");
   const oldestPowerDate = new Date();

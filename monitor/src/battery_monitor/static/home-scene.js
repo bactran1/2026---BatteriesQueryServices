@@ -1,46 +1,55 @@
-// The Live Home Energy hero: an illustrated home, lit by the real sun.
+// The Live Home Energy hero: a dark, isometric render of the home, in the
+// manner of EcoFlow's PowerInsight panel.
 //
 // The scene is one inline SVG built here rather than an image, so every part
-// of it can answer to live data: the sky and the light on the house follow the
-// sun's actual elevation, clouds thicken with the reported cloud cover, the
-// windows come on at dusk, the panels glint while they are producing, and
-// energy moves along the conduits in the direction and at the rate the meters
-// report. It listens to the same `battery-energy-flow` event and the same
-// `data-*` attributes on the section that the dashboard already maintains, and
-// to a `battery-weather` event for the sky, so it has no data path of its own.
+// of it answers to live data: the ambient light follows the sun's actual
+// elevation (from the coordinates the weather feed carries, recomputed each
+// minute), the interior lights and the porch lamp come on at dusk, the panels
+// take a sheen while they produce, the cabinet shows its charge and its LEDs,
+// and energy moves along the conduits in the direction and at the rate the
+// meters report. Callouts are dark pills tied to their objects by thin leader
+// lines, positioned from the same projected points the drawing uses.
 //
-// Sun position is the NOAA solar-position algorithm, the same one the monitor
-// uses server-side, recomputed here every minute from the latitude and
-// longitude the weather feed carries so the sun keeps moving between weather
-// refreshes and when the feed is down. A `?sceneClock=` query parameter
-// (an ISO time, or `HH:MM` for today) previews any hour of the day.
+// It listens to the `battery-energy-flow` event and the section's `data-*`
+// attributes the dashboard already maintains, and to a `battery-weather`
+// event for the light, so it has no data path of its own. A `?sceneClock=`
+// query parameter (an ISO time, or `HH:MM` for today) previews any hour.
 
 const SCENE_WIDTH = 1000;
 const SCENE_HEIGHT = 560;
 const HORIZON_Y = 352;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// Where each source and sink lives in the scene. Everything else is placed
-// relative to these, and the callouts in the page are anchored to the same
-// points as percentages, so the labels stay beside their objects at any size.
+// The isometric projection. World units: x runs down-right on screen, y runs
+// down-left, z is up. One unit is about a metre of house.
+const ISO = { ox: 470, oy: 224, u: 38, h: 34 };
+function P(x, y, z = 0) {
+  return [ISO.ox + (x - y) * ISO.u, ISO.oy + (x + y) * (ISO.u / 2) - z * ISO.h];
+}
+function pts(...points) {
+  return points.map(([x, y, z]) => P(x, y, z).map((v) => v.toFixed(1)).join(",")).join(" ");
+}
+
+// Where each source and sink lives, in world units, and the screen point the
+// callouts' leader lines end on.
 const NODES = {
-  solar: { x: 560, y: 148 },
-  home: { x: 640, y: 318 },
-  inverter: { x: 402, y: 300 },
-  battery: { x: 262, y: 312 },
-  grid: { x: 872, y: 168 },
-  backup: { x: 470, y: 350 },
+  solar: { x: 2.95, y: 5.6, z: 4.4 },
+  home: { x: 2.5, y: 8.05, z: 2.35 },
+  inverter: { x: 5.05, y: 2.6, z: 1.7 },
+  battery: { x: 5.0, y: 4.05, z: 0.8 },
+  grid: { x: -1.0, y: 8.7, z: 4.85 },
+  backup: { x: 7.55, y: -1.6, z: 1.15 },
 };
 
-// Flow colours: solar amber, grid blue, battery green, load warm white. The
-// same hues carry through the callout badges so a colour means one thing.
+// Flow colours, softened for the dark render: solar amber, grid teal, battery
+// green, home warm white, backup rose. The pills' dots carry the same hues.
 const FLOW_COLORS = {
-  solar: "#ffbf3d",
-  grid: "#5b9dff",
+  solar: "#ffb84a",
+  grid: "#37c8d6",
   battery: "#3ddc84",
   load: "#ffd89a",
   backup: "#ff8fb1",
-  idle: "rgba(255, 255, 255, 0.32)",
+  idle: "rgba(255, 255, 255, 0.18)",
 };
 
 // Above this many watts a path is considered carrying power; below it the
@@ -53,14 +62,15 @@ const DASH_SECONDS_MIN = 0.9;
 const DASH_SECONDS_MAX = 7;
 const PULSE_SPEED_DEFAULT = 0.2;
 
-// Sky palettes by phase of day. Each is [top, middle, horizon]. Cloud cover
-// pulls every phase toward its own grey so an overcast noon reads as overcast,
-// not as a different time of day.
+// Ambient light by phase of day. The render is dark at every hour, as the
+// panel it follows is; the phases differ in how much light falls on the
+// house, how warm it is, and whether the rooms are lit. `sky` is the faint
+// ground glow around the house, blended toward the page's black.
 const SKY = {
-  night: { top: "#070b1a", mid: "#101a3b", low: "#1c2b52", grey: "#101318", ink: "#f2f4f8", stars: 1, ground: ["#1c3a31", "#132a24"], warm: 0 },
-  dawn: { top: "#3d4d90", mid: "#c58ea6", low: "#ffcaa4", grey: "#5b6270", ink: "#f8f4f2", stars: 0.35, ground: ["#3b6b4c", "#2d5340"], warm: 0.55 },
-  golden: { top: "#4a3f86", mid: "#ef8c5a", low: "#ffd4a2", grey: "#5a5a63", ink: "#fff6ee", stars: 0.12, ground: ["#4f8a52", "#3a6a43"], warm: 0.85 },
-  day: { top: "#4fa8ff", mid: "#a4d9ff", low: "#e6f5ff", grey: "#aeb6c2", ink: "#0f172a", stars: 0, ground: ["#7fc36a", "#5fa451"], warm: 0.15 },
+  night: { top: "#0b0c0f", mid: "#0d0e12", low: "#111318", grey: "#0b0c0f", ink: "#f2f4f8", stars: 0.5, ground: ["#1a1d23", "#111317"], warm: 0.1 },
+  dawn: { top: "#0b0c0f", mid: "#121016", low: "#1b151a", grey: "#0f0f13", ink: "#f8f4f2", stars: 0.15, ground: ["#221f26", "#141317"], warm: 0.55 },
+  golden: { top: "#0b0c0f", mid: "#151110", low: "#211815", grey: "#100f11", ink: "#fff6ee", stars: 0.05, ground: ["#262019", "#161312"], warm: 0.85 },
+  day: { top: "#0b0c0f", mid: "#121419", low: "#1a1d24", grey: "#101216", ink: "#f5f7fb", stars: 0, ground: ["#2a2f38", "#181b20"], warm: 0.15 },
 };
 
 // ---------------------------------------------------------------------------
@@ -169,8 +179,8 @@ function skyPalette(elevation, azimuth, cloudCover) {
     warm: number("warm"),
     // How much daylight falls on the house: none at night, full by mid-morning,
     // and still a warm two-thirds with the sun on the horizon.
-    daylight: clamp((el + 10) / 22, 0, 1) * (1 - cover * 0.45),
-    // Windows and the porch lamp come on as the light goes, well before dark.
+    daylight: clamp((el + 10) / 22, 0, 1) * (1 - cover * 0.35),
+    // The rooms and the porch lamp come on as the light goes, well before dark.
     lamps: clamp((6 - el) / 9, 0, 1),
   };
 }
@@ -243,11 +253,7 @@ function startHomeScene() {
   stage.dataset.topology = "home-grid-solar-inverter-battery-load";
 
   const parts = {
-    sun: svg.querySelector("#hsSun"),
-    sunGlow: svg.querySelector("#hsSunGlow"),
-    moon: svg.querySelector("#hsMoon"),
     stars: svg.querySelector("#hsStars"),
-    clouds: svg.querySelector("#hsClouds"),
     panels: Array.from(svg.querySelectorAll(".hs-panel-glint")),
     windows: Array.from(svg.querySelectorAll(".hs-window")),
     lamp: svg.querySelector("#hsLamp"),
@@ -280,9 +286,11 @@ function startHomeScene() {
     visible: true,
   };
 
+  placeCallouts(section);
   applyFlows(readFlowInput(section));
   applyLighting();
   fitStage();
+  keepCalloutsInView(section);
   if ("ResizeObserver" in window) {
     new ResizeObserver(fitStage).observe(stage.parentElement || stage);
   } else {
@@ -291,6 +299,7 @@ function startHomeScene() {
 
   window.addEventListener("battery-energy-flow", (event) => {
     applyFlows(readFlowInput(section, event.detail));
+    keepCalloutsInView(section);
   });
   window.addEventListener("battery-weather", (event) => {
     const weather = event.detail && typeof event.detail === "object" ? event.detail : {};
@@ -339,15 +348,23 @@ function startHomeScene() {
     const width = host.clientWidth;
     const height = host.clientHeight;
     if (!width || !height) return;
-    // The largest 1000x560 box that fits, sat on the stage floor.
-    const scale = Math.min(width / SCENE_WIDTH, height / SCENE_HEIGHT);
+    // The largest 1000x560 box that fits, centred on the stage. A narrow
+    // screen may ask (through --hs-zoom) for a closer view: the box then
+    // outgrows the stage's width and the edges of the picture crop, with
+    // --hs-focus naming the point of the scene to keep in the middle.
+    const style = getComputedStyle(section);
+    const zoom = Math.max(1, Number.parseFloat(style.getPropertyValue("--hs-zoom")) || 1);
+    const focus = clamp(Number.parseFloat(style.getPropertyValue("--hs-focus")) || 0.5, 0, 1);
+    const scale = Math.min(width * zoom / SCENE_WIDTH, height / SCENE_HEIGHT);
     const boxWidth = SCENE_WIDTH * scale;
     const boxHeight = SCENE_HEIGHT * scale;
+    const left = boxWidth <= width ? (width - boxWidth) / 2 : clamp(width / 2 - focus * boxWidth, width - boxWidth, 0);
     section.style.setProperty("--hs-box-width", `${boxWidth.toFixed(1)}px`);
     section.style.setProperty("--hs-box-height", `${boxHeight.toFixed(1)}px`);
-    section.style.setProperty("--hs-box-left", `${((width - boxWidth) / 2).toFixed(1)}px`);
-    section.style.setProperty("--hs-box-top", `${(height - boxHeight).toFixed(1)}px`);
+    section.style.setProperty("--hs-box-left", `${left.toFixed(1)}px`);
+    section.style.setProperty("--hs-box-top", `${((height - boxHeight) / 2).toFixed(1)}px`);
     section.style.setProperty("--hs-scale", scale.toFixed(4));
+    keepCalloutsInView(section);
   }
 
   function applyFlows(input) {
@@ -376,19 +393,21 @@ function startHomeScene() {
     stage.dataset.activeRoutes = String(activeRoutes);
     stage.dataset.sourceTelemetry = input.inverterAvailable ? "inverter-and-direct-battery" : "direct-battery-only";
 
-    // The cabinet: state of charge as a fill, LEDs by what the pack is doing.
+    // The cabinet: state of charge as the gauge's fill, LEDs by what it does.
     const soc = clamp(number(input.soc) ?? 0, 0, 100);
     if (parts.socFill) {
-      parts.socFill.setAttribute("height", String((soc / 100) * 54));
-      parts.socFill.setAttribute("y", String(348 - (soc / 100) * 54));
-      parts.socFill.setAttribute("fill", soc < 20 ? FLOW_COLORS.backup : FLOW_COLORS.battery);
+      const top = parts.socFill.dataset.top.split(",").map(Number);
+      const bottom = parts.socFill.dataset.bottom.split(",").map(Number);
+      parts.socFill.setAttribute("x2", String(bottom[0] + (top[0] - bottom[0]) * soc / 100));
+      parts.socFill.setAttribute("y2", String(bottom[1] + (top[1] - bottom[1]) * soc / 100));
+      parts.socFill.setAttribute("stroke", soc < 20 ? FLOW_COLORS.backup : FLOW_COLORS.battery);
     }
     const ledColour = input.mode === "charging" ? FLOW_COLORS.battery
       : input.mode === "discharging" ? FLOW_COLORS.solar
         : input.mode === "stale" ? "#6b7280" : "#9fb3c8";
     for (const led of parts.leds) led.setAttribute("fill", ledColour);
     if (parts.inverterScreen) {
-      parts.inverterScreen.setAttribute("fill", input.inverterAvailable ? "#8fd6ff" : "#334155");
+      parts.inverterScreen.setAttribute("fill", input.inverterAvailable ? "#7fd0ff" : "#334155");
     }
     section.dataset.sceneMode = input.mode || "stale";
     section.dataset.solarActive = String(flows.solar.active);
@@ -415,35 +434,48 @@ function startHomeScene() {
     section.style.setProperty("--hs-lamps", palette.lamps.toFixed(3));
     section.style.setProperty("--hs-warm", palette.warm.toFixed(3));
     section.style.setProperty("--hs-stars", palette.stars.toFixed(3));
-    section.style.setProperty("--hs-clouds", clamp(0.12 + state.cloudCover / 100 * 0.85, 0, 1).toFixed(3));
     section.dataset.raining = String(state.precipitation > 0.05);
 
-    // Sun and moon on their arcs. The moon simply keeps the far side of the
-    // sky, which is where a viewer expects it and close to true at dusk.
-    const sun = sunScreenPosition(position.elevation, position.azimuth);
-    if (parts.sun) parts.sun.setAttribute("transform", `translate(${sun.x.toFixed(1)} ${sun.y.toFixed(1)})`);
-    const moonAcross = 1 - clamp((((position.azimuth ?? 180) % 360 + 360) % 360 - 70) / 220, 0, 1);
-    const moonY = HORIZON_Y - clamp(-position.elevation, 0, 90) / 90 * (HORIZON_Y - 90);
-    if (parts.moon) {
-      parts.moon.setAttribute("transform", `translate(${(90 + moonAcross * (SCENE_WIDTH - 180)).toFixed(1)} ${moonY.toFixed(1)})`);
-      parts.moon.style.opacity = String(clamp((-position.elevation - 2) / 6, 0, 1));
-    }
-    if (parts.sun) parts.sun.style.opacity = String(clamp((position.elevation + 4) / 6, 0, 1));
-
+    // The light itself: no sun disc in a render like this, only where it falls.
     // Light on the panels: the sun's height and the sky's clarity, and only
     // while the array is producing, so a bright but disconnected roof does
     // not pretend.
     const producing = section.dataset.solarActive === "true";
-    const glint = producing ? clamp(palette.daylight, 0, 1) : palette.daylight * 0.25;
+    const glint = producing ? clamp(palette.daylight * 0.55, 0, 0.55) : palette.daylight * 0.15;
     section.style.setProperty("--hs-glint", glint.toFixed(3));
-    // The house shadow swings with the sun's side.
     const az = ((position.azimuth ?? 180) % 360 + 360) % 360;
-    const side = clamp((az - 180) / 90, -1, 1);
-    if (parts.shadow) parts.shadow.setAttribute("transform", `translate(${(-side * 26).toFixed(1)} 0) scale(${(1 + Math.abs(side) * 0.35).toFixed(2)} 1)`);
-    section.style.setProperty("--hs-light-side", side.toFixed(2));
+    section.style.setProperty("--hs-light-side", clamp((az - 180) / 90, -1, 1).toFixed(2));
   }
 
   return { applyFlows, applyLighting, state };
+}
+
+// A pill's width is its text's, not the picture's, so on a narrow stage one
+// near the edge can run past it; such a pill slides back inside, its leader
+// still reaching it from under its body.
+function keepCalloutsInView(section) {
+  const bounds = section.getBoundingClientRect();
+  if (!bounds.width) return;
+  for (const pill of section.querySelectorAll(".energy-flow__callout")) {
+    if (getComputedStyle(pill).position !== "absolute") continue;
+    pill.style.setProperty("--hs-pill-shift", "0px");
+    const rect = pill.getBoundingClientRect();
+    const overflowRight = rect.right - (bounds.right - 8);
+    const overflowLeft = (bounds.left + 8) - rect.left;
+    const shift = overflowRight > 0 ? -overflowRight : overflowLeft > 0 ? overflowLeft : 0;
+    if (shift) pill.style.setProperty("--hs-pill-shift", `${shift.toFixed(1)}px`);
+  }
+}
+
+function placeCallouts(section) {
+  for (const [key, callout] of Object.entries(CALLOUTS)) {
+    const pill = section.querySelector(`.energy-flow__callout--${key}`);
+    if (!pill) continue;
+    const [px, py] = calloutPoints(callout).pill;
+    pill.style.setProperty("--hs-pill-x", `${(px / SCENE_WIDTH * 100).toFixed(2)}%`);
+    pill.style.setProperty("--hs-pill-y", `${(py / SCENE_HEIGHT * 100).toFixed(2)}%`);
+    pill.dataset.side = callout.side;
+  }
 }
 
 function readFlowInput(section, detail = null) {
@@ -486,61 +518,68 @@ function parseClockOverride(search) {
 function buildScene() {
   const svg = el("svg", {
     viewBox: `0 0 ${SCENE_WIDTH} ${SCENE_HEIGHT}`,
-    preserveAspectRatio: "xMidYMax meet",
+    preserveAspectRatio: "xMidYMid meet",
     class: "hs",
     "aria-hidden": "true",
     focusable: "false",
   });
   svg.append(defs());
-
-  // Sky and the far ground.
-  svg.append(el("rect", { class: "hs-sky", x: -1200, y: -600, width: SCENE_WIDTH + 2400, height: SCENE_HEIGHT + 600, fill: "url(#hsSky)" }));
+  // The glow around the house; beyond it the section's own black shows.
+  svg.append(el("rect", { class: "hs-sky", x: -160, y: -120, width: SCENE_WIDTH + 320, height: SCENE_HEIGHT + 240, fill: "url(#hsSky)" }));
   svg.append(stars());
-  svg.append(clouds());
-  svg.append(el("ellipse", { class: "hs-haze", cx: 500, cy: HORIZON_Y + 4, rx: 1500, ry: 90, fill: "url(#hsHaze)" }));
-  svg.append(sun());
-  svg.append(moon());
-  svg.append(el("path", { class: "hs-hill hs-hill--far", d: "M-1200 372 C -900 340, -600 356, -300 350 S 120 318, 400 344 S 700 322, 860 338 S 1300 356, 1600 340 S 2000 360, 2200 350 L 2200 400 L -1200 400 Z", fill: "url(#hsGroundFar)" }));
-  svg.append(el("path", { class: "hs-hill hs-hill--near", d: `M-1200 ${HORIZON_Y + 34} C -800 ${HORIZON_Y + 10}, -400 ${HORIZON_Y + 40}, -40 ${HORIZON_Y + 30} C 200 ${HORIZON_Y + 8}, 420 ${HORIZON_Y + 40}, 620 ${HORIZON_Y + 24} S 900 ${HORIZON_Y + 12}, 1040 ${HORIZON_Y + 36} S 1600 ${HORIZON_Y + 14}, 2200 ${HORIZON_Y + 40} L 2200 ${SCENE_HEIGHT + 400} L -1200 ${SCENE_HEIGHT + 400} Z`, fill: "url(#hsGround)" }));
-
+  // The ground: a pool of faint light the house sits in, fading to the page.
+  const [gx, gy] = P(3.2, 2.6, 0);
+  svg.append(el("ellipse", { class: "hs-ground", cx: gx, cy: gy, rx: 640, ry: 215, fill: "url(#hsGround)" }));
+  const [sx, sy] = P(6.2, 3.8, 0);
+  svg.append(el("ellipse", { id: "hsShadow", class: "hs-shadow", cx: sx, cy: sy, rx: 330, ry: 52, fill: "url(#hsShadowGlow)" }));
   svg.append(trees());
-  svg.append(el("ellipse", { id: "hsShadow", class: "hs-shadow", cx: 560, cy: 404, rx: 200, ry: 20, fill: "rgba(0,0,0,0.22)" }));
   svg.append(utilityPole());
+  svg.append(el("ellipse", { id: "hsLampGlow", class: "hs-lamp-glow", cx: P(5.9, 6.0, 0)[0], cy: P(5.9, 6.0, 0)[1] + 4, rx: 130, ry: 38, fill: "url(#hsLampGlow)" }));
+  svg.append(annex());
   svg.append(house());
+  svg.append(car());
   svg.append(inverterBox());
   svg.append(batteryCabinet());
   svg.append(flows());
+  svg.append(leaders());
   svg.append(rain());
   return svg;
 }
 
 function defs() {
   const d = el("defs");
-  d.append(gradient("hsSky", [["0", "var(--hs-sky-top, #4fa8ff)"], ["0.55", "var(--hs-sky-mid, #a4d9ff)"], ["1", "var(--hs-sky-low, #e6f5ff)"]], true));
-  d.append(gradient("hsGround", [["0", "var(--hs-ground-top, #7fc36a)"], ["1", "var(--hs-ground-low, #5fa451)"]], true));
-  d.append(gradient("hsGroundFar", [["0", "var(--hs-ground-top, #7fc36a)"], ["1", "var(--hs-ground-top, #7fc36a)"]], true, "0.72"));
-  d.append(gradient("hsHaze", [["0", "var(--hs-sky-low, #e6f5ff)"], ["1", "var(--hs-sky-low, #e6f5ff)"]], false, undefined, true));
-  d.append(gradient("hsRoof", [["0", "#4b5563"], ["1", "#1f2937"]], true));
-  d.append(gradient("hsWallFront", [["0", "#f7f2ea"], ["1", "#e3dccf"]], true));
-  d.append(gradient("hsWallSide", [["0", "#d9d2c4"], ["1", "#bcb3a3"]], true));
-  d.append(gradient("hsPanel", [["0", "#1e3a8a"], ["0.5", "#1d4ed8"], ["1", "#172554"]], true));
-  d.append(gradient("hsCabinet", [["0", "#2a2f36"], ["1", "#14171c"]], false));
-  d.append(gradient("hsModule", [["0", "#3b4250"], ["1", "#20252d"]], true));
-  d.append(gradient("hsSunGlow", [["0", "rgba(255, 214, 120, 0.85)"], ["0.45", "rgba(255, 190, 80, 0.28)"], ["1", "rgba(255, 190, 80, 0)"]], false, undefined, true));
-  d.append(gradient("hsMoonGlow", [["0", "rgba(210, 226, 255, 0.55)"], ["1", "rgba(210, 226, 255, 0)"]], false, undefined, true));
-  d.append(gradient("hsWindow", [["0", "#ffe6a8"], ["1", "#ffb454"]], true));
-  d.append(gradient("hsLampGlow", [["0", "rgba(255, 205, 120, 0.7)"], ["1", "rgba(255, 205, 120, 0)"]], false, undefined, true));
-  // Soft glow for the flows and the lit windows.
+  const sky = el("radialGradient", { id: "hsSky", cx: "50%", cy: "55%", r: "50%" });
+  sky.append(el("stop", { offset: "0", style: "stop-color: var(--hs-sky-low, #111318)" }));
+  sky.append(el("stop", { offset: "0.55", style: "stop-color: var(--hs-sky-mid, #0d0e12)" }));
+  sky.append(el("stop", { offset: "1", style: "stop-color: var(--hs-sky-top, #0b0c0f); stop-opacity: 0" }));
+  d.append(sky);
+  const ground = el("radialGradient", { id: "hsGround", cx: "50%", cy: "50%", r: "50%" });
+  ground.append(el("stop", { offset: "0", style: "stop-color: var(--hs-ground-top, #23272e)" }));
+  ground.append(el("stop", { offset: "0.5", style: "stop-color: var(--hs-ground-low, #15181c); stop-opacity: 0.7" }));
+  ground.append(el("stop", { offset: "1", style: "stop-color: var(--hs-ground-low, #15181c); stop-opacity: 0" }));
+  d.append(ground);
+  d.append(gradient("hsShadowGlow", [["0", "rgba(0, 0, 0, 0.55)"], ["1", "rgba(0, 0, 0, 0)"]], false, undefined, true));
+  d.append(gradient("hsWallFront", [["0", "#2b2f36"], ["1", "#1c1f25"]], true));
+  d.append(gradient("hsWallSide", [["0", "#1a1d22"], ["1", "#111317"]], true));
+  d.append(gradient("hsRoof", [["0", "#1b1e24"], ["1", "#0c0e11"]], true));
+  d.append(gradient("hsRoofAnnex", [["0", "#22262d"], ["1", "#15181d"]], true));
+  d.append(gradient("hsWood", [["0", "#5b3f27"], ["0.55", "#4a3220"], ["1", "#2e1f14"]], true));
+  d.append(gradient("hsPanel", [["0", "#16213b"], ["0.5", "#1a2a4d"], ["1", "#0f1729"]], true));
+  d.append(gradient("hsGlass", [["0", "#f6cf8c"], ["0.45", "#e9a556"], ["1", "#9a4f1e"]], true));
+  d.append(gradient("hsGlassDay", [["0", "#3a4352"], ["1", "#1f252e"]], true));
+  d.append(gradient("hsCabinet", [["0", "#2a2e35"], ["1", "#111317"]], false));
+  d.append(gradient("hsModule", [["0", "#33383f"], ["1", "#1a1d22"]], true));
+  d.append(gradient("hsLampGlow", [["0", "rgba(255, 190, 110, 0.32)"], ["1", "rgba(255, 190, 110, 0)"]], false, undefined, true));
+  d.append(gradient("hsWindowGlow", [["0", "rgba(255, 196, 120, 0.55)"], ["1", "rgba(255, 196, 120, 0)"]], false, undefined, true));
   const glow = el("filter", { id: "hsGlow", x: "-40%", y: "-40%", width: "180%", height: "180%" });
-  glow.append(el("feGaussianBlur", { stdDeviation: "3.2", result: "blur" }));
+  glow.append(el("feGaussianBlur", { stdDeviation: "2.6", result: "blur" }));
   const merge = el("feMerge");
   merge.append(el("feMergeNode", { in: "blur" }), el("feMergeNode", { in: "SourceGraphic" }));
   glow.append(merge);
   d.append(glow);
-  const soft = el("filter", { id: "hsSoft", x: "-20%", y: "-20%", width: "140%", height: "140%" });
-  soft.append(el("feGaussianBlur", { stdDeviation: "6" }));
+  const soft = el("filter", { id: "hsSoft", x: "-30%", y: "-30%", width: "160%", height: "160%" });
+  soft.append(el("feGaussianBlur", { stdDeviation: "9" }));
   d.append(soft);
-  // The roof slope, so panels and their glints share one transform.
   return d;
 }
 
@@ -556,173 +595,233 @@ function gradient(id, stops, vertical, opacity, radial = false) {
 
 function stars() {
   const g = el("g", { id: "hsStars", class: "hs-stars" });
-  // A fixed field, so the sky is the same sky every night.
   let seed = 7;
   const random = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-  for (let index = 0; index < 64; index += 1) {
+  for (let index = 0; index < 48; index += 1) {
     const x = 20 + random() * (SCENE_WIDTH - 40);
-    const y = 16 + random() * (HORIZON_Y - 120);
-    const r = 0.7 + random() * 1.3;
+    const y = 10 + random() * 150;
+    const r = 0.5 + random() * 1.1;
     g.append(el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: r.toFixed(2), fill: "#ffffff", class: "hs-star", style: `--hs-twinkle-delay: ${(random() * 6).toFixed(2)}s; --hs-twinkle-dur: ${(2.5 + random() * 3).toFixed(2)}s` }));
   }
-  return g;
-}
-
-function sun() {
-  const g = el("g", { id: "hsSun", class: "hs-sun" });
-  g.append(el("circle", { id: "hsSunGlow", r: 96, fill: "url(#hsSunGlow)" }));
-  g.append(el("circle", { r: 26, fill: "#fff1c2", class: "hs-sun-disc" }));
-  g.append(el("circle", { r: 22, fill: "#ffd166" }));
-  return g;
-}
-
-function moon() {
-  const g = el("g", { id: "hsMoon", class: "hs-moon" });
-  g.append(el("circle", { r: 70, fill: "url(#hsMoonGlow)" }));
-  const disc = el("circle", { r: 18, fill: "#eef3ff" });
-  const bite = el("circle", { cx: 8, cy: -5, r: 15, fill: "var(--hs-sky-top, #070b1a)", opacity: "0.92" });
-  g.append(disc, bite);
-  return g;
-}
-
-function clouds() {
-  const g = el("g", { id: "hsClouds", class: "hs-clouds" });
-  const cloud = (x, y, scale, delay, dur) => {
-    const c = el("g", { class: "hs-cloud", transform: `translate(${x} ${y}) scale(${scale})` });
-    const drift = el("g", { class: "hs-cloud-drift", style: `--hs-drift-delay: ${delay}s; --hs-drift-dur: ${dur}s` });
-    for (const [cx, cy, rx, ry] of [[0, 0, 62, 24], [-40, 6, 38, 18], [44, 4, 44, 20], [10, -16, 36, 22]]) {
-      drift.append(el("ellipse", { cx, cy, rx, ry }));
-    }
-    c.append(drift);
-    return c;
-  };
-  g.append(cloud(180, 96, 1, 0, 140), cloud(560, 62, 0.72, -50, 170), cloud(840, 118, 0.88, -110, 155));
   return g;
 }
 
 function trees() {
   const g = el("g", { class: "hs-trees hs-lit" });
   const tree = (x, y, s) => {
-    const t = el("g", { transform: `translate(${x} ${y}) scale(${s})` });
-    t.append(el("rect", { x: -3, y: -6, width: 6, height: 22, rx: 2, fill: "#5b3a24" }));
-    t.append(el("ellipse", { cx: 0, cy: -22, rx: 20, ry: 24, fill: "var(--hs-ground-low, #5fa451)" }));
-    t.append(el("ellipse", { cx: -8, cy: -12, rx: 16, ry: 16, fill: "var(--hs-ground-top, #7fc36a)" }));
+    const [sx, sy] = P(x, y, 0);
+    const t = el("g", { transform: `translate(${sx.toFixed(1)} ${sy.toFixed(1)}) scale(${s})` });
+    t.append(el("rect", { x: -4, y: -14, width: 8, height: 30, rx: 2, fill: "#191512" }));
+    t.append(el("ellipse", { cx: 0, cy: -46, rx: 34, ry: 42, fill: "#0c130f" }));
+    t.append(el("ellipse", { cx: -15, cy: -30, rx: 25, ry: 25, fill: "#0f1a14" }));
+    t.append(el("ellipse", { cx: 15, cy: -27, rx: 23, ry: 23, fill: "#0e1711" }));
+    t.append(el("ellipse", { cx: 4, cy: -58, rx: 18, ry: 18, fill: "#111d15" }));
     return t;
   };
-  g.append(tree(96, 372, 1.15), tree(150, 384, 0.9), tree(960, 380, 1.05));
+  g.append(tree(-1.6, 1.2, 1.25), tree(-3.2, 4.2, 1.05), tree(0.6, -5.4, 1.3), tree(3.8, -6.6, 1.1), tree(6.4, -7.2, 0.9));
   return g;
 }
 
+// The utility pole, far left, with its wires off to the edge and to the house.
 function utilityPole() {
   const g = el("g", { class: "hs-pole hs-lit" });
-  const { x } = NODES.grid;
-  g.append(el("rect", { x: x - 5, y: 150, width: 10, height: 240, rx: 3, fill: "#6b5341" }));
-  g.append(el("rect", { x: x - 42, y: 168, width: 84, height: 7, rx: 2, fill: "#5a4535" }));
-  g.append(el("rect", { x: x - 30, y: 190, width: 60, height: 6, rx: 2, fill: "#5a4535" }));
-  for (const dx of [-34, -12, 12, 34]) g.append(el("rect", { x: x + dx - 3, y: 160, width: 6, height: 9, rx: 2, fill: "#9ca3af" }));
-  // Transformer can.
-  g.append(el("rect", { x: x + 8, y: 206, width: 26, height: 40, rx: 6, fill: "#4b5563" }));
+  const { x, y } = NODES.grid;
+  const base = P(x, y, 0);
+  const top = P(x, y, 5.2);
+  g.append(el("line", { x1: base[0], y1: base[1], x2: top[0], y2: top[1], stroke: "#2a2622", "stroke-width": 7, "stroke-linecap": "round" }));
+  const arm = P(x, y, 4.85);
+  g.append(el("line", { x1: arm[0] - 30, y1: arm[1], x2: arm[0] + 30, y2: arm[1], stroke: "#25211d", "stroke-width": 5, "stroke-linecap": "round" }));
+  for (const dx of [-24, -8, 8, 24]) g.append(el("rect", { x: arm[0] + dx - 2, y: arm[1] - 8, width: 4, height: 7, rx: 1.5, fill: "#6b7280" }));
+  // Wires to the ridge and to the gable's eave, with a little sag.
+  const ridge = P(HOUSE.RIDGE_X, HOUSE.Y1 - 0.2, HOUSE.RIDGE_Z);
+  const eave = P(HOUSE.X1 + 0.3, HOUSE.Y1 + 0.1, HOUSE.EAVE);
+  for (const [dx, end] of [[-20, ridge], [22, eave]]) {
+    const from = [arm[0] + dx, arm[1] - 6];
+    const mid = [(from[0] + end[0]) / 2, Math.max(from[1], end[1]) + 22];
+    g.append(el("path", { d: `M ${from[0]} ${from[1]} Q ${mid[0]} ${mid[1]} ${end[0]} ${end[1]}`, stroke: "#3a3d44", "stroke-width": 1.4, fill: "none", opacity: 0.9 }));
+  }
   // Lines off to the edge of the world.
-  g.append(el("path", { d: `M ${x - 34} 160 C ${x + 60} 150, ${x + 120} 156, 1040 140`, stroke: "#374151", "stroke-width": 2, fill: "none", opacity: 0.8 }));
-  g.append(el("path", { d: `M ${x + 34} 160 C ${x + 90} 154, ${x + 130} 160, 1040 152`, stroke: "#374151", "stroke-width": 2, fill: "none", opacity: 0.8 }));
+  g.append(el("path", { d: `M ${arm[0] - 28} ${arm[1] - 6} C ${arm[0] - 120} ${arm[1] + 4}, ${arm[0] - 220} ${arm[1] - 30}, -200 ${arm[1] - 50}`, stroke: "#33363d", "stroke-width": 1.4, fill: "none", opacity: 0.85 }));
+  g.append(el("path", { d: `M ${arm[0] + 30} ${arm[1] - 6} C ${arm[0] - 80} ${arm[1] + 14}, ${arm[0] - 200} ${arm[1] - 16}, -200 ${arm[1] - 30}`, stroke: "#33363d", "stroke-width": 1.2, fill: "none", opacity: 0.7 }));
   return g;
 }
+
+// The main house: a long gabled block, its ridge along y, so the glazed
+// gable end faces the viewer's left and the long clad wall, with the door,
+// the cabinet and the inverter, faces the viewer's right under the array.
+const HOUSE = { X0: 0, X1: 5, Y0: 0, Y1: 8, EAVE: 3.0, RIDGE_X: 2.4, RIDGE_Z: 4.75 };
 
 function house() {
   const root = el("g", { class: "hs-house" });
-  const g = el("g", { class: "hs-house-body hs-lit" });
+  const body = el("g", { class: "hs-house-body hs-lit" });
   const lights = el("g", { class: "hs-house-lights" });
-  root.append(g, lights);
-  // Side wall (left, in shade), front wall, roof planes, chimney.
-  g.append(el("polygon", { points: "470,260 560,236 560,392 470,392", fill: "url(#hsWallSide)" }));
-  g.append(el("polygon", { points: "560,236 790,236 790,392 560,392", fill: "url(#hsWallFront)" }));
-  // Roof: the left slope carries the array and faces the sun.
-  g.append(el("polygon", { class: "hs-roof", points: "452,262 560,182 800,182 800,236 560,236", fill: "url(#hsRoof)" }));
-  g.append(el("polygon", { points: "452,262 560,182 560,236 470,260", fill: "#111827", opacity: 0.35 }));
-  g.append(el("rect", { x: 728, y: 190, width: 22, height: 44, fill: "#9a6b53" }));
-  g.append(el("rect", { x: 724, y: 186, width: 30, height: 8, rx: 2, fill: "#7c5442" }));
-  // Eaves and trim.
-  g.append(el("rect", { x: 556, y: 232, width: 248, height: 6, rx: 2, fill: "#374151" }));
-  // Front: door with porch lamp, three windows.
-  g.append(el("rect", { x: 660, y: 318, width: 40, height: 74, rx: 3, fill: "#7c4a35" }));
-  g.append(el("circle", { cx: 692, cy: 358, r: 2.2, fill: "#f4d58d" }));
-  g.append(el("rect", { x: 712, y: 300, width: 8, height: 6, rx: 1, fill: "#374151" }));
-  lights.append(el("circle", { id: "hsLampGlow", class: "hs-lamp-glow", cx: 716, cy: 312, r: 34, fill: "url(#hsLampGlow)" }));
-  lights.append(el("circle", { id: "hsLamp", class: "hs-lamp", cx: 716, cy: 312, r: 4, fill: "#fde68a" }));
-  for (const [x, y, w, h] of [[588, 262, 42, 40], [732, 262, 42, 40], [588, 322, 42, 40]]) {
-    g.append(el("rect", { class: "hs-window-frame", x: x - 3, y: y - 3, width: w + 6, height: h + 6, rx: 3, fill: "#374151" }));
-    // Dark glass by day, with a hint of the sky in it; warm light through it at night.
-    g.append(el("rect", { class: "hs-window-glass", x, y, width: w, height: h, rx: 2, fill: "#243247" }));
-    g.append(el("rect", { class: "hs-window-sky", x: x + 3, y: y + 3, width: w * 0.5, height: h - 6, rx: 1.5, fill: "url(#hsSky)", opacity: 0.35 }));
-    lights.append(el("rect", { class: "hs-window", x, y, width: w, height: h, rx: 2, fill: "url(#hsWindow)" }));
-    lights.append(el("path", { d: `M ${x + w / 2} ${y} v ${h} M ${x} ${y + h / 2} h ${w}`, stroke: "#374151", "stroke-width": 2, opacity: 0.85 }));
+  root.append(body, lights);
+  const { X0, X1, Y0, Y1, EAVE, RIDGE_X, RIDGE_Z } = HOUSE;
+
+  // The gable end (y = Y1) and the long wall (x = X1).
+  body.append(el("polygon", { points: pts([X0, Y1, 0], [X1, Y1, 0], [X1, Y1, EAVE], [RIDGE_X, Y1, RIDGE_Z], [X0, Y1, EAVE]), fill: "url(#hsWallSide)" }));
+  body.append(el("polygon", { points: pts([X1, Y0, 0], [X1, Y1, 0], [X1, Y1, EAVE], [X1, Y0, EAVE]), fill: "url(#hsWood)" }));
+  // Vertical boards on the long wall.
+  for (let y = Y0 + 0.25; y < Y1; y += 0.25) {
+    body.append(el("line", { x1: P(X1, y, 0)[0], y1: P(X1, y, 0)[1], x2: P(X1, y, EAVE - 0.02)[0], y2: P(X1, y, EAVE - 0.02)[1], stroke: "rgba(0,0,0,0.26)", "stroke-width": 0.7 }));
   }
-  // Side-wall window.
-  g.append(el("polygon", { class: "hs-window-glass", points: "492,282 526,272 526,314 492,322", fill: "#243247" }));
-  lights.append(el("polygon", { class: "hs-window hs-window--side", points: "492,282 526,272 526,314 492,322", fill: "url(#hsWindow)" }));
-  // Solar array on the left slope: a skewed grid of cells with a glint each.
-  const array = el("g", { class: "hs-array", transform: "matrix(1 0 -0.66 1 0 0) translate(134 0)" });
+  // Roof slope over the long wall, with its overhang, and the fascia.
+  const OV = 0.32;
+  body.append(el("polygon", { class: "hs-roof", points: pts([X1 + OV, Y0 - OV, EAVE - 0.05], [X1 + OV, Y1 + OV, EAVE - 0.05], [RIDGE_X, Y1 + OV, RIDGE_Z], [RIDGE_X, Y0 - OV, RIDGE_Z]), fill: "url(#hsRoof)" }));
+  body.append(el("polygon", { points: pts([X1 + OV, Y0 - OV, EAVE - 0.05], [X1 + OV, Y1 + OV, EAVE - 0.05], [X1 + OV, Y1 + OV, EAVE - 0.28], [X1 + OV, Y0 - OV, EAVE - 0.28]), fill: "#0c0d10" }));
+  // The gable's edge of the roof: a thin dark band over the pentagon.
+  body.append(el("polygon", { points: pts([X0 - OV, Y1 + OV, EAVE - 0.05], [RIDGE_X, Y1 + OV, RIDGE_Z], [X1 + OV, Y1 + OV, EAVE - 0.05], [X1 + OV, Y1 + OV, EAVE - 0.28], [RIDGE_X, Y1 + OV, RIDGE_Z - 0.23], [X0 - OV, Y1 + OV, EAVE - 0.28]), fill: "#0d0f12" }));
+
+  // Glazing on the gable end: a two-storey glass wall, the wooden rooms
+  // behind it, and a window in the gable.
+  const glass = (points, key) => {
+    body.append(el("polygon", { class: "hs-window-glass", points, fill: "url(#hsGlassDay)" }));
+    lights.append(el("polygon", { class: "hs-window", points, fill: "url(#hsGlass)", "data-window": key }));
+  };
+  const G0 = 0.35, G1 = 4.65, GZ0 = 0.22, GZ1 = 2.85;
+  glass(pts([G0, Y1, GZ0], [G1, Y1, GZ0], [G1, Y1, GZ1], [G0, Y1, GZ1]), "gable");
+  // The rooms: a floor slab, a wooden back wall, a stair of shelves.
+  lights.append(el("polygon", { class: "hs-interior", points: pts([G0, Y1, 1.5], [G1, Y1, 1.5], [G1, Y1, 1.62], [G0, Y1, 1.62]), fill: "#4a2a14", opacity: 0.85 }));
+  lights.append(el("polygon", { class: "hs-interior", points: pts([G0 + 0.3, Y1, GZ0], [G0 + 0.9, Y1, GZ0], [G0 + 0.9, Y1, 1.5], [G0 + 0.3, Y1, 1.5]), fill: "#8a5a2c", opacity: 0.45 }));
+  lights.append(el("polygon", { class: "hs-interior", points: pts([G1 - 1.4, Y1, 1.62], [G1 - 0.4, Y1, 1.62], [G1 - 0.4, Y1, 2.5], [G1 - 1.4, Y1, 2.5]), fill: "#8a5a2c", opacity: 0.4 }));
+  lights.append(el("polygon", { class: "hs-interior", points: pts([G0 + 1.3, Y1, GZ0 + 0.3], [G0 + 2.4, Y1, GZ0 + 0.3], [G0 + 2.4, Y1, GZ0 + 0.55], [G0 + 1.3, Y1, GZ0 + 0.55]), fill: "#3a2314", opacity: 0.8 }));
+  // Mullions.
+  for (const x of [1.42, 2.5, 3.58]) {
+    lights.append(el("line", { class: "hs-mullion", x1: P(x, Y1, GZ0)[0], y1: P(x, Y1, GZ0)[1], x2: P(x, Y1, GZ1)[0], y2: P(x, Y1, GZ1)[1], stroke: "#0b0c0f", "stroke-width": 2.2 }));
+  }
+  lights.append(el("line", { class: "hs-mullion", x1: P(G0, Y1, 1.56)[0], y1: P(G0, Y1, 1.56)[1], x2: P(G1, Y1, 1.56)[0], y2: P(G1, Y1, 1.56)[1], stroke: "#0b0c0f", "stroke-width": 2.6 }));
+  glass(pts([1.5, Y1, 3.2], [3.3, Y1, 3.2], [3.3, Y1, 3.95], [1.5, Y1, 3.95]), "gable-loft");
+
+  // A window and the door on the long wall, and the porch lamp by the door.
+  glass(pts([X1, 6.5, 1.2], [X1, 7.4, 1.2], [X1, 7.4, 2.4], [X1, 6.5, 2.4]), "side");
+  body.append(el("polygon", { points: pts([X1, 5.35, 0], [X1, 6.15, 0], [X1, 6.15, 2.2], [X1, 5.35, 2.2]), fill: "#2a1c11" }));
+  body.append(el("polygon", { points: pts([X1, 5.42, 0.05], [X1, 6.08, 0.05], [X1, 6.08, 2.13], [X1, 5.42, 2.13]), fill: "#3d2917" }));
+  const lamp = P(X1 + 0.02, 6.3, 2.4);
+  body.append(el("rect", { x: lamp[0] - 3, y: lamp[1] - 4, width: 6, height: 5, rx: 1, fill: "#2f333a" }));
+  lights.append(el("circle", { id: "hsLamp", class: "hs-lamp", cx: lamp[0], cy: lamp[1] + 3, r: 3, fill: "#ffd98a" }));
+  lights.append(el("circle", { class: "hs-lamp-halo", cx: lamp[0], cy: lamp[1] + 6, r: 26, fill: "url(#hsWindowGlow)" }));
+
+  // The array: three rows up the slope, eight across, edge to edge.
+  const array = el("g", { class: "hs-array" });
+  const slope = (y, s) => [X1 + OV - s * (X1 + OV - RIDGE_X), y, EAVE - 0.05 + s * (RIDGE_Z - EAVE + 0.05)];
   for (let row = 0; row < 3; row += 1) {
-    for (let col = 0; col < 4; col += 1) {
-      const x = 490 + col * 54;
-      const y = 190 + row * 15.5;
-      array.append(el("rect", { x, y, width: 50, height: 13, rx: 1.4, fill: "url(#hsPanel)", stroke: "#0b1120", "stroke-width": 0.8 }));
-      array.append(el("rect", { class: "hs-panel-glint", x: x + 3, y: y + 2, width: 44, height: 4, rx: 1, fill: "#ffffff", style: `--hs-glint-delay: ${((row * 4 + col) * 0.22).toFixed(2)}s` }));
+    for (let col = 0; col < 8; col += 1) {
+      const y0 = Y0 + 0.1 + col * 1.0, y1 = y0 + 0.92;
+      const s0 = 0.1 + row * 0.29, s1 = s0 + 0.26;
+      const points = pts(slope(y0, s0), slope(y1, s0), slope(y1, s1), slope(y0, s1));
+      array.append(el("polygon", { points, fill: "url(#hsPanel)", stroke: "#0a0f1c", "stroke-width": 0.9 }));
+      array.append(el("polygon", { class: "hs-panel-glint", points, fill: "#7fa3e6", style: `--hs-glint-delay: ${((row * 8 + col) * 0.22).toFixed(2)}s` }));
+      const mid = pts(slope(y0, (s0 + s1) / 2), slope(y1, (s0 + s1) / 2));
+      array.append(el("polyline", { points: mid, stroke: "rgba(120, 150, 210, 0.18)", "stroke-width": 0.6, fill: "none" }));
     }
   }
-  g.append(array);
-  // Ground line under the house.
-  g.append(el("rect", { x: 466, y: 390, width: 328, height: 6, rx: 2, fill: "#374151", opacity: 0.55 }));
+  body.append(array);
   return root;
+}
+
+// The annex: a lower flat-roofed block at the far end, forward of the long
+// wall, with the garage door facing the drive.
+const ANNEX = { X0: 5, X1: 7.5, Y0: -3.5, Y1: 0, Z: 2.35 };
+
+function annex() {
+  const g = el("g", { class: "hs-annex hs-lit" });
+  const { X0, X1, Y0, Y1, Z } = ANNEX;
+  g.append(el("polygon", { points: pts([X0, Y1, 0], [X1, Y1, 0], [X1, Y1, Z], [X0, Y1, Z]), fill: "url(#hsWallSide)" }));
+  g.append(el("polygon", { points: pts([X1, Y0, 0], [X1, Y1, 0], [X1, Y1, Z], [X1, Y0, Z]), fill: "url(#hsWood)" }));
+  g.append(el("polygon", { points: pts([X0, Y0, Z], [X1, Y0, Z], [X1, Y1, Z], [X0, Y1, Z]), fill: "url(#hsRoofAnnex)" }));
+  g.append(el("polygon", { points: pts([X1 + 0.15, Y0 - 0.15, Z], [X1 + 0.15, Y1 + 0.1, Z], [X1 + 0.15, Y1 + 0.1, Z - 0.16], [X1 + 0.15, Y0 - 0.15, Z - 0.16]), fill: "#0d0f12" }));
+  g.append(el("polygon", { points: pts([X0 - 0.1, Y1 + 0.1, Z], [X1 + 0.15, Y1 + 0.1, Z], [X1 + 0.15, Y1 + 0.1, Z - 0.16], [X0 - 0.1, Y1 + 0.1, Z - 0.16]), fill: "#0b0c0f" }));
+  for (let y = Y0 + 0.25; y < Y1; y += 0.25) {
+    g.append(el("line", { x1: P(X1, y, 0)[0], y1: P(X1, y, 0)[1], x2: P(X1, y, Z - 0.16)[0], y2: P(X1, y, Z - 0.16)[1], stroke: "rgba(0,0,0,0.26)", "stroke-width": 0.7 }));
+  }
+  // The garage door.
+  g.append(el("polygon", { points: pts([X1, Y0 + 0.5, 0], [X1, Y0 + 2.6, 0], [X1, Y0 + 2.6, 1.9], [X1, Y0 + 0.5, 1.9]), fill: "#2b2f36" }));
+  for (let z = 0.35; z < 1.9; z += 0.38) {
+    g.append(el("line", { x1: P(X1, Y0 + 0.5, z)[0], y1: P(X1, Y0 + 0.5, z)[1], x2: P(X1, Y0 + 2.6, z)[0], y2: P(X1, Y0 + 2.6, z)[1], stroke: "rgba(0,0,0,0.35)", "stroke-width": 0.9 }));
+  }
+  return g;
+}
+
+// A red car on the drive, in front of the garage.
+function car() {
+  const g = el("g", { class: "hs-car hs-lit" });
+  const X0 = 8.25, X1 = 9.0, Y0 = -2.95, Y1 = -1.3;
+  const wheel = (x, y) => {
+    const [cx, cy] = P(x, y, 0.18);
+    g.append(el("ellipse", { cx, cy, rx: 5.2, ry: 3.4, fill: "#0b0c0f" }));
+  };
+  wheel(X1 + 0.02, Y0 + 0.35); wheel(X1 + 0.02, Y1 - 0.35);
+  // Body.
+  g.append(el("polygon", { points: pts([X0, Y1, 0.16], [X1, Y1, 0.16], [X1, Y1, 0.55], [X0, Y1, 0.55]), fill: "#8f1d17" }));
+  g.append(el("polygon", { points: pts([X1, Y0, 0.16], [X1, Y1, 0.16], [X1, Y1, 0.55], [X1, Y0, 0.55]), fill: "#a5241c" }));
+  g.append(el("polygon", { points: pts([X0, Y0, 0.55], [X1, Y0, 0.55], [X1, Y1, 0.55], [X0, Y1, 0.55]), fill: "#c8332a" }));
+  // Cabin: glass sides and windscreen under a red roof.
+  const c0 = Y0 + 0.4, c1 = Y1 - 0.3, t0 = Y0 + 0.62, t1 = Y1 - 0.5, CX0 = X0 + 0.08, CX1 = X1 - 0.08, Z0 = 0.55, Z1 = 0.86;
+  g.append(el("polygon", { points: pts([CX1, c0, Z0], [CX1, c1, Z0], [CX1, t1, Z1], [CX1, t0, Z1]), fill: "#1a222e" }));
+  g.append(el("polygon", { points: pts([CX0, c1, Z0], [CX1, c1, Z0], [CX1, t1, Z1], [CX0, t1, Z1]), fill: "#22303f" }));
+  g.append(el("polygon", { points: pts([CX0, t0, Z1], [CX1, t0, Z1], [CX1, t1, Z1], [CX0, t1, Z1]), fill: "#b52a22" }));
+  // Tail light.
+  const tail = P(X1 + 0.01, Y1 - 0.06, 0.42);
+  g.append(el("rect", { x: tail[0] - 4, y: tail[1] - 1.5, width: 5, height: 2.4, rx: 1, fill: "#ff5a4f", opacity: 0.9 }));
+  return g;
 }
 
 function inverterBox() {
   const g = el("g", { class: "hs-inverter hs-lit" });
-  const { x, y } = NODES.inverter;
-  g.append(el("rect", { x: x - 30, y: y - 40, width: 60, height: 84, rx: 8, fill: "#e5e7eb", stroke: "#9ca3af", "stroke-width": 1.5 }));
-  g.append(el("rect", { x: x - 22, y: y - 30, width: 44, height: 22, rx: 3, id: "hsInverterScreen", class: "hs-inverter-screen", fill: "#8fd6ff" }));
-  g.append(el("rect", { x: x - 22, y: y + 2, width: 44, height: 30, rx: 3, fill: "#cbd5e1" }));
-  for (const dy of [8, 16, 24]) g.append(el("rect", { x: x - 16, y: y + dy, width: 32, height: 2.5, rx: 1, fill: "#94a3b8" }));
-  g.append(el("rect", { x: x - 30, y: y + 44, width: 60, height: 8, rx: 2, fill: "#9ca3af", opacity: 0.6 }));
+  const { x, y, z } = NODES.inverter;
+  g.append(el("polygon", { points: pts([x, y - 0.34, z - 0.5], [x, y + 0.34, z - 0.5], [x, y + 0.34, z + 0.5], [x, y - 0.34, z + 0.5]), fill: "#d5d8de", stroke: "#8b9098", "stroke-width": 0.8 }));
+  g.append(el("polygon", { id: "hsInverterScreen", class: "hs-inverter-screen", points: pts([x, y - 0.26, z + 0.08], [x, y + 0.26, z + 0.08], [x, y + 0.26, z + 0.38], [x, y - 0.26, z + 0.38]), fill: "#7fd0ff" }));
+  for (const dz of [-0.1, -0.22, -0.34]) {
+    g.append(el("line", { x1: P(x, y - 0.22, z + dz)[0], y1: P(x, y - 0.22, z + dz)[1], x2: P(x, y + 0.22, z + dz)[0], y2: P(x, y + 0.22, z + dz)[1], stroke: "#8b9098", "stroke-width": 1.2 }));
+  }
   return g;
 }
 
+// The cabinet: three modules stacked against the long wall, the charge
+// gauge on its side, an LED per module.
 function batteryCabinet() {
   const g = el("g", { class: "hs-cabinet hs-lit" });
-  const { x } = NODES.battery;
-  g.append(el("rect", { x: x - 46, y: 262, width: 92, height: 130, rx: 8, fill: "url(#hsCabinet)", stroke: "#0b0d10", "stroke-width": 1.5 }));
+  const { x, y } = NODES.battery;
+  const X0 = x - 0.5, X1 = x + 0.05, Y0 = y - 0.6, Y1 = y + 0.6, H = 1.55;
+  g.append(el("polygon", { points: pts([X0, Y1, 0], [X1, Y1, 0], [X1, Y1, H], [X0, Y1, H]), fill: "#0f1114" }));
+  g.append(el("polygon", { points: pts([X1, Y0, 0], [X1, Y1, 0], [X1, Y1, H], [X1, Y0, H]), fill: "url(#hsCabinet)" }));
+  g.append(el("polygon", { points: pts([X0, Y0, H], [X1, Y0, H], [X1, Y1, H], [X0, Y1, H]), fill: "#2a2e35" }));
   for (let index = 0; index < 3; index += 1) {
-    const y = 274 + index * 38;
-    g.append(el("rect", { x: x - 38, y, width: 76, height: 30, rx: 4, fill: "url(#hsModule)", stroke: "#0f1216", "stroke-width": 1 }));
-    g.append(el("rect", { x: x - 30, y: y + 8, width: 36, height: 14, rx: 2, fill: "#111418" }));
-    g.append(el("circle", { class: "hs-led", cx: x + 24, cy: y + 15, r: 3.2, fill: "#9fb3c8" }));
-    g.append(el("circle", { cx: x + 24, cy: y + 15, r: 6, fill: "none", class: "hs-led-ring" }));
+    const z0 = 0.12 + index * 0.47, z1 = z0 + 0.4;
+    g.append(el("polygon", { points: pts([X1 + 0.01, Y0 + 0.08, z0], [X1 + 0.01, Y1 - 0.08, z0], [X1 + 0.01, Y1 - 0.08, z1], [X1 + 0.01, Y0 + 0.08, z1]), fill: "url(#hsModule)", stroke: "#0b0c0f", "stroke-width": 0.8 }));
+    g.append(el("polygon", { points: pts([X1 + 0.02, Y0 + 0.18, z0 + 0.12], [X1 + 0.02, Y0 + 0.7, z0 + 0.12], [X1 + 0.02, Y0 + 0.7, z0 + 0.28], [X1 + 0.02, Y0 + 0.18, z0 + 0.28]), fill: "#0b0c0f" }));
+    const led = P(X1 + 0.02, Y1 - 0.2, z0 + 0.2);
+    g.append(el("circle", { class: "hs-led", cx: led[0], cy: led[1], r: 2.4, fill: "#9fb3c8" }));
   }
-  // The charge gauge on the cabinet's side.
-  g.append(el("rect", { x: x + 50, y: 292, width: 10, height: 56, rx: 3, fill: "rgba(255,255,255,0.12)", stroke: "rgba(255,255,255,0.28)" }));
-  g.append(el("rect", { id: "hsSocFill", x: x + 51, y: 348, width: 8, height: 0, rx: 2.5, fill: FLOW_COLORS.battery }));
-  g.append(el("rect", { x: x - 46, y: 392, width: 92, height: 6, rx: 2, fill: "#0b0d10", opacity: 0.5 }));
+  // Charge gauge on the left face.
+  const gaugeTop = P(X0 + 0.12, Y1 + 0.01, 1.35), gaugeBottom = P(X0 + 0.12, Y1 + 0.01, 0.2);
+  g.append(el("line", { x1: gaugeTop[0], y1: gaugeTop[1], x2: gaugeBottom[0], y2: gaugeBottom[1], stroke: "rgba(255,255,255,0.14)", "stroke-width": 5, "stroke-linecap": "round" }));
+  g.append(el("line", { id: "hsSocFill", x1: gaugeBottom[0], y1: gaugeBottom[1], x2: gaugeBottom[0], y2: gaugeBottom[1], stroke: FLOW_COLORS.battery, "stroke-width": 3.4, "stroke-linecap": "round", "data-top": `${gaugeTop[0]},${gaugeTop[1]}`, "data-bottom": `${gaugeBottom[0]},${gaugeBottom[1]}` }));
   return g;
 }
 
-// The conduits. Every route is a smooth path from source to sink; a faint
-// track always shows the topology, a dashed overlay moves with power, and two
-// dots ride the path on an animateMotion so direction is unmistakable.
+// The conduits: straight iso runs, along the ground and along the walls, the
+// way the panel draws them. A faint track always shows the topology; a dashed
+// overlay moves with power; two dots ride each path so direction is plain.
+function route(...points) {
+  return points.map((point, index) => `${index ? "L" : "M"} ${P(...point).map((v) => v.toFixed(1)).join(" ")}`).join(" ");
+}
+const WALL = HOUSE.X1 + 0.06;
 const ROUTES = {
-  solar: `M ${NODES.solar.x - 40} ${NODES.solar.y + 60} C ${NODES.solar.x - 120} ${NODES.solar.y + 120}, ${NODES.inverter.x + 40} ${NODES.inverter.y - 90}, ${NODES.inverter.x} ${NODES.inverter.y - 40}`,
-  battery: `M ${NODES.battery.x + 46} ${NODES.battery.y + 20} C ${NODES.battery.x + 80} ${NODES.battery.y + 20}, ${NODES.inverter.x - 60} ${NODES.inverter.y + 20}, ${NODES.inverter.x - 30} ${NODES.inverter.y + 20}`,
-  home: `M ${NODES.inverter.x + 30} ${NODES.inverter.y} C ${NODES.inverter.x + 60} ${NODES.inverter.y}, ${NODES.home.x - 120} ${NODES.home.y + 40}, ${NODES.home.x - 80} ${NODES.home.y + 40}`,
-  backup: `M ${NODES.inverter.x + 30} ${NODES.inverter.y + 30} C ${NODES.inverter.x + 50} ${NODES.inverter.y + 30}, ${NODES.backup.x - 30} ${NODES.backup.y + 20}, ${NODES.backup.x} ${NODES.backup.y + 20}`,
-  grid: `M ${NODES.grid.x - 20} ${NODES.grid.y + 40} C ${NODES.grid.x - 60} ${NODES.grid.y + 120}, ${NODES.home.x + 200} ${NODES.home.y + 20}, ${NODES.home.x + 150} ${NODES.home.y + 40}`,
+  solar: route([WALL, 2.6, 2.95], [WALL, 2.6, 2.2]),
+  battery: route([WALL, 3.45, 0.55], [WALL, 2.6, 0.55], [WALL, 2.6, 1.2]),
+  home: route([WALL, 2.6, 1.5], [WALL, 7.5, 1.5], [WALL, 7.5, 2.3]),
+  backup: route([WALL, 2.6, 1.0], [WALL, 0.06, 1.0], [ANNEX.X1 - 0.1, 0.06, 1.0], [ANNEX.X1 + 0.06, -0.3, 1.0]),
+  grid: route([NODES.grid.x, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, 2.6, 0.02], [WALL, 2.6, 0.02], [WALL, 2.6, 1.2]),
 };
 
 function flows() {
   const g = el("g", { class: "hs-flows" });
   for (const [key, d] of Object.entries(ROUTES)) {
-    g.append(el("path", { id: `hsFlow-${key}-track`, class: "hs-flow-track", d, fill: "none", stroke: FLOW_COLORS.idle, "stroke-width": 5, "stroke-linecap": "round", "data-active": "false" }));
-    g.append(el("path", { id: `hsFlow-${key}-dash`, class: "hs-flow-dash", d, fill: "none", stroke: FLOW_COLORS.idle, "stroke-width": 3.2, "stroke-linecap": "round", "data-active": "false" }));
+    g.append(el("path", { id: `hsFlow-${key}-track`, class: "hs-flow-track", d, fill: "none", stroke: FLOW_COLORS.idle, "stroke-width": 2.4, "stroke-linecap": "round", "stroke-linejoin": "round", "data-active": "false" }));
+    g.append(el("path", { id: `hsFlow-${key}-dash`, class: "hs-flow-dash", d, fill: "none", stroke: FLOW_COLORS.idle, "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round", "data-active": "false" }));
     for (let index = 0; index < 2; index += 1) {
-      const dot = el("circle", { class: "hs-flow-dot", r: 4.2, fill: FLOW_COLORS.idle, "data-flow": key, "data-active": "false", filter: "url(#hsGlow)" });
+      const dot = el("circle", { class: "hs-flow-dot", r: 2.6, fill: FLOW_COLORS.idle, "data-flow": key, "data-active": "false", filter: "url(#hsGlow)" });
       const motion = el("animateMotion", { dur: "4s", repeatCount: "indefinite", begin: `${index * 2}s`, keyPoints: "0;1", keyTimes: "0;1", calcMode: "linear" });
       motion.append(el("mpath", { href: `#hsFlow-${key}-track` }));
       dot.append(motion);
@@ -732,13 +831,40 @@ function flows() {
   return g;
 }
 
+// Where each callout pill sits: its leader line ends on `anchor` (world
+// units), and starts `offset` screen pixels from there, at the pill's near
+// edge; `side` says which way the pill's body extends from that point.
+const CALLOUTS = {
+  solar: { anchor: [2.95, 5.6, 4.4], offset: [-46, -48], side: "left" },
+  grid: { anchor: [NODES.grid.x, NODES.grid.y, 0.6], offset: [46, 46], side: "right" },
+  inverter: { anchor: [NODES.inverter.x, NODES.inverter.y, NODES.inverter.z + 0.5], offset: [44, -52], side: "right" },
+  load: { anchor: [2.5, HOUSE.Y1 + 0.05, 2.35], offset: [-46, -54], side: "left" },
+  backup: { anchor: [ANNEX.X1 + 0.05, -1.6, 1.15], offset: [24, -78], side: "right" },
+  battery: { anchor: [NODES.battery.x + 0.06, NODES.battery.y + 0.1, 0.95], offset: [34, 72], side: "right" },
+};
+
+function calloutPoints(callout) {
+  const [ax, ay] = P(...callout.anchor);
+  return { anchor: [ax, ay], pill: [ax + callout.offset[0], ay + callout.offset[1]] };
+}
+
+function leaders() {
+  const g = el("g", { class: "hs-leaders" });
+  for (const [key, callout] of Object.entries(CALLOUTS)) {
+    const { anchor, pill } = calloutPoints(callout);
+    g.append(el("path", { class: "hs-leader", "data-callout": key, d: `M ${pill[0].toFixed(1)} ${pill[1].toFixed(1)} L ${anchor[0].toFixed(1)} ${anchor[1].toFixed(1)}`, fill: "none", stroke: "rgba(255,255,255,0.55)", "stroke-width": 1 }));
+    g.append(el("circle", { class: "hs-leader-dot", "data-callout": key, cx: anchor[0].toFixed(1), cy: anchor[1].toFixed(1), r: 3, fill: "#ffffff" }));
+  }
+  return g;
+}
+
 function rain() {
   const g = el("g", { class: "hs-rain", "aria-hidden": "true" });
   let seed = 3;
   const random = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-  for (let index = 0; index < 34; index += 1) {
+  for (let index = 0; index < 30; index += 1) {
     const x = random() * SCENE_WIDTH;
-    g.append(el("line", { x1: x, y1: 0, x2: x - 6, y2: 22, stroke: "rgba(190, 215, 255, 0.55)", "stroke-width": 1.4, "stroke-linecap": "round", class: "hs-drop", style: `--hs-drop-delay: ${(random() * 1.4).toFixed(2)}s; --hs-drop-dur: ${(0.9 + random() * 0.5).toFixed(2)}s` }));
+    g.append(el("line", { x1: x, y1: 0, x2: x - 5, y2: 20, stroke: "rgba(190, 215, 255, 0.35)", "stroke-width": 1.2, "stroke-linecap": "round", class: "hs-drop", style: `--hs-drop-delay: ${(random() * 1.4).toFixed(2)}s; --hs-drop-dur: ${(0.9 + random() * 0.5).toFixed(2)}s` }));
   }
   return g;
 }
@@ -793,8 +919,10 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && document
 }
 
 export {
+  CALLOUTS,
   FLOW_COLORS,
   NODES,
+  P,
   SKY,
   clockSolarPosition,
   flowsFor,

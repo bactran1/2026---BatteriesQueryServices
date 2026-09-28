@@ -263,14 +263,22 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("const ROUTES = {", scene)
         for route in ("solar", "battery", "home", "backup", "grid"):
             with self.subTest(route=route):
-                self.assertIn(f"\n  {route}: `M ", scene)
+                self.assertIn(f"\n  {route}: route(", scene)
+        # Each callout is a dark pill tied to its object by a leader line, both
+        # placed from the same projected point.
+        self.assertIn("const CALLOUTS = {", scene)
+        self.assertIn("function calloutPoints", scene)
+        self.assertIn("function leaders", scene)
+        self.assertIn('"--hs-pill-x"', scene)
+        self.assertIn(".hs-leader {", css)
+        self.assertIn("left: var(--hs-pill-x, 50%);", css)
+        self.assertIn('.energy-flow__callout[data-side="left"]', css)
 
         # Motion respects the viewer and the viewport.
         self.assertIn("IntersectionObserver", scene)
         self.assertIn('matchMedia("(prefers-reduced-motion: reduce)")', scene)
         self.assertIn("@keyframes hs-flow-dash", css)
         self.assertIn("@keyframes hs-twinkle", css)
-        self.assertIn("@keyframes hs-drift", css)
         self.assertIn("@keyframes hs-glint", css)
         self.assertIn(".energy-flow.is-offscreen", css)
         self.assertIn("@media (prefers-reduced-motion: reduce)", css)
@@ -288,6 +296,54 @@ class FrontendContractTests(unittest.TestCase):
             javascript,
         )
         self.assertIn('href="https://open-meteo.com/"', html)
+
+    def test_powerinsight_frame_rail_appbar_and_stat_cards(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        # A slim rail of sections on the left, the switches at its foot.
+        self.assertIn('<nav class="rail"', html)
+        for section in ("energyFlowSection", "powerHistorySection", "energySavingsSection",
+                        "rackSummarySection", "eventsSection"):
+            with self.subTest(section=section):
+                self.assertIn(f'data-rail="{section}"', html)
+                self.assertIn(f'id="{section}"', html)
+        self.assertIn('id="energyHistorySection"', html)
+        self.assertIn("function initRail", javascript)
+        self.assertIn("grid-template-columns: 64px minmax(0, 1fr);", css)
+
+        # The app bar: a title pill with a menu on the left, chips on the right.
+        self.assertIn('<details id="titleMenu" class="title-menu">', html)
+        self.assertIn('<h1 data-i18n="app.title">Battery Monitor</h1>', html)
+        self.assertIn('id="builderLine"', html)
+        self.assertIn('<aside id="energyWeather" class="weather-chips"', html)
+        for element_id in ("energyWeatherHumidity", "energyWeatherIrradiance"):
+            with self.subTest(element_id=element_id):
+                self.assertIn(f'id="{element_id}"', html)
+                self.assertIn(f'$("{element_id}").textContent', javascript)
+        self.assertIn('class="chip chip--status"', html)
+        self.assertIn(".weather-chips[data-kind=\"rain\"] .wx__rain", css)
+
+        # Four cards under the home, always today's figures.
+        self.assertIn('<section id="statRow" class="stat-row"', html)
+        for card in ("statValue", "statConsumption", "statSolar", "statImport"):
+            with self.subTest(card=card):
+                self.assertIn(f'id="{card}Number"', html)
+        self.assertIn("function renderStatCards", javascript)
+        self.assertIn("const today = periods.today || {};", javascript)
+        self.assertIn("renderStatCards();", javascript)
+        for key in ("stat.value", "stat.consumption", "stat.solar", "stat.import", "stat.monthTotal",
+                    "nav.home", "nav.rack", "title.menu"):
+            with self.subTest(key=key):
+                self.assertEqual(javascript.count(f'"{key}":'), 2)
+        self.assertIn(".stat-card__value {", css)
+        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr));", css)
+
+        # The dashboard's own appearance is dark; light is a stored choice.
+        self.assertIn('storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark"', html)
+        self.assertIn('storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark"', javascript)
+        self.assertIn("--bg: #0b0c0f;", css)
 
     def test_inverter_telemetry_drives_live_metrics_and_power_routes(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")

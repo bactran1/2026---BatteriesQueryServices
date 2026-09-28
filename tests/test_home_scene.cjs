@@ -54,22 +54,28 @@ test("The sky blends between phases and greys with cloud cover, never jumping", 
 
   const midnight = skyPalette(-40, 0, 0);
   assert.equal(midnight.phase, "night");
-  assert.equal(midnight.stars, 1);
+  // The render is dark at every hour; the stars are a restrained accent, at
+  // their fullest only in the middle of the night.
+  assert.equal(midnight.stars, SKY.night.stars);
+  assert.ok(midnight.stars > 0 && midnight.stars <= 1);
   assert.equal(midnight.daylight, 0);
   assert.equal(midnight.lamps, 1);
 
   // Just above civil dusk the night sky still carries some of the sunset.
   const lateDusk = skyPalette(-10, 270, 0);
   assert.equal(lateDusk.phase, "night");
-  assert.notEqual(lateDusk.top, SKY.night.top);
-  assert.ok(lateDusk.stars < 1 && lateDusk.stars > 0.3);
+  // The edge of the picture is the page's own black in every phase; the glow
+  // around the house is what carries the hour.
+  assert.equal(lateDusk.top, SKY.night.top);
+  assert.notEqual(lateDusk.low, SKY.night.low);
+  assert.ok(lateDusk.stars < midnight.stars && lateDusk.stars > midnight.stars * 0.3);
 
   // Overcast pulls the colour toward grey and hides the stars.
   const overcastNoon = skyPalette(60, 180, 100);
   assert.notEqual(overcastNoon.top, noon.top);
   assert.ok(overcastNoon.daylight < noon.daylight);
   const overcastNight = skyPalette(-40, 0, 100);
-  assert.ok(overcastNight.stars < 0.2);
+  assert.ok(overcastNight.stars < midnight.stars * 0.2);
 });
 
 test("The sun crosses the stage east to west and sits below the horizon at night", async () => {

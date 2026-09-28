@@ -3,19 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f06a00" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#ff9f0a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0b0c0f" />
     <title>Battery Monitor</title>
     <script>
       (() => {
         try {
           const storedTheme = localStorage.getItem("battery-monitor-theme");
-          const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          const theme = storedTheme || (systemDark ? "dark" : "light");
+          const theme = storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark";
           document.documentElement.dataset.theme = theme;
           document.documentElement.style.colorScheme = theme;
         } catch {
-          document.documentElement.dataset.theme = "light";
+          document.documentElement.dataset.theme = "dark";
         }
 
         try {
@@ -45,62 +43,127 @@
     </script>
   </head>
   <body>
-    <div class="shell">
-      <header class="topbar">
-        <div class="brand-lockup">
+    <div class="app">
+      <nav class="rail" aria-label="Sections" data-i18n-aria-label="nav.sections">
+        <a class="rail__brand" href="#energyFlowSection" title="Battery Monitor" data-i18n-title="app.title">
           <img
             class="brand-mark"
             src="/static/assets/tran-t-logo.png?v=__BUILD_COMMIT__"
             alt="Tran T logo"
             data-i18n-alt="logo.alt"
-            width="64"
-            height="64"
+            width="36"
+            height="36"
           />
-          <div class="brand-lockup__copy">
-            <p id="builderLine" class="builder-line" data-i18n="brand.builderDefault">The system is built by Tran Thanh Tuan and son</p>
-            <h1 data-i18n="app.title">Battery Monitor</h1>
-          </div>
+        </a>
+        <div class="rail__nav">
+          <a class="rail__link is-active" href="#energyFlowSection" data-rail="energyFlowSection" title="Home" aria-label="Home" data-i18n-title="nav.home" data-i18n-aria-label="nav.home">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.2 12 4l8.5 7.2"/><path d="M5.5 9.8V20h13V9.8"/><path d="M10 20v-5.5h4V20"/></svg>
+          </a>
+          <a class="rail__link" href="#powerHistorySection" data-rail="powerHistorySection" title="History" aria-label="History" data-i18n-title="nav.history" data-i18n-aria-label="nav.history">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>
+          </a>
+          <a class="rail__link" href="#energySavingsSection" data-rail="energySavingsSection" title="Financial impact" aria-label="Financial impact" data-i18n-title="nav.savings" data-i18n-aria-label="nav.savings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M13.2 7.2 9.6 12.6h3.3l-1 4.2 3.6-5.4h-3.3z"/></svg>
+          </a>
+          <a class="rail__link" href="#rackSummarySection" data-rail="rackSummarySection" title="Battery rack" aria-label="Battery rack" data-i18n-title="nav.rack" data-i18n-aria-label="nav.rack">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="15.5" height="10" rx="2.2"/><path d="M21.5 10.2v3.6"/><path d="M7 10.5v3M10.6 10.5v3"/></svg>
+          </a>
+          <a class="rail__link" href="#eventsSection" data-rail="eventsSection" title="Events and archive" aria-label="Events and archive" data-i18n-title="nav.events" data-i18n-aria-label="nav.events">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.2 16.5v-5.3a5.8 5.8 0 0 1 11.6 0v5.3l1.4 1.8H4.8z"/><path d="M10 20.2a2 2 0 0 0 4 0"/></svg>
+          </a>
         </div>
-        <div class="topbar__meta">
-          <div class="preference-controls">
-            <label class="language-toggle" title="Switch language" data-i18n-title="language.switchTitle">
-              <input
-                id="languageToggle"
-                type="checkbox"
-                role="switch"
-                aria-label="Switch between English and Vietnamese"
-                data-i18n-aria-label="language.switchLabel"
-              />
-              <span class="language-toggle__track" aria-hidden="true">
-                <span class="language-toggle__option">EN</span>
-                <span class="language-toggle__option">VI</span>
-                <span class="language-toggle__thumb"></span>
-              </span>
-            </label>
-            <label class="theme-toggle" title="Switch appearance" data-i18n-title="theme.switchTitle">
-              <input
-                id="themeToggle"
-                type="checkbox"
-                aria-label="Switch between light and dark theme"
-                data-i18n-aria-label="theme.switchLabel"
-              />
-              <span class="theme-toggle__track" aria-hidden="true">
-                <span class="theme-toggle__sun"></span>
-                <span class="theme-toggle__moon"></span>
-                <span class="theme-toggle__thumb"></span>
-              </span>
-            </label>
-          </div>
-          <div class="connection-meta" aria-live="polite">
-            <span id="collectorStatus" class="status-pill status-pill--pending" data-i18n="status.starting">Starting</span>
-            <span id="lastUpdated" class="timestamp" data-i18n="status.noReadings">No readings yet</span>
-            <span id="connectionDetail" class="connection-detail" data-i18n="status.connecting">Connecting to collector</span>
-            <span id="collectorHost" class="connection-host" hidden></span>
-          </div>
+        <div class="preference-controls" aria-label="Preferences" data-i18n-aria-label="nav.preferences">
+          <label class="language-toggle" title="Switch language" data-i18n-title="language.switchTitle">
+            <input
+              id="languageToggle"
+              type="checkbox"
+              role="switch"
+              aria-label="Switch between English and Vietnamese"
+              data-i18n-aria-label="language.switchLabel"
+            />
+            <span class="language-toggle__track" aria-hidden="true">
+              <span class="language-toggle__option">EN</span>
+              <span class="language-toggle__option">VI</span>
+              <span class="language-toggle__thumb"></span>
+            </span>
+          </label>
+          <label class="theme-toggle" title="Switch appearance" data-i18n-title="theme.switchTitle">
+            <input
+              id="themeToggle"
+              type="checkbox"
+              aria-label="Switch between light and dark theme"
+              data-i18n-aria-label="theme.switchLabel"
+            />
+            <span class="theme-toggle__track" aria-hidden="true">
+              <span class="theme-toggle__sun"></span>
+              <span class="theme-toggle__moon"></span>
+              <span class="theme-toggle__thumb"></span>
+            </span>
+          </label>
         </div>
-      </header>
+      </nav>
 
-      <main>
+      <div class="shell">
+        <header class="topbar">
+          <details id="titleMenu" class="title-menu">
+            <summary class="title-menu__pill" aria-label="Dashboard menu" data-i18n-aria-label="title.menu">
+              <h1 data-i18n="app.title">Battery Monitor</h1>
+              <span id="titleRackName" class="title-menu__rack" hidden></span>
+              <svg class="title-menu__chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+            </summary>
+            <div class="title-menu__sheet">
+              <p id="builderLine" class="builder-line" data-i18n="brand.builderDefault">The system is built by Tran Thanh Tuan and son</p>
+              <a href="#energyFlowSection" data-i18n="nav.home">Home</a>
+              <a href="#powerHistorySection" data-i18n="nav.history">History</a>
+              <a href="#energyHistorySection" data-i18n="energyHistory.eyebrow">Energy history</a>
+              <a href="#energySavingsSection" data-i18n="nav.savings">Financial impact</a>
+              <a href="#rackSummarySection" data-i18n="nav.rack">Battery rack</a>
+              <a href="#eventsSection" data-i18n="nav.events">Events and archive</a>
+              <a class="title-menu__source" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" data-i18n="weather.source">Weather by Open-Meteo</a>
+            </div>
+          </details>
+          <div class="topbar__meta">
+            <div class="topbar__chips">
+              <div class="connection-meta" aria-live="polite">
+                <span class="chip chip--status">
+                  <span id="collectorStatus" class="status-pill status-pill--pending" data-i18n="status.starting">Starting</span>
+                  <span id="lastUpdated" class="timestamp" data-i18n="status.noReadings">No readings yet</span>
+                </span>
+              </div>
+              <aside id="energyWeather" class="weather-chips" data-kind="unavailable" data-day="true" aria-live="polite">
+                <span id="energyWeatherNow" class="chip chip--weather">
+                  <i class="wx" aria-hidden="true">
+                    <svg class="wx__sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M5.3 18.7 7 17M17 7l1.7-1.7"/></svg>
+                    <svg class="wx__moon" viewBox="0 0 24 24"><path d="M19.5 14.2A7.6 7.6 0 0 1 9.8 4.5a7.6 7.6 0 1 0 9.7 9.7z"/></svg>
+                    <svg class="wx__cloud" viewBox="0 0 24 24"><path d="M7.5 18.5h9.3a3.7 3.7 0 0 0 .5-7.4 5.5 5.5 0 0 0-10.6 1.4A3 3 0 0 0 7.5 18.5z"/></svg>
+                    <svg class="wx__rain" viewBox="0 0 24 24"><path d="M7.5 15h9.3a3.7 3.7 0 0 0 .5-7.4 5.5 5.5 0 0 0-10.6 1.4A3 3 0 0 0 7.5 15z"/><path d="M9 18.5 8 21M13 18.5l-1 2.5M17 18.5l-1 2.5"/></svg>
+                    <svg class="wx__snow" viewBox="0 0 24 24"><path d="M7.5 14.5h9.3a3.7 3.7 0 0 0 .5-7.4 5.5 5.5 0 0 0-10.6 1.4A3 3 0 0 0 7.5 14.5z"/><path d="M9 18.5v3M12 19.5v3M15 18.5v3"/></svg>
+                    <svg class="wx__fog" viewBox="0 0 24 24"><path d="M4 9h16M6 13h13M4 17h14"/></svg>
+                    <svg class="wx__storm" viewBox="0 0 24 24"><path d="M7.5 14.5h9.3a3.7 3.7 0 0 0 .5-7.4 5.5 5.5 0 0 0-10.6 1.4A3 3 0 0 0 7.5 14.5z"/><path d="m12.5 14-2 4h3l-2 4"/></svg>
+                  </i>
+                  <strong id="energyWeatherTemperature">--</strong>
+                  <span id="energyWeatherCondition" class="sr-only">Weather unavailable</span>
+                </span>
+                <span class="chip chip--weather" title="Humidity" data-i18n-title="weather.humidityTitle">
+                  <i class="wx" aria-hidden="true"><svg class="wx__drop" viewBox="0 0 24 24"><path d="M12 3.5s-5.5 6-5.5 10a5.5 5.5 0 0 0 11 0c0-4-5.5-10-5.5-10z"/></svg></i>
+                  <strong id="energyWeatherHumidity">--</strong>
+                </span>
+                <span class="chip chip--weather" title="Solar irradiance" data-i18n-title="weather.irradianceTitle">
+                  <i class="wx" aria-hidden="true"><svg class="wx__irradiance" viewBox="0 0 24 24"><path d="M5.5 16.5a6.5 6.5 0 0 1 13 0"/><path d="M3 20h18"/><path d="M12 5.5v2M5.2 8.2l1.4 1.4M18.8 8.2l-1.4 1.4"/></svg></i>
+                  <strong id="energyWeatherIrradiance">--</strong>
+                </span>
+                <small id="energyWeatherDetails" class="sr-only">Current conditions unavailable</small>
+                <small id="energyWeatherSolar" class="sr-only" hidden></small>
+              </aside>
+            </div>
+            <div class="topbar__footnotes">
+              <span id="connectionDetail" class="connection-detail" data-i18n="status.connecting">Connecting to collector</span>
+              <span id="collectorHost" class="connection-host" hidden></span>
+            </div>
+          </div>
+        </header>
+
+        <main>
         <section
           id="energyFlowSection"
           class="energy-flow"
@@ -127,30 +190,13 @@
           aria-labelledby="energyFlowTitle"
         >
           <div class="energy-flow__copy">
-            <p class="eyebrow" data-i18n="energy.eyebrow">Live home energy</p>
-            <h2 id="energyFlowTitle" data-i18n="energy.title">Home power flow</h2>
+            <p class="eyebrow sr-only" data-i18n="energy.eyebrow">Live home energy</p>
+            <h2 id="energyFlowTitle" class="sr-only" data-i18n="energy.title">Home power flow</h2>
             <div class="energy-flow__system-state">
               <i aria-hidden="true"></i>
               <p id="energyFlowState" class="energy-flow__state" data-i18n="energy.waitingShort">Waiting</p>
             </div>
             <p id="energyFlowDescription" data-i18n="energy.waiting">Waiting for battery telemetry</p>
-            <aside id="energyWeather" class="energy-flow__weather" data-kind="unavailable" data-day="true" aria-live="polite">
-              <div class="energy-weather__visual" aria-hidden="true">
-                <i class="energy-weather__sun"></i>
-                <i class="energy-weather__cloud"></i>
-                <i class="energy-weather__precipitation"><b></b><b></b><b></b></i>
-                <i class="energy-weather__fog"><b></b><b></b><b></b></i>
-              </div>
-              <div class="energy-weather__copy">
-                <div>
-                  <strong id="energyWeatherTemperature">--</strong>
-                  <span id="energyWeatherCondition">Weather unavailable</span>
-                </div>
-                <small id="energyWeatherDetails">Current conditions unavailable</small>
-                <small id="energyWeatherSolar" class="energy-weather__solar" hidden></small>
-                <a class="energy-weather__source" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" data-i18n="weather.source">Weather by Open-Meteo</a>
-              </div>
-            </aside>
           </div>
           <div id="energyFlowStage" class="energy-flow__stage">
             <div
@@ -162,33 +208,69 @@
             ></div>
           </div>
           <div class="energy-flow__callouts" aria-live="polite">
-            <div class="energy-flow__callout energy-flow__callout--inverter">
-              <strong id="energyInverterValue" data-i18n="energy.waitingShort">Waiting</strong>
-              <span data-i18n="energy.inverter">Inverter</span>
-            </div>
             <div class="energy-flow__callout energy-flow__callout--solar">
+              <span data-i18n="energy.solar">Solar</span>
               <strong id="energySolarValue" data-i18n="energy.unmetered">Not metered</strong>
               <small id="energySolarDetail" class="energy-flow__runtime" hidden></small>
-              <span data-i18n="energy.solar">Solar</span>
             </div>
             <div class="energy-flow__callout energy-flow__callout--grid">
-              <strong id="energyGridValue" data-i18n="energy.unmetered">Not metered</strong>
               <span data-i18n="energy.grid">Grid</span>
+              <strong id="energyGridValue" data-i18n="energy.unmetered">Not metered</strong>
             </div>
-            <div class="energy-flow__callout energy-flow__callout--load energy-flow__callout--bottom">
-              <strong id="energyLoadValue" data-i18n="energy.unmetered">Not metered</strong>
+            <div class="energy-flow__callout energy-flow__callout--inverter">
+              <span data-i18n="energy.inverter">Inverter</span>
+              <strong id="energyInverterValue" data-i18n="energy.waitingShort">Waiting</strong>
+            </div>
+            <div class="energy-flow__callout energy-flow__callout--load">
               <span data-i18n="energy.load">Home load</span>
+              <strong id="energyLoadValue" data-i18n="energy.unmetered">Not metered</strong>
             </div>
-            <div class="energy-flow__callout energy-flow__callout--backup energy-flow__callout--bottom">
-              <strong id="energyBackupValue" data-i18n="energy.unmetered">Not metered</strong>
+            <div class="energy-flow__callout energy-flow__callout--backup">
               <span data-i18n="energy.backup">Backup load</span>
+              <strong id="energyBackupValue" data-i18n="energy.unmetered">Not metered</strong>
             </div>
-            <div class="energy-flow__callout energy-flow__callout--battery energy-flow__callout--bottom">
+            <a class="energy-flow__callout energy-flow__callout--battery" href="#rackSummarySection">
+              <span data-i18n="energy.storage">Battery rack</span>
               <strong id="energyBatteryValue" data-i18n="energy.waitingShort">Waiting</strong>
               <small id="energyBatteryRuntime" class="energy-flow__runtime" hidden></small>
-              <span data-i18n="energy.storage">Battery rack</span>
-            </div>
+              <svg class="energy-flow__chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>
+            </a>
           </div>
+        </section>
+
+        <section id="statRow" class="stat-row" aria-label="Today at a glance" data-i18n-aria-label="stat.aria">
+          <article class="stat-card stat-card--value" id="statValue">
+            <div class="stat-card__head">
+              <span data-i18n="stat.value">Energy value</span>
+              <i class="stat-card__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.2v9.6"/><path d="M14.6 9.6c0-1.2-1.2-2-2.6-2s-2.6.8-2.6 2 1.2 1.7 2.6 2 2.6.9 2.6 2.1-1.2 2-2.6 2-2.6-.8-2.6-2"/></svg></i>
+            </div>
+            <strong class="stat-card__value"><b id="statValueNumber">--</b><small id="statValueUnit">$</small></strong>
+            <small id="statValueNote" class="stat-card__note" data-i18n="stat.awaiting">Awaiting data</small>
+          </article>
+          <article class="stat-card stat-card--consumption" id="statConsumption">
+            <div class="stat-card__head">
+              <span data-i18n="stat.consumption">Consumption</span>
+              <i class="stat-card__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.5 11.2 12 4l8.5 7.2"/><path d="M5.5 9.8V20h13V9.8"/><path d="M10 20v-5.5h4V20"/></svg></i>
+            </div>
+            <strong class="stat-card__value"><b id="statConsumptionNumber">--</b><small>kWh</small></strong>
+            <small id="statConsumptionNote" class="stat-card__note" data-i18n="stat.today">Today</small>
+          </article>
+          <article class="stat-card stat-card--solar" id="statSolar">
+            <div class="stat-card__head">
+              <span data-i18n="stat.solar">Solar generation</span>
+              <i class="stat-card__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 15.5 7 8h10l2 7.5z"/><path d="M4 15.5h16"/><path d="M12 8v7.5M8.6 11.8h6.8"/><path d="M12 15.5V20M9 20h6"/></svg></i>
+            </div>
+            <strong class="stat-card__value"><b id="statSolarNumber">--</b><small>kWh</small></strong>
+            <small id="statSolarNote" class="stat-card__note" data-i18n="stat.today">Today</small>
+          </article>
+          <article class="stat-card stat-card--import" id="statImport">
+            <div class="stat-card__head">
+              <span data-i18n="stat.import">Import</span>
+              <i class="stat-card__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.5 3.5 6 20.5M14.5 3.5 18 20.5"/><path d="M8.6 8h6.8M7.4 13.5h9.2M6 19h12"/><path d="M6 20.5h12"/></svg></i>
+            </div>
+            <strong class="stat-card__value"><b id="statImportNumber">--</b><small>kWh</small></strong>
+            <small id="statImportNote" class="stat-card__note" data-i18n="stat.today">Today</small>
+          </article>
         </section>
 
         <section id="powerHistorySection" class="panel chart-panel" aria-labelledby="chartTitle">
@@ -306,7 +388,7 @@
           </div>
         </section>
 
-        <section class="panel energy-history-panel" aria-labelledby="energyHistoryTitle">
+        <section id="energyHistorySection" class="panel energy-history-panel" aria-labelledby="energyHistoryTitle">
           <div class="panel-heading energy-history-heading">
             <div>
               <p class="eyebrow" data-i18n="energyHistory.eyebrow">Energy history</p>
@@ -610,7 +692,7 @@
 
         <section id="batteryPacks" class="battery-packs" aria-label="Battery packs" data-i18n-aria-label="battery.readings"></section>
 
-        <section class="lower-grid" aria-label="Logs and status" data-i18n-aria-label="logs.aria">
+        <section id="eventsSection" class="lower-grid" aria-label="Logs and status" data-i18n-aria-label="logs.aria">
           <div class="panel events-panel">
             <div class="panel-heading">
               <div>
@@ -662,7 +744,8 @@
             </details>
           </div>
         </section>
-      </main>
+        </main>
+      </div>
     </div>
     <script src="/static/app.js?v=__BUILD_COMMIT__"></script>
     <script type="module" src="/static/home-scene.js?v=__BUILD_COMMIT__"></script>

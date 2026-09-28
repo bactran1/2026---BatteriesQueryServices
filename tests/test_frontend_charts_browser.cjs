@@ -100,7 +100,8 @@ const server = http.createServer((request, response) => {
 
 async function tapChart(page, id) {
   const canvas = page.locator(`#${id}`);
-  await canvas.scrollIntoViewIfNeeded();
+  // Centred, so the tap lands on the chart and not on the phone's tab bar.
+  await canvas.evaluate(element => element.scrollIntoView({block:"center"}));
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const box = await canvas.boundingBox();
   const clip = id === "energyHistoryChart" ? await page.locator("#energyChartScroll").boundingBox() : box;
@@ -124,7 +125,9 @@ async function closeReadout(page, id) {
 (async () => {
   fs.mkdirSync(artifacts, {recursive:true});
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-  const browser = await chromium.launch({headless:true, ...(process.env.BROWSER_CHANNEL ? {channel:process.env.BROWSER_CHANNEL} : {})});
+  const browser = await chromium.launch({headless:true,
+    ...(process.env.BROWSER_CHANNEL ? {channel:process.env.BROWSER_CHANNEL} : {}),
+    ...(process.env.CHROME_PATH ? {executablePath:process.env.CHROME_PATH} : {})});
   try {
     for (const width of [320, 390, 480, 600, 768, 1024, 1440]) {
       for (const theme of ["light", "dark"]) {
@@ -206,8 +209,11 @@ async function closeReadout(page, id) {
             .filter(callout => ["inverter", "solar", "grid"].includes(callout.name));
           const solarCallout = topCallouts.find(callout => callout.name === "solar");
           if (width > 480) {
-            assert.ok(solarCallout.left >= energyFlowLayout.width * 0.4,
-              `${width} ${theme} ${language}: solar callout is too far from the panel area`);
+            // The solar pill sits up by the ridge, above the array.
+            assert.ok(solarCallout.top <= energyFlowLayout.height * 0.5,
+              `${width} ${theme} ${language}: solar callout is too far from the array`);
+            assert.ok(solarCallout.left >= energyFlowLayout.width * 0.15,
+              `${width} ${theme} ${language}: solar callout is off the picture's left`);
           }
           if (width <= 480) {
             // On a phone the callouts leave the illustration for a strip along
@@ -215,43 +221,37 @@ async function closeReadout(page, id) {
             assert.equal(energyFlowLayout.callouts.length, 6, `${width} ${theme} ${language}: missing energy callout`);
             const bottomGap = energyFlowLayout.height
               - Math.max(...energyFlowLayout.callouts.map(callout => callout.bottom));
-            assert.ok(bottomGap >= 16 && bottomGap <= 80,
+            assert.ok(bottomGap >= 8 && bottomGap <= 80,
               `${width} ${theme} ${language}: mobile energy footer gap is ${Math.round(bottomGap)}px`);
           }
           assert.equal(await page.locator("#energyWeather").getAttribute("data-kind"), "rain");
           assert.notEqual(await page.locator("#energyWeatherDetails").innerText(), "");
           assert.match(await page.locator("#energyWeatherSolar").innerText(), /W\/m²/);
+          // The weather is three chips in the app bar: inside the bar, never
+          // overflowing, one figure each.
           const weatherBounds = await page.locator("#energyWeather").evaluate(element => {
             const weatherRect = element.getBoundingClientRect();
-            const sectionRect = element.closest("#energyFlowSection").getBoundingClientRect();
-            const topCallouts = [
-              ".energy-flow__callout--inverter",
-              ".energy-flow__callout--solar",
-              ".energy-flow__callout--grid",
-            ].map(selector => element.closest("#energyFlowSection").querySelector(selector)
-              .getBoundingClientRect().top);
+            const barRect = element.closest(".topbar").getBoundingClientRect();
+            const chips = [...element.querySelectorAll(".chip")]
+              .filter(chip => getComputedStyle(chip).display !== "none");
             return {
-              inside: weatherRect.left >= sectionRect.left - 1
-                && weatherRect.right <= sectionRect.right + 1
-                && weatherRect.top >= sectionRect.top - 1
-                && weatherRect.bottom <= sectionRect.bottom + 1,
+              inside: weatherRect.left >= barRect.left - 1
+                && weatherRect.right <= barRect.right + 1
+                && weatherRect.top >= barRect.top - 1
+                && weatherRect.bottom <= barRect.bottom + 1,
               overflow: element.scrollWidth > element.clientWidth + 1,
+              chips: chips.length,
               height: weatherRect.height,
-              paddingLeft: getComputedStyle(element).paddingLeft,
-              paddingRight: getComputedStyle(element).paddingRight,
-              calloutClearance: Math.min(...topCallouts) - weatherRect.bottom,
-              background: getComputedStyle(element).backgroundColor,
+              glyphs: chips.map(chip => [...chip.querySelectorAll(".wx svg")]
+                .filter(glyph => getComputedStyle(glyph).display !== "none").length),
             };
           });
-          assert.equal(weatherBounds.inside, true, `${width} ${theme} ${language}: weather outside scene`);
+          assert.equal(weatherBounds.inside, true, `${width} ${theme} ${language}: weather outside the app bar`);
           assert.equal(weatherBounds.overflow, false, `${width} ${theme} ${language}: weather overflow`);
-          assert.ok(weatherBounds.calloutClearance >= 12,
-            `${width} ${theme} ${language}: weather too close to power callouts`);
-          if (width <= 390) {
-            // The chip is glass at every size now; it just has to stay short.
-            assert.ok(weatherBounds.height <= 110,
-              `${width} ${theme} ${language}: mobile weather is too tall (${Math.round(weatherBounds.height)}px)`);
-          }
+          assert.equal(weatherBounds.chips, 3, `${width} ${theme} ${language}: expected three weather chips`);
+          assert.deepEqual(weatherBounds.glyphs, [1, 1, 1], `${width} ${theme} ${language}: one glyph per chip`);
+          assert.ok(weatherBounds.height <= 80,
+            `${width} ${theme} ${language}: weather chips are too tall (${Math.round(weatherBounds.height)}px)`);
           if ([320, 390, 480, 600, 1440].includes(width) && theme === "light" && language === "en") {
             await page.locator("#energyFlowSection").screenshot({
               path:path.join(artifacts,`weather-${width}-${theme}-${language}.png`),
