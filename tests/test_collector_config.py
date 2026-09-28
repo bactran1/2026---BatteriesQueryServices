@@ -16,6 +16,7 @@ class CollectorConfigTests(unittest.TestCase):
             environment = {
                 "BQS_CONFIG": str(config_path),
                 "BQS_BUILD_COMMIT": "abc123",
+                "BQS_BUILD_BRANCH": "dev",
                 "BQS_BUFFER_PATH": "/tmp/replay.sqlite3",
                 "BQS_BUFFER_RETENTION_HOURS": "48",
                 "BQS_BUFFER_SAMPLE_INTERVAL": "60",
@@ -24,6 +25,7 @@ class CollectorConfigTests(unittest.TestCase):
                 settings = load_settings()
 
         self.assertEqual(settings.build_commit, "abc123")
+        self.assertEqual(settings.build_branch, "dev")
         self.assertEqual(settings.buffer.path, "/tmp/replay.sqlite3")
         self.assertEqual(settings.buffer.retention_hours, 48)
         self.assertEqual(settings.buffer.sample_interval_seconds, 60.0)

@@ -17,6 +17,9 @@ class AutoDeployContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         cls.readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        cls.workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
 
     def test_watcher_tracks_master_safely_and_uses_existing_deployers(self) -> None:
         self.assertIn('REMOTE="origin"', self.watcher)
@@ -68,6 +71,61 @@ class AutoDeployContractTests(unittest.TestCase):
         self.assertIn('install-auto-deploy.sh collector', self.readme)
         self.assertIn('battery-monitor-auto-deploy.timer', self.readme)
         self.assertIn('battery-collector-auto-deploy.timer', self.readme)
+
+    def test_ci_runs_the_same_checks_for_both_channels(self) -> None:
+        # Every push to master or dev, and every pull request into them, runs
+        # the Python suites, the dashboard's Node tests, the deployment
+        # scripts' syntax, the dashboard in Chromium and both Docker builds.
+        self.assertIn("branches: [master, dev]", self.workflow)
+        self.assertIn('python -m unittest discover -s tests -p "test_*.py"', self.workflow)
+        self.assertIn("PYTHONPATH: src:monitor/src", self.workflow)
+        self.assertIn('node --test "${test}"', self.workflow)
+        self.assertIn("*_browser.cjs) continue", self.workflow)
+        self.assertIn("node tests/test_frontend_charts_browser.cjs", self.workflow)
+        self.assertIn("npx playwright install --with-deps chromium", self.workflow)
+        for script in ("deploy-collector.sh", "monitor/deploy-monitor.sh",
+                       "deploy/auto-deploy.sh", "deploy/install-auto-deploy.sh"):
+            with self.subTest(script=script):
+                self.assertIn(script, self.workflow)
+        self.assertIn("docker/build-push-action", self.workflow)
+        self.assertIn("file: monitor/Dockerfile", self.workflow)
+        self.assertIn("COLLECTOR_BRANCH=${{ github.ref_name }}", self.workflow)
+        self.assertIn("MONITOR_BRANCH=${{ github.ref_name }}", self.workflow)
+
+    def test_images_and_services_carry_their_channel(self) -> None:
+        collector_dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        monitor_dockerfile = (ROOT / "monitor" / "Dockerfile").read_text(encoding="utf-8")
+        collector_compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        monitor_compose = (ROOT / "docker-compose.monitor.yml").read_text(encoding="utf-8")
+        collector_deploy = (ROOT / "deploy-collector.sh").read_text(encoding="utf-8")
+        monitor_deploy = (ROOT / "monitor" / "deploy-monitor.sh").read_text(encoding="utf-8")
+
+        # The branch an image was built from is stamped beside its commit.
+        self.assertIn('org.opencontainers.image.ref.name="${COLLECTOR_BRANCH}"', collector_dockerfile)
+        self.assertIn("BQS_BUILD_BRANCH=${COLLECTOR_BRANCH}", collector_dockerfile)
+        self.assertIn('org.opencontainers.image.ref.name="${MONITOR_BRANCH}"', monitor_dockerfile)
+        self.assertIn("BQM_BUILD_BRANCH=${MONITOR_BRANCH}", monitor_dockerfile)
+        self.assertIn("COLLECTOR_BRANCH: ${COLLECTOR_BRANCH:-unknown}", collector_compose)
+        self.assertIn("MONITOR_BRANCH: ${MONITOR_BRANCH:-unknown}", monitor_compose)
+        for deploy in (collector_deploy, monitor_deploy):
+            self.assertIn('branch="$(git branch --show-current 2>/dev/null || true)"', deploy)
+            self.assertIn("Build channel:", deploy)
+
+        # The installer and watcher take any branch; master stays the default.
+        self.assertIn('BRANCH="master"', self.installer)
+        self.assertIn("install-auto-deploy.sh collector --branch dev", self.installer)
+        self.assertIn("follows the %s channel, not the master release channel", self.installer)
+        self.assertIn('reason="no trustworthy prior ${BRANCH} commit is available"', self.watcher)
+        self.assertNotIn("prior master commit", self.watcher)
+
+    def test_readme_describes_the_dev_test_channel(self) -> None:
+        self.assertIn("## Continuous integration", self.readme)
+        self.assertIn(".github/workflows/ci.yml", self.readme)
+        self.assertIn("### A test channel on a second host", self.readme)
+        self.assertIn("git switch dev", self.readme)
+        self.assertIn("install-auto-deploy.sh collector --branch dev", self.readme)
+        self.assertIn("install-auto-deploy.sh monitor --branch dev", self.readme)
+        self.assertIn("/etc/battery-auto-deploy/collector.branch", self.readme)
 
     def test_deployment_defaults_match_the_installed_hosts(self) -> None:
         monitor_compose = (ROOT / "docker-compose.monitor.yml").read_text(

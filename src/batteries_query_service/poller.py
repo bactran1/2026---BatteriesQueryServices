@@ -158,6 +158,7 @@ class BatteryPoller:
             "service": {
                 "started_at": self.started_at,
                 "build_commit": self.settings.build_commit,
+                "build_branch": self.settings.build_branch,
                 "poll_count": self._poll_count,
                 "poll_interval_seconds": self.settings.polling.interval_seconds,
                 "captured_at": self._last_completed_at,
@@ -199,6 +200,7 @@ class BatteryPoller:
             "status": "ok",
             "version": __version__,
             "build_commit": self.settings.build_commit,
+            "build_branch": self.settings.build_branch,
             "battery_count": len(statuses),
             "ok_count": statuses.count("ok"),
             "error_count": statuses.count("error"),

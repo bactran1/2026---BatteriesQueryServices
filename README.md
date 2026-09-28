@@ -343,6 +343,22 @@ docker run --rm hello-world
 
 If `hello-world` fails the same way, fix the Docker host before redeploying the monitor. Typical fixes are updating the LXC/Proxmox/Incus host packages, using a VM or bare-metal Docker host instead of Docker-inside-unprivileged-LXC, or temporarily rolling back the affected `containerd.io` package when that is the known source on your distribution.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `master` and `dev` and on every pull request into them. Three jobs run in parallel: the collector and monitor Python suites (`python -m unittest discover -s tests -p "test_*.py"` with `PYTHONPATH=src:monitor/src`), the dashboard's Node tests (`node --test tests/test_*.cjs`) and a syntax check of the deployment scripts; the dashboard rendered in a real Chromium at seven widths in both themes and both languages (`tests/test_frontend_charts_browser.cjs`, screenshots kept as the `dashboard-screenshots` artifact); and a build of both Docker images with the commit and branch stamped in. The iOS app has its own workflow.
+
+The hosts' auto-deploy timers below pick up a branch's commits on their own, so this workflow is the gate in front of them: watch it go green before expecting a host to change, and keep pull-request review in front of merges to `master`.
+
+Run the same checks locally before pushing:
+
+```bash
+pip install -r requirements.txt -r monitor/requirements.txt
+PYTHONPATH=src:monitor/src python -m unittest discover -s tests -p "test_*.py"
+for test in tests/test_*.cjs; do case "$test" in *_browser.cjs) ;; *) node --test "$test";; esac; done
+npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+node tests/test_frontend_charts_browser.cjs
+```
+
 ## Automatic deployment from master
 
 The monitor host and Raspberry Pi can each run a small systemd timer that checks `origin/master` every five minutes. A relevant new commit fast-forwards the clean local `master` checkout and calls the existing deployment script with `--skip-git-update`. The existing scripts still own the Docker build, container replacement, health check, persistent data, and image cleanup.
@@ -391,6 +407,42 @@ sudo systemctl start battery-collector-auto-deploy.service
 Monitor images rebuild only for changes under `monitor/` or to `docker-compose.monitor.yml`. Collector images rebuild for collector source, dependency, configuration, Docker, Compose, or collector deployment-script changes. Documentation-only and unrelated commits still update the checkout but do not waste time rebuilding an unaffected container.
 
 Automatic production deployment makes `master` the release channel. Keep required tests and pull-request review in front of merges to that branch.
+
+### A test channel on a second host (dev)
+
+The same pipeline can follow `dev` on a separate host, so a branch is exercised on real hardware before it reaches `master`. The installer and watcher take `--branch`; everything else (build, health check, image cleanup, repair on an unhealthy container, the once-per-five-minutes timer) is identical. The only differences are the branch the host follows and the hardware it is wired to.
+
+On the test host for the query service (a second Raspberry Pi, or any Docker host with its own RS485 adapter):
+
+```bash
+git clone https://github.com/bactran1/2026---BatteriesQueryServices.git ~/2026---BatteriesQueryServices
+cd ~/2026---BatteriesQueryServices
+git switch dev
+cp config.example.toml config.toml   # then edit it for this host's adapter and batteries
+sudo bash deploy/install-auto-deploy.sh collector --branch dev -- \
+  --serial-device /dev/serial/by-id/usb-Test_Adapter \
+  --inverter-host 192.168.20.138 \
+  --inverter-logger-serial 3503566593
+```
+
+The installer records the channel in `/etc/battery-auto-deploy/collector.branch`, and the running image carries it as the `org.opencontainers.image.ref.name` label and the `BQS_BUILD_BRANCH` environment variable, which `/healthz` and `/api/readings` report as `build_branch`. To see the dev collector's data in the dashboard, run a monitor on the same host against it, on the same channel:
+
+```bash
+sudo bash deploy/install-auto-deploy.sh monitor --branch dev -- \
+  --collector-url http://127.0.0.1:8000
+```
+
+A monitor built from a branch other than `master` shows that branch in its title pill, and the title menu lists the commit and channel of both the monitor and the collector it reads, so a test host is never mistaken for production. Leave the production monitor pointed at the production collector.
+
+Two things to keep in mind on a test host. The LSW-5 logger accepts one SOLARMAN V5 client at a time, so a test collector that polls the same logger as production competes with it; either give the test host its own inverter, poll it only while testing, or leave the inverter disabled in its `config.toml`. And the hosts stay on their branches: the test host fast-forwards `dev` only, and production fast-forwards `master` only, so merging `dev` into `master` is what promotes a change. To move a host to another channel, uninstall the timer, switch the checkout, and reinstall:
+
+```bash
+sudo bash deploy/install-auto-deploy.sh collector --uninstall
+git switch master && git pull --ff-only origin master
+sudo bash deploy/install-auto-deploy.sh collector -- --inverter-host 192.168.20.138 --inverter-logger-serial 3503566593
+```
+
+Check what a test host is running with `journalctl -u battery-collector-auto-deploy.service -f`, `cat /etc/battery-auto-deploy/collector.branch`, or `curl -s http://localhost:8000/healthz`.
 
 ## Configuration
 

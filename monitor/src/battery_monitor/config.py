@@ -68,6 +68,7 @@ class Settings:
     battery_reserve_percent: int
     log_level: str
     build_commit: str
+    build_branch: str
     rack_name: str
     rack_builder: str
     rack_location: str
@@ -127,6 +128,7 @@ def load_settings() -> Settings:
         ),
         log_level=os.getenv("BQM_LOG_LEVEL", "INFO"),
         build_commit=os.getenv("BQM_BUILD_COMMIT", "unknown"),
+        build_branch=os.getenv("BQM_BUILD_BRANCH", "unknown"),
         rack_name=os.getenv("BQM_RACK_NAME", "Eco-worthy Rack"),
         rack_builder=os.getenv("BQM_RACK_BUILDER", "Tran Thanh Tuan"),
         rack_location=os.getenv("BQM_RACK_LOCATION", "Battery room"),

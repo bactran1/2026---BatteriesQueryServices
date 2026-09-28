@@ -55,6 +55,18 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual(settings.weather_longitude, -122.33)
         self.assertEqual(settings.weather_location, "Home")
 
+    def test_build_identity_is_loaded_from_environment(self) -> None:
+        environment = {"BQM_BUILD_COMMIT": "abc123", "BQM_BUILD_BRANCH": "dev"}
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+        self.assertEqual(settings.build_commit, "abc123")
+        self.assertEqual(settings.build_branch, "dev")
+
+        with patch.dict(os.environ, {}, clear=True):
+            settings = load_settings()
+        self.assertEqual(settings.build_commit, "unknown")
+        self.assertEqual(settings.build_branch, "unknown")
+
     def test_rack_details_combines_profile_and_live_reading(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             settings = load_settings()

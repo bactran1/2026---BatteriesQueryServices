@@ -43,6 +43,7 @@ usage() {
 "  BQM_WEATHER_LONGITUDE Household longitude for current conditions" \
 "  MONITOR_IMAGE_NAME    Image name, default battery-monitor" \
 "  MONITOR_IMAGE_TAG     Image tag; default is the current Git commit SHA" \
+"  MONITOR_BRANCH        Channel stamped into the image; default is the checked-out branch" \
 "" \
 "Examples:" \
 "  bash monitor/deploy-monitor.sh" \
@@ -134,16 +135,22 @@ update_git_checkout() {
 set_image_identity() {
   local commit
   local tag
+  local branch
 
   if git_is_available; then
     commit="$(git rev-parse HEAD)"
     tag="$(git rev-parse --short=12 HEAD)"
+    # The channel the image comes from: master in production, dev on a test
+    # host. Stamped into the image and shown in the dashboard's title menu.
+    branch="$(git branch --show-current 2>/dev/null || true)"
   else
     commit="unknown"
     tag="$(date -u +%Y%m%d%H%M%S)"
+    branch=""
   fi
 
   export MONITOR_COMMIT="${MONITOR_COMMIT:-${commit}}"
+  export MONITOR_BRANCH="${MONITOR_BRANCH:-${branch:-unknown}}"
   export MONITOR_IMAGE_NAME="${MONITOR_IMAGE_NAME:-battery-monitor}"
   export MONITOR_IMAGE_TAG="${MONITOR_IMAGE_TAG:-${tag}}"
 }
@@ -277,6 +284,7 @@ set_image_identity
 log "Collector URL: ${BQM_COLLECTOR_URL}"
 log "Image: ${MONITOR_IMAGE_NAME}:${MONITOR_IMAGE_TAG}"
 log "Build commit: ${MONITOR_COMMIT}"
+log "Build channel: ${MONITOR_BRANCH}"
 log "Building ${SERVICE_NAME} from the current Git commit..."
 BUILD_ARGS=(build --pull)
 if [[ "${USE_CACHE}" -eq 0 ]]; then

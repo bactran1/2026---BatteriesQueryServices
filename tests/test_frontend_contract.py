@@ -340,6 +340,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".stat-card__value {", css)
         self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr));", css)
 
+        # The builds running on each host, and a badge for a test channel.
+        self.assertIn('id="titleChannel"', html)
+        self.assertIn('id="buildLine"', html)
+        self.assertIn("function renderBuildLine", javascript)
+        self.assertIn("renderBuildLine(payload);", javascript)
+        self.assertIn('channel !== "master"', javascript)
+        for key in ("build.monitor", "build.collector", "build.unknown"):
+            with self.subTest(key=key):
+                self.assertEqual(javascript.count(f'"{key}":'), 2)
+        self.assertIn(".title-menu__channel {", css)
+
         # The dashboard's own appearance is dark; light is a stored choice.
         self.assertIn('storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark"', html)
         self.assertIn('storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark"', javascript)

@@ -109,6 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok" if database["status"] == "ok" else "error",
             "version": __version__,
             "build_commit": settings.build_commit,
+            "build_branch": settings.build_branch,
             "collector_status": collector_state,
             "last_log_at": monitor.last_log_at,
             "last_error": monitor.last_error,
@@ -141,6 +142,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "version": __version__,
             "build_commit": settings.build_commit,
+            "build_branch": settings.build_branch,
             "collector_status": collector_status,
             "collector_error": monitor.last_error,
             "collector_reachable": monitor.collector_reachable(),
@@ -522,6 +524,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "version": __version__,
             "build_commit": settings.build_commit,
+            "build_branch": settings.build_branch,
             "started_at": monitor.started_at,
             "paused": monitor.paused,
             "host": settings.host,

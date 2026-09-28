@@ -5,6 +5,7 @@ services:
       context: .
       args:
         COLLECTOR_COMMIT: ${COLLECTOR_COMMIT:-unknown}
+        COLLECTOR_BRANCH: ${COLLECTOR_BRANCH:-unknown}
     container_name: batteries-query-service
     restart: unless-stopped
     environment:

@@ -1,14 +1,17 @@
 FROM python:3.12-slim
 
 ARG COLLECTOR_COMMIT=unknown
+ARG COLLECTOR_BRANCH=unknown
 
 LABEL org.opencontainers.image.title="Batteries Query Service" \
-      org.opencontainers.image.revision="${COLLECTOR_COMMIT}"
+      org.opencontainers.image.revision="${COLLECTOR_COMMIT}" \
+      org.opencontainers.image.ref.name="${COLLECTOR_BRANCH}"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     BQS_CONFIG=/config/config.toml \
-    BQS_BUILD_COMMIT=${COLLECTOR_COMMIT}
+    BQS_BUILD_COMMIT=${COLLECTOR_COMMIT} \
+    BQS_BUILD_BRANCH=${COLLECTOR_BRANCH}
 
 WORKDIR /app
 

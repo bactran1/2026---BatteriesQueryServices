@@ -1,0 +1,112 @@
+# Continuous integration for the release channel (master) and the test
+# channel (dev). Every push to either branch, and every pull request into
+# them, runs the collector and monitor unit tests, the dashboard's Node
+# tests, a syntax check of the deployment scripts, the dashboard in a real
+# Chromium, and a build of both Docker images. The hosts' auto-deploy timers
+# pick up a branch's commits on their own; this is the gate in front of them.
+name: CI
+
+on:
+  push:
+    branches: [master, dev]
+    paths-ignore:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    branches: [master, dev]
+    paths-ignore:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            monitor/requirements.txt
+      - name: Install collector and monitor dependencies
+        run: pip install -r requirements.txt -r monitor/requirements.txt
+      - name: Collector and monitor tests
+        run: python -m unittest discover -s tests -p "test_*.py"
+        env:
+          PYTHONPATH: src:monitor/src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Dashboard tests
+        run: |
+          set -eu
+          for test in tests/test_*.cjs; do
+            case "${test}" in *_browser.cjs) continue ;; esac
+            node --test "${test}"
+          done
+      - name: Deployment script syntax
+        run: |
+          set -eu
+          for script in deploy-collector.sh monitor/deploy-monitor.sh deploy/auto-deploy.sh deploy/install-auto-deploy.sh; do
+            bash -n "${script}"
+          done
+          sh -n deploy/auto-deploy-launcher.sh
+
+  browser:
+    name: Dashboard in Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Render the dashboard at every width, theme and language
+        run: node tests/test_frontend_charts_browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dashboard-screenshots
+          path: data/chart-browser-tests
+          if-no-files-found: ignore
+
+  images:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Collector image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: batteries-query-service:ci
+          build-args: |
+            COLLECTOR_COMMIT=${{ github.sha }}
+            COLLECTOR_BRANCH=${{ github.ref_name }}
+          cache-from: type=gha,scope=collector
+          cache-to: type=gha,scope=collector,mode=max
+      - name: Monitor image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: monitor/Dockerfile
+          push: false
+          tags: battery-monitor:ci
+          build-args: |
+            MONITOR_COMMIT=${{ github.sha }}
+            MONITOR_BRANCH=${{ github.ref_name }}
+          cache-from: type=gha,scope=monitor
+          cache-to: type=gha,scope=monitor,mode=max

@@ -76,6 +76,9 @@ const translations = {
     "host.tooltipOccurred": "Since boot: {flags}",
     "status.noLiveReadings": "No live readings yet",
     "status.dataRelative": "Updated {relative}",
+    "build.monitor": "Monitor {build}",
+    "build.collector": "Collector {build}",
+    "build.unknown": "unknown build",
     "status.lastError": "Last error: {message}",
     "status.archiveError": "Archive error: {message}",
     "status.responding": "{online} of {total} batteries responding",
@@ -520,6 +523,9 @@ const translations = {
     "host.tooltipOccurred": "Kể từ khi khởi động: {flags}",
     "status.noLiveReadings": "Chưa có số liệu trực tiếp",
     "status.dataRelative": "Cập nhật {relative}",
+    "build.monitor": "Giám sát {build}",
+    "build.collector": "Bộ thu thập {build}",
+    "build.unknown": "bản dựng không rõ",
     "status.lastError": "Lỗi gần nhất: {message}",
     "status.archiveError": "Lỗi lưu trữ: {message}",
     "status.responding": "{online}/{total} pin đang phản hồi",
@@ -1305,6 +1311,39 @@ function renderStatus(payload) {
     });
   }
   renderHostStats(payload.snapshot?.host, payload.collector_status);
+  renderBuildLine(payload);
+}
+
+// Which build is running where: the monitor's own commit and channel, and
+// the collector's from its snapshot, in the title menu. A channel other than
+// master (a test host following dev) is flagged in the title pill itself, so
+// a test host is never mistaken for production.
+function renderBuildLine(payload) {
+  const line = $("buildLine");
+  const badge = $("titleChannel");
+  if (!line || !badge) return;
+  const monitorChannel = channelName(payload.build_branch);
+  const collectorChannel = channelName(payload.snapshot?.service?.build_branch);
+  line.textContent = [
+    t("build.monitor", { build: describeBuild(payload.build_commit, monitorChannel) }),
+    t("build.collector", { build: describeBuild(payload.snapshot?.service?.build_commit, collectorChannel) }),
+  ].join(" · ");
+  line.hidden = false;
+  const channel = monitorChannel || collectorChannel;
+  const testChannel = Boolean(channel) && channel !== "master";
+  badge.textContent = testChannel ? channel : "";
+  badge.hidden = !testChannel;
+  document.documentElement.dataset.channel = channel;
+}
+
+function channelName(value) {
+  const branch = typeof value === "string" ? value.trim() : "";
+  return branch && branch !== "unknown" ? branch : "";
+}
+
+function describeBuild(commit, channel) {
+  const short = typeof commit === "string" && /^[0-9a-f]{7,40}$/i.test(commit) ? commit.slice(0, 7) : "";
+  return [short || t("build.unknown"), channel].filter(Boolean).join(" @ ");
 }
 
 // The Pi's own health, one quiet line under the connection detail. It only

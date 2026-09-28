@@ -16,7 +16,10 @@ DEPLOY_ARGUMENTS=()
 
 usage() {
   printf '%s\n' \
-"Install automatic master-branch deployment for one battery service." \
+"Install automatic deployment of one battery service from a Git branch." \
+"" \
+"master is the release channel the production hosts follow; a second host" \
+"can follow dev (or any branch) to test it with the same pipeline." \
 "" \
 "Usage:" \
 "  sudo bash deploy/install-auto-deploy.sh monitor [options] [-- deploy arguments]" \
@@ -33,9 +36,10 @@ usage() {
 "  -h, --help        Show this help" \
 "" \
 "Everything after -- is saved as literal arguments for the existing deployment script." \
-"Example:" \
+"Examples:" \
 "  sudo bash deploy/install-auto-deploy.sh monitor -- --collector-url http://192.168.10.194:8000" \
-"  sudo bash deploy/install-auto-deploy.sh collector -- --inverter-host 192.168.20.138 --inverter-logger-serial 3503566593"
+"  sudo bash deploy/install-auto-deploy.sh collector -- --inverter-host 192.168.20.138 --inverter-logger-serial 3503566593" \
+"  sudo bash deploy/install-auto-deploy.sh collector --branch dev -- --serial-device /dev/serial/by-id/usb-Test_Adapter"
 }
 
 fail() {
@@ -224,6 +228,9 @@ systemctl enable --now "${UNIT_BASE}.timer"
 
 printf '[battery-auto-deploy:installer] Installed %s.timer for %s/%s every %s.\n' \
   "${UNIT_BASE}" "${REMOTE}" "${BRANCH}" "${INTERVAL}"
+if [[ "${BRANCH}" != "master" ]]; then
+  printf '[battery-auto-deploy:installer] This host follows the %s channel, not the master release channel.\n' "${BRANCH}"
+fi
 if [[ "${RUN_NOW}" -eq 1 ]]; then
   printf '[battery-auto-deploy:installer] Running the first update check now...\n'
   systemctl start "${UNIT_BASE}.service"

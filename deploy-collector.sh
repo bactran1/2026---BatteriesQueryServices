@@ -60,6 +60,7 @@ usage() {
 "  COLLECTOR_CONFIG_FILE    Same as --config" \
 "  COLLECTOR_IMAGE_NAME     Image name, default batteries-query-service" \
 "  COLLECTOR_IMAGE_TAG      Image tag; default is the current Git commit SHA" \
+"  COLLECTOR_BRANCH         Channel stamped into the image; default is the checked-out branch" \
 "" \
 "Examples:" \
 "  bash deploy-collector.sh" \
@@ -152,16 +153,22 @@ update_git_checkout() {
 set_image_identity() {
   local commit
   local tag
+  local branch
 
   if git_is_available; then
     commit="$(git rev-parse HEAD)"
     tag="$(git rev-parse --short=12 HEAD)"
+    # The channel the image comes from: master on the production Pi, dev on
+    # a test host. Stamped into the image so a host can never be mistaken.
+    branch="$(git branch --show-current 2>/dev/null || true)"
   else
     commit="unknown"
     tag="$(date -u +%Y%m%d%H%M%S)"
+    branch=""
   fi
 
   export COLLECTOR_COMMIT="${COLLECTOR_COMMIT:-${commit}}"
+  export COLLECTOR_BRANCH="${COLLECTOR_BRANCH:-${branch:-unknown}}"
   export COLLECTOR_IMAGE_NAME="${COLLECTOR_IMAGE_NAME:-batteries-query-service}"
   export COLLECTOR_IMAGE_TAG="${COLLECTOR_IMAGE_TAG:-${tag}}"
 }
@@ -425,6 +432,7 @@ fi
 log "Config file: ${COLLECTOR_CONFIG_FILE}"
 log "Image: ${COLLECTOR_IMAGE_NAME}:${COLLECTOR_IMAGE_TAG}"
 log "Build commit: ${COLLECTOR_COMMIT}"
+log "Build channel: ${COLLECTOR_BRANCH}"
 log "Building ${SERVICE_NAME} from the latest available Git commit..."
 BUILD_ARGS=(build --pull)
 if [[ "${USE_CACHE}" -eq 0 ]]; then

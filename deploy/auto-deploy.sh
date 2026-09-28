@@ -295,7 +295,7 @@ if [[ "${target}" != "${seen}" ]]; then
     done <<< "${changed_paths}"
   else
     deploy_required=1
-    reason="no trustworthy prior master commit is available"
+    reason="no trustworthy prior ${BRANCH} commit is available"
   fi
 fi
 

@@ -6,6 +6,7 @@ services:
       dockerfile: monitor/Dockerfile
       args:
         MONITOR_COMMIT: ${MONITOR_COMMIT:-unknown}
+        MONITOR_BRANCH: ${MONITOR_BRANCH:-unknown}
     container_name: battery-monitor
     restart: unless-stopped
     environment:
