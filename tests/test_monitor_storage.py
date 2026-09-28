@@ -678,8 +678,11 @@ class HourlyEnergyResetTests(unittest.TestCase):
     def test_calendar_day_view_has_no_midnight_spike(self) -> None:
         store = self._make_store()
 
+        # Start at a reset hour at least two full days back, so the day under
+        # test is complete whatever the hour this runs at; starting only 48 h
+        # back left the selected day mostly in the future for most of the day.
         now = int(time.time())
-        start = (now // 3600) * 3600 - 48 * 3600
+        start = (now // 3600) * 3600 - 72 * 3600
         while datetime.fromtimestamp(start, timezone.utc).hour != self.RESET_HOUR_UTC:
             start += 3600
 
