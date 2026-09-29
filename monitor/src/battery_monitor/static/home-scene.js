@@ -587,7 +587,6 @@ function buildScene() {
   svg.append(el("ellipse", { id: "hsLampGlow", class: "hs-lamp-glow", cx: P(5.9, 6.0, 0)[0], cy: P(5.9, 6.0, 0)[1] + 4, rx: 130, ry: 38, fill: "url(#hsLampGlow)" }));
   svg.append(annex());
   svg.append(house());
-  svg.append(car());
   svg.append(inverterBox());
   svg.append(batteryCabinet());
   svg.append(flows());
@@ -614,6 +613,8 @@ function defs() {
   d.append(gradient("hsRoof", [["0", "#1b1e24"], ["1", "#0c0e11"]], true));
   d.append(gradient("hsRoofAnnex", [["0", "#22262d"], ["1", "#15181d"]], true));
   d.append(gradient("hsWood", [["0", "#5b3f27"], ["0.55", "#4a3220"], ["1", "#2e1f14"]], true));
+  d.append(gradient("hsGarageBack", [["0", "#15171c"], ["1", "#08090b"]], true));
+  d.append(gradient("hsGarageLight", [["0", "rgba(255, 214, 150, 0.55)"], ["1", "rgba(255, 190, 110, 0.08)"]], true));
   d.append(gradient("hsPanel", [["0", "#16213b"], ["0.5", "#1a2a4d"], ["1", "#0f1729"]], true));
   d.append(gradient("hsGlass", [["0", "#f6cf8c"], ["0.45", "#e9a556"], ["1", "#9a4f1e"]], true));
   d.append(gradient("hsGlassDay", [["0", "#3a4352"], ["1", "#1f252e"]], true));
@@ -784,28 +785,58 @@ function annex() {
   for (let y = Y0 + 0.25; y < Y1; y += 0.25) {
     g.append(el("line", { x1: P(X1, y, 0)[0], y1: P(X1, y, 0)[1], x2: P(X1, y, Z - 0.16)[0], y2: P(X1, y, Z - 0.16)[1], stroke: "rgba(0,0,0,0.26)", "stroke-width": 0.7 }));
   }
-  // The garage door.
-  g.append(el("polygon", { points: pts([X1, Y0 + 0.5, 0], [X1, Y0 + 2.6, 0], [X1, Y0 + 2.6, 1.9], [X1, Y0 + 0.5, 1.9]), fill: "#2b2f36" }));
-  for (let z = 0.35; z < 1.9; z += 0.38) {
-    g.append(el("line", { x1: P(X1, Y0 + 0.5, z)[0], y1: P(X1, Y0 + 0.5, z)[1], x2: P(X1, Y0 + 2.6, z)[0], y2: P(X1, Y0 + 2.6, z)[1], stroke: "rgba(0,0,0,0.35)", "stroke-width": 0.9 }));
+  // The garage door stands open, rolled up under the lintel, and the car is
+  // inside, nose in. Everything through the opening (the back wall in
+  // shadow, the floor, the light, the car) is clipped to the opening, so
+  // the walls and roof hide the rest of it as they would.
+  const { y0: D0, y1: D1, height: DH } = GARAGE_DOOR;
+  const doorway = pts([X1, D0, 0], [X1, D1, 0], [X1, D1, DH], [X1, D0, DH]);
+  const clip = el("clipPath", { id: "hsGarageDoorway" });
+  clip.append(el("polygon", { points: doorway }));
+  g.append(clip);
+  const inside = el("g", { class: "hs-garage", "clip-path": "url(#hsGarageDoorway)" });
+  inside.append(el("polygon", { points: doorway, fill: "url(#hsGarageBack)" }));
+  inside.append(el("polygon", { points: pts([X1 + 0.2, D0, 0], [X1 + 0.2, D1, 0], [X0, D1, 0], [X0, D0, 0]), fill: "#1a1d22" }));
+  inside.append(el("polygon", { class: "hs-window", points: doorway, fill: "url(#hsGarageLight)", "data-window": "garage" }));
+  inside.append(car());
+  g.append(inside);
+  // The rolled door under the lintel, and the frame.
+  g.append(el("polygon", { points: pts([X1 + 0.01, D0, DH - 0.26], [X1 + 0.01, D1, DH - 0.26], [X1 + 0.01, D1, DH], [X1 + 0.01, D0, DH]), fill: "#2b2f36" }));
+  for (const z of [DH - 0.19, DH - 0.11]) {
+    g.append(el("line", { x1: P(X1 + 0.01, D0, z)[0], y1: P(X1 + 0.01, D0, z)[1], x2: P(X1 + 0.01, D1, z)[0], y2: P(X1 + 0.01, D1, z)[1], stroke: "rgba(0,0,0,0.4)", "stroke-width": 0.9 }));
   }
+  g.append(el("polyline", { points: pts([X1 + 0.01, D0, 0], [X1 + 0.01, D0, DH], [X1 + 0.01, D1, DH], [X1 + 0.01, D1, 0]), stroke: "#3a3e46", "stroke-width": 1.2, fill: "none", "stroke-linejoin": "round" }));
   return g;
 }
 
-// A Tesla Model Y (the Juniper refresh) on the drive, nose to the garage's
-// far end. Not a handful of flat boxes: a small lofted mesh, built from the
-// car's side profile and its plan-view width, shaded face by face against
-// one light, so the fastback roofline, the glass house, the shoulders and
-// the wheel arches all read at this size.
-const CAR = { cx: 8.65, rear: -1.25, length: 1.75 };
+// The garage door opening on the annex's front, and the car's berth behind it.
+const GARAGE_DOOR = { y0: ANNEX.Y0 + 0.5, y1: ANNEX.Y0 + 2.6, height: 1.9 };
+
+// A Tesla Model Y (the Juniper refresh), parked in the garage nose first,
+// its tail to the open door. Not a handful of flat boxes: a small lofted
+// mesh, built from the car's side profile and its plan-view width, shaded
+// face by face against one light, so the fastback roofline, the glass
+// house, the shoulders and the wheel arches all read at this size. The
+// frame says where it stands: `tail` is the middle of the rear bumper at
+// the ground, `along` the way the nose points, `across` the near side.
+const CAR = {
+  tail: [ANNEX.X1 - 0.08, (GARAGE_DOOR.y0 + GARAGE_DOOR.y1) / 2 - 0.1, 0],
+  along: [-1, 0, 0],
+  across: [0, 1, 0],
+  length: 1.75,
+};
 
 function car() {
   const root = el("g", { class: "hs-car" });
   const body = el("g", { class: "hs-car-body hs-lit" });
   const lights = el("g", { class: "hs-car-lights" });
   root.append(body, lights);
-  const { cx, rear, length } = CAR;
-  const world = (l, w, z) => [cx + w, rear - l, z];
+  const { tail, along, across, length } = CAR;
+  const world = (l, w, z) => [
+    tail[0] + along[0] * l + across[0] * w,
+    tail[1] + along[1] * l + across[1] * w,
+    tail[2] + z,
+  ];
 
   // The lines of the car, nose to tail as functions of the distance from
   // the tail: the centreline height, the shoulder height, the sill, and the
@@ -868,27 +899,32 @@ function car() {
     materials(lmid).forEach((material, k) => face([a[k], a[k + 1], b[k + 1], b[k]], material, lmid));
   }
   // The tail: the first ring closed across the car.
-  const tail = rings[0].points;
-  const mirrorPoint = ([x, y, z]) => [2 * cx - x, y, z];
-  face([tail[1], tail[2], tail[3], tail[4], tail[5], tail[6], tail[7],
-    mirrorPoint(tail[7]), mirrorPoint(tail[6]), mirrorPoint(tail[5]), mirrorPoint(tail[4]), mirrorPoint(tail[3]), tail[0]], "body", 0);
+  const back = rings[0].points;
+  const { wt: bwt, wb: bwb, zt: bzt, zb: bzb, zs: bzs } = { wt: wTop(0), wb: wBelt(0), zt: zTop(0), zb: zBelt(0), zs: zSill(0) };
+  face([back[1], back[2], back[3], back[4], back[5], back[6], back[7],
+    world(0, -bwb + 0.04, bzs - 0.035), world(0, -bwb + 0.01, bzs), world(0, -bwb - 0.012, (bzb + bzs) / 2 + 0.02),
+    world(0, -bwb, bzb), world(0, -bwt - (bwb - bwt) * 0.62, bzt - (bzt - bzb) * 0.42), back[0]], "body", 0);
 
   // The ground shadow, then the faces far to near.
-  const [sx, sy] = P(cx + 0.05, rear - length / 2, 0);
-  body.append(el("ellipse", { cx: sx, cy: sy + 2, rx: 46, ry: 17, fill: "rgba(0,0,0,0.45)", filter: "url(#hsSoft)" }));
+  const shadow = [];
+  for (let index = 0; index < 24; index += 1) {
+    const t = (index / 24) * Math.PI * 2;
+    shadow.push(world(length / 2 + (length / 2 + 0.1) * Math.cos(t), 0.44 * Math.sin(t), 0));
+  }
+  body.append(el("polygon", { points: pts(...shadow), fill: "rgba(0,0,0,0.5)", filter: "url(#hsSoft)" }));
   faces.sort((p, q) => p.depth - q.depth);
   for (const item of faces) {
     body.append(el("polygon", { points: item.points.map((p) => P(...p).map((v) => v.toFixed(1)).join(",")).join(" "), fill: item.fill, stroke: item.fill, "stroke-width": 0.5, "stroke-linejoin": "round" }));
   }
 
   // Wheel arches cut into the side, then the wheels: tyre, rim, hub.
-  const disc = (l, x, zc, radius, fill) => el("polygon", { points: circlePoints(x, rear - l, zc, radius), fill });
+  const disc = (l, w, zc, radius, fill) => el("polygon", { points: circlePoints(world(l, w, zc), along, radius), fill });
   for (const l of [0.34, 1.4]) {
-    const x = wBelt(l) + cx;
-    body.append(disc(l, x + 0.004, 0.17, 0.205, "#0c0d10"));
-    body.append(disc(l, x + 0.012, 0.16, 0.17, "#111318"));
-    body.append(disc(l, x + 0.02, 0.16, 0.105, "#4a5059"));
-    body.append(disc(l, x + 0.024, 0.16, 0.035, "#1d2025"));
+    const w = wBelt(l);
+    body.append(disc(l, w + 0.004, 0.17, 0.205, "#0c0d10"));
+    body.append(disc(l, w + 0.012, 0.16, 0.17, "#111318"));
+    body.append(disc(l, w + 0.02, 0.16, 0.105, "#4a5059"));
+    body.append(disc(l, w + 0.024, 0.16, 0.035, "#1d2025"));
   }
 
   // Seams, the shoulder's highlight, the mirror.
@@ -897,7 +933,7 @@ function car() {
   const shoulder = [];
   for (let l = 0.12; l <= 1.62; l += 0.1) shoulder.push(world(l, wBelt(l) + 0.004, zBelt(l) + 0.004));
   body.append(el("polyline", { points: pts(...shoulder), stroke: "rgba(255,255,255,0.28)", "stroke-width": 0.8, fill: "none", "stroke-linecap": "round" }));
-  const mirror = P(cx + wBelt(1.27) + 0.05, rear - 1.27, 0.43);
+  const mirror = P(...world(1.27, wBelt(1.27) + 0.05, 0.43));
   body.append(el("rect", { x: mirror[0] - 1.5, y: mirror[1] - 1.5, width: 4, height: 2.6, rx: 1, fill: "#5d1510" }));
 
   // The full-width tail light bar: its own light, lit after dark.
@@ -906,12 +942,17 @@ function car() {
   return root;
 }
 
-// A circle in a plane of constant x, projected: the wheels.
-function circlePoints(x, y, z, radius, steps = 28) {
+// A circle standing upright, its plane along `along`, projected: the wheels.
+function circlePoints(centre, along, radius, steps = 28) {
   const points = [];
   for (let index = 0; index < steps; index += 1) {
     const t = (index / steps) * Math.PI * 2;
-    points.push(P(x, y + radius * Math.cos(t), z + radius * Math.sin(t)).map((v) => v.toFixed(1)).join(","));
+    const point = [
+      centre[0] + along[0] * radius * Math.cos(t),
+      centre[1] + along[1] * radius * Math.cos(t),
+      centre[2] + radius * Math.sin(t),
+    ];
+    points.push(P(...point).map((v) => v.toFixed(1)).join(","));
   }
   return points.join(" ");
 }
@@ -1063,7 +1104,7 @@ const CALLOUTS = {
   grid: { anchor: [NODES.grid.x, NODES.grid.y, 0.6], offset: [46, 46], side: "right" },
   inverter: { anchor: [NODES.inverter.x, NODES.inverter.y - 0.34, NODES.inverter.z + 0.5], offset: [46, -40], side: "right" },
   load: { anchor: [2.5, HOUSE.Y1 + 0.05, 2.35], offset: [-46, -54], side: "left" },
-  backup: { anchor: [ANNEX.X1 + 0.05, -1.6, 1.15], offset: [24, -78], side: "right" },
+  backup: { anchor: [ANNEX.X1 + 0.05, -0.55, 1.7], offset: [24, -78], side: "right" },
   battery: { anchor: [NODES.battery.x + 0.06, NODES.battery.y + 0.1, 0.95], offset: [40, 78], side: "right" },
 };
 
