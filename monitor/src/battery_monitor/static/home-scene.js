@@ -459,19 +459,61 @@ function startHomeScene() {
 }
 
 // A pill's width is its text's, not the picture's, so on a narrow stage one
-// near the edge can run past it; such a pill slides back inside, its leader
-// still reaching it from under its body.
+// near the edge can run past it, and two can meet. Such a pill slides back
+// inside, and of two that meet the lower one moves down until they clear;
+// each leader is redrawn to the pill's new edge so it stays attached.
 function keepCalloutsInView(section) {
   const bounds = section.getBoundingClientRect();
   if (!bounds.width) return;
-  for (const pill of section.querySelectorAll(".energy-flow__callout")) {
-    if (getComputedStyle(pill).position !== "absolute") continue;
+  const scale = Number.parseFloat(getComputedStyle(section).getPropertyValue("--hs-scale")) || 1;
+  const pills = Array.from(section.querySelectorAll(".energy-flow__callout"))
+    .filter((pill) => getComputedStyle(pill).position === "absolute");
+  if (!pills.length) return;
+  const shifts = new Map();
+  for (const pill of pills) {
     pill.style.setProperty("--hs-pill-shift", "0px");
+    pill.style.setProperty("--hs-pill-shift-y", "0px");
+  }
+  // Inside the stage, left to right.
+  for (const pill of pills) {
     const rect = pill.getBoundingClientRect();
     const overflowRight = rect.right - (bounds.right - 8);
     const overflowLeft = (bounds.left + 8) - rect.left;
-    const shift = overflowRight > 0 ? -overflowRight : overflowLeft > 0 ? overflowLeft : 0;
-    if (shift) pill.style.setProperty("--hs-pill-shift", `${shift.toFixed(1)}px`);
+    const x = overflowRight > 0 ? -overflowRight : overflowLeft > 0 ? overflowLeft : 0;
+    shifts.set(pill, { x, y: 0 });
+    if (x) pill.style.setProperty("--hs-pill-shift", `${x.toFixed(1)}px`);
+  }
+  // Clear of each other, top to bottom.
+  const placed = pills.map((pill) => {
+    const rect = pill.getBoundingClientRect();
+    return { pill, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+  }).sort((a, b) => a.top - b.top);
+  for (let index = 0; index < placed.length; index += 1) {
+    for (let other = index + 1; other < placed.length; other += 1) {
+      const upper = placed[index];
+      const lower = placed[other];
+      const meetsAcross = upper.left < lower.right - 1 && upper.right > lower.left + 1;
+      const meetsDown = upper.top < lower.bottom - 1 && upper.bottom > lower.top + 1;
+      if (!meetsAcross || !meetsDown) continue;
+      const drop = upper.bottom - lower.top + 8;
+      lower.top += drop;
+      lower.bottom += drop;
+      shifts.get(lower.pill).y += drop;
+    }
+  }
+  for (const { pill } of placed) {
+    const shift = shifts.get(pill);
+    if (shift.y) pill.style.setProperty("--hs-pill-shift-y", `${shift.y.toFixed(1)}px`);
+  }
+  // The leaders follow the pills.
+  for (const [key, callout] of Object.entries(CALLOUTS)) {
+    const pill = section.querySelector(`.energy-flow__callout--${key}`);
+    const leader = section.querySelector(`.hs-leader[data-callout="${key}"]`);
+    if (!pill || !leader) continue;
+    const shift = shifts.get(pill) || { x: 0, y: 0 };
+    const { anchor, pill: point } = calloutPoints(callout);
+    const start = [point[0] + shift.x / scale, point[1] + shift.y / scale];
+    leader.setAttribute("d", `M ${start[0].toFixed(1)} ${start[1].toFixed(1)} L ${anchor[0].toFixed(1)} ${anchor[1].toFixed(1)}`);
   }
 }
 

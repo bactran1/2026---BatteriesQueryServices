@@ -1370,14 +1370,14 @@ button {
   color: #ffffff;
   text-decoration: none;
   box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.6);
-  transform: translate(var(--hs-pill-shift, 0px), -50%);
+  transform: translate(var(--hs-pill-shift, 0px), calc(-50% + var(--hs-pill-shift-y, 0px)));
   transition:
     background 900ms ease,
     opacity 600ms ease;
 }
 
 .energy-flow__callout[data-side="left"] {
-  transform: translate(calc(-100% + var(--hs-pill-shift, 0px)), -50%);
+  transform: translate(calc(-100% + var(--hs-pill-shift, 0px)), calc(-50% + var(--hs-pill-shift-y, 0px)));
 }
 
 .energy-flow__callout span {
