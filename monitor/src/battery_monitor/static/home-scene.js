@@ -772,7 +772,7 @@ function house() {
 
 // The annex: a lower flat-roofed block at the far end, forward of the long
 // wall, with the garage door facing the drive.
-const ANNEX = { X0: 5, X1: 7.5, Y0: -3.5, Y1: 0, Z: 2.35 };
+const ANNEX = { X0: 5, X1: 7.5, Y0: -3.5, Y1: 0, Z: 2.55 };
 
 function annex() {
   const g = el("g", { class: "hs-annex hs-lit" });
@@ -1034,23 +1034,25 @@ function route(...points) {
 }
 // The inverter box spans y 2.26..2.94 and z 2.15..3.15 high on the wall, the
 // cabinet stands on the floor directly beneath it (y 2.0..3.2, to z 1.55).
-// Solar drops onto the inverter's top from the eave; the battery conduit is
-// the short drop from its underside onto the cabinet; the home circuit
-// leaves its right side and climbs to a run under the eave, above the door
-// and the window, to the glazed end; the grid comes along the ground, up
-// the wall clear of the cabinet, and into the inverter's left side; the
-// backup circuit leaves the left side above that, steps down past it and
-// runs on to the annex. No two conduits cross.
+// Every conduit takes the fewest turns the buildings allow. Solar drops
+// straight onto the inverter's top from the eave; the battery conduit is the
+// straight drop from its underside onto the cabinet; the home circuit is one
+// straight run from its right side along the wall, above the door, the lamp
+// and the window, to the glazed end; the grid runs along the foot of the
+// wall from the pole, up one riser beside the cabinet and into the right
+// side (three turns, two of them the house's corner and the riser); the
+// backup circuit leaves the left side and turns only at the two corners of
+// the annex on its way to the wall beside the open door. No two cross.
 const WALL = HOUSE.X1 + 0.06;
-const EAVE_RUN = HOUSE.EAVE - 0.28;
 const INVERTER_TOP = NODES.inverter.z + 0.5;
 const INVERTER_BOTTOM = NODES.inverter.z - 0.5;
+const FOOT = HOUSE.X1 + 0.03;
 const ROUTES = {
   solar: route([WALL, 2.6, HOUSE.EAVE + 0.02], [WALL, 2.6, INVERTER_TOP]),
   battery: route([WALL, 2.6, INVERTER_BOTTOM], [WALL, 2.6, 1.55]),
-  home: route([WALL, 2.94, 2.85], [WALL, 3.18, 2.85], [WALL, 3.18, EAVE_RUN], [WALL, 7.62, EAVE_RUN], [WALL, 7.62, 2.7]),
-  backup: route([WALL, 2.26, 2.9], [WALL, 1.55, 2.9], [WALL, 1.55, 1.5], [WALL, 0.06, 1.5], [ANNEX.X1 - 0.1, 0.06, 1.5], [ANNEX.X1 + 0.06, -0.3, 1.5]),
-  grid: route([NODES.grid.x, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, 1.9, 0.02], [WALL, 1.9, 0.02], [WALL, 1.9, 2.45], [WALL, 2.26, 2.45]),
+  home: route([WALL, 2.94, 2.85], [WALL, 7.9, 2.85]),
+  backup: route([WALL, 2.26, 2.25], [WALL, 0.06, 2.25], [ANNEX.X1 - 0.1, 0.06, 2.25], [ANNEX.X1 + 0.06, -0.45, 2.25]),
+  grid: route([NODES.grid.x, NODES.grid.y, 0.02], [FOOT, NODES.grid.y, 0.02], [FOOT, 3.5, 0.02], [WALL, 3.5, 2.45], [WALL, 2.94, 2.45]),
 };
 
 // Each conduit is a solid hairline, lit in its colour while it carries power.
@@ -1104,7 +1106,7 @@ const CALLOUTS = {
   grid: { anchor: [NODES.grid.x, NODES.grid.y, 0.6], offset: [46, 46], side: "right" },
   inverter: { anchor: [NODES.inverter.x, NODES.inverter.y - 0.34, NODES.inverter.z + 0.5], offset: [46, -40], side: "right" },
   load: { anchor: [2.5, HOUSE.Y1 + 0.05, 2.35], offset: [-46, -54], side: "left" },
-  backup: { anchor: [ANNEX.X1 + 0.05, -0.55, 1.7], offset: [24, -78], side: "right" },
+  backup: { anchor: [ANNEX.X1 + 0.05, -0.45, 2.25], offset: [24, -62], side: "right" },
   battery: { anchor: [NODES.battery.x + 0.06, NODES.battery.y + 0.1, 0.95], offset: [40, 78], side: "right" },
 };
 
