@@ -793,69 +793,158 @@ function annex() {
 }
 
 // A Tesla Model Y (the Juniper refresh) on the drive, nose to the garage's
-// far end: a low-poly build from its side profile, so the fastback roof,
-// the glass roof, the full-width tail light bar and the wheel arches read.
+// far end. Not a handful of flat boxes: a small lofted mesh, built from the
+// car's side profile and its plan-view width, shaded face by face against
+// one light, so the fastback roofline, the glass house, the shoulders and
+// the wheel arches all read at this size.
+const CAR = { cx: 8.65, rear: -1.25, length: 1.75 };
+
 function car() {
   const root = el("g", { class: "hs-car" });
-  const g = el("g", { class: "hs-car-body hs-lit" });
-  // The tail light bar is its own light, so it stays lit after dark.
+  const body = el("g", { class: "hs-car-body hs-lit" });
   const lights = el("g", { class: "hs-car-lights" });
-  root.append(g, lights);
-  const X0 = 8.3, X1 = 9.02, Y0 = -3.05;
-  const y = (offset) => Y0 + offset;
-  // Side profile, nose to tail: (length along the car, height).
-  const profile = [
-    [0.0, 0.10], [0.0, 0.29], [0.05, 0.35], [0.5, 0.41], [0.8, 0.61],
-    [0.98, 0.635], [1.56, 0.5], [1.68, 0.46], [1.75, 0.41], [1.75, 0.10],
+  root.append(body, lights);
+  const { cx, rear, length } = CAR;
+  const world = (l, w, z) => [cx + w, rear - l, z];
+
+  // The lines of the car, nose to tail as functions of the distance from
+  // the tail: the centreline height, the shoulder height, the sill, and the
+  // half-widths at the shoulder and at the top of the glass house.
+  const zTop = spline([[0, 0.40], [0.12, 0.45], [0.28, 0.50], [0.55, 0.585], [0.85, 0.615], [1.05, 0.605], [1.22, 0.55], [1.36, 0.44], [1.55, 0.40], [1.7, 0.36], [1.75, 0.30]]);
+  const zBelt = spline([[0, 0.35], [0.3, 0.37], [0.9, 0.39], [1.4, 0.37], [1.75, 0.30]]);
+  const zSill = spline([[0, 0.12], [0.1, 0.08], [1.65, 0.08], [1.75, 0.12]]);
+  const wBelt = spline([[0, 0.30], [0.15, 0.35], [0.5, 0.37], [1.25, 0.37], [1.6, 0.34], [1.75, 0.27]]);
+  const wTop = spline([[0, 0.29], [0.15, 0.33], [0.28, 0.30], [0.55, 0.27], [0.85, 0.26], [1.22, 0.28], [1.36, 0.34], [1.6, 0.33], [1.75, 0.26]]);
+  const topIsGlass = (l) => l >= 0.3 && l <= 1.34;
+  const sideIsGlass = (l) => l >= 0.42 && l <= 1.22;
+
+  // One ring of vertices per station along the length: the far top edge,
+  // the crown, the near top edge, the curve of the glass, the shoulder, the
+  // swell of the door, the sill, the rocker.
+  const STATIONS = 28;
+  const rings = [];
+  for (let index = 0; index <= STATIONS; index += 1) {
+    const l = length * index / STATIONS;
+    const wt = wTop(l), wb = wBelt(l), zt = zTop(l), zb = zBelt(l), zs = zSill(l);
+    rings.push({ l, points: [
+      world(l, -wt, zt), world(l, 0, zt + 0.012), world(l, wt, zt),
+      world(l, wt + (wb - wt) * 0.62, zt - (zt - zb) * 0.42),
+      world(l, wb, zb), world(l, wb + 0.012, (zb + zs) / 2 + 0.02),
+      world(l, wb - 0.01, zs), world(l, wb - 0.04, zs - 0.035),
+    ] });
+  }
+
+  const light = normalize([0.45, 0.35, 0.82]);
+  const view = normalize([1, 1, ISO.u / ISO.h]);
+  const halfway = normalize(add(light, view));
+  const centre = world(length / 2, 0, 0.3);
+  const faces = [];
+  const face = (points, material, l) => {
+    let n = normalize(cross(sub(points[1], points[0]), sub(points[3] ?? points[2], points[0])));
+    const c = points.reduce((sum, p) => add(sum, p), [0, 0, 0]).map((v) => v / points.length);
+    if (dot(n, sub(c, centre)) < 0) n = n.map((v) => -v);
+    if (dot(n, view) <= 0.02) return;
+    const diffuse = Math.max(0, dot(n, light));
+    const spec = Math.max(0, dot(n, halfway)) ** 28;
+    let fill;
+    if (material === "glass") {
+      const base = shadeHex("#16202c", 0.45 + 0.55 * diffuse);
+      fill = mixHex(mixHex(base, "#6b8299", 0.55 * Math.max(0, n[2])), "#ffffff", spec * 0.6);
+    } else if (material === "rocker") {
+      fill = shadeHex("#1a1c20", 0.5 + 0.5 * diffuse);
+    } else {
+      fill = mixHex(shadeHex("#c8302a", 0.3 + 0.7 * diffuse), "#ffffff", spec * 0.45);
+    }
+    faces.push({ depth: c[0] + c[1] + c[2] * (ISO.u / ISO.h), points, fill, l });
+  };
+  const materials = (lmid) => [
+    topIsGlass(lmid) ? "glass" : "body", topIsGlass(lmid) ? "glass" : "body",
+    sideIsGlass(lmid) ? "glass" : "body", sideIsGlass(lmid) ? "glass" : "body",
+    "body", "body", "rocker",
   ];
-  const side = (points, attributes) => g.append(el("polygon", { points: pts(...points.map(([l, z]) => [X1, y(l), z])), ...attributes }));
-  const top = (l0, z0, l1, z1, inset, attributes) => g.append(el("polygon", {
-    points: pts([X0 + inset, y(l0), z0], [X1 - inset, y(l0), z0], [X1 - inset, y(l1), z1], [X0 + inset, y(l1), z1]), ...attributes,
-  }));
-
-  // Body side, its skirt, and the wheel arches cut into it.
-  side(profile, { fill: "#a8261d" });
-  side([[0.0, 0.10], [1.75, 0.10], [1.75, 0.17], [0.0, 0.17]], { fill: "#6f1712" });
-  for (const wheel of [0.4, 1.36]) {
-    const [ax, ay] = P(X1 + 0.01, y(wheel), 0.19);
-    g.append(el("ellipse", { cx: ax, cy: ay, rx: 8.6, ry: 5.6, fill: "#7a1a13" }));
+  for (let index = 0; index < STATIONS; index += 1) {
+    const a = rings[index].points, b = rings[index + 1].points;
+    const lmid = (rings[index].l + rings[index + 1].l) / 2;
+    materials(lmid).forEach((material, k) => face([a[k], a[k + 1], b[k + 1], b[k]], material, lmid));
   }
-  // Side glass and the pillars, then the door seam and the mirror.
-  side([[0.56, 0.425], [0.8, 0.595], [0.98, 0.615], [1.54, 0.49], [1.56, 0.44]], { fill: "#1b2430" });
-  // The shoulder crease along the belt line.
-  g.append(el("polyline", { points: pts([X1 + 0.005, y(0.5), 0.415], [X1 + 0.005, y(1.68), 0.462]), stroke: "rgba(255,255,255,0.22)", "stroke-width": 0.9, fill: "none" }));
-  const pillar = (l0, z0, l1, z1) => g.append(el("line", { x1: P(X1, y(l0), z0)[0], y1: P(X1, y(l0), z0)[1], x2: P(X1, y(l1), z1)[0], y2: P(X1, y(l1), z1)[1], stroke: "#a8261d", "stroke-width": 1.3 }));
-  pillar(1.02, 0.44, 1.04, 0.612);
-  g.append(el("line", { x1: P(X1, y(1.05), 0.17)[0], y1: P(X1, y(1.05), 0.17)[1], x2: P(X1, y(1.05), 0.42)[0], y2: P(X1, y(1.05), 0.42)[1], stroke: "rgba(0,0,0,0.35)", "stroke-width": 0.8 }));
-  const mirror = P(X1 + 0.02, y(0.6), 0.47);
-  g.append(el("rect", { x: mirror[0] - 1, y: mirror[1] - 2, width: 4, height: 3, rx: 1, fill: "#7a1a13" }));
+  // The tail: the first ring closed across the car.
+  const tail = rings[0].points;
+  const mirrorPoint = ([x, y, z]) => [2 * cx - x, y, z];
+  face([tail[1], tail[2], tail[3], tail[4], tail[5], tail[6], tail[7],
+    mirrorPoint(tail[7]), mirrorPoint(tail[6]), mirrorPoint(tail[5]), mirrorPoint(tail[4]), mirrorPoint(tail[3]), tail[0]], "body", 0);
 
-  // Rear: the body, the darker bumper, the light bar across its width.
-  const rear = (z0, z1, inset, attributes, target = g) => target.append(el("polygon", {
-    points: pts([X0 + inset, y(1.75), z0], [X1 - inset, y(1.75), z0], [X1 - inset, y(1.75), z1], [X0 + inset, y(1.75), z1]), ...attributes,
-  }));
-  rear(0.10, 0.41, 0, { fill: "#8f1d16" });
-  rear(0.10, 0.2, 0, { fill: "#24272d" });
-  rear(0.31, 0.365, 0.03, { fill: "#ff4d3f", filter: "url(#hsGlow)" }, lights);
-  rear(0.33, 0.345, 0.05, { fill: "#ffd0c8", opacity: 0.8 }, lights);
-  rear(0.22, 0.29, 0.26, { fill: "#d9dde3", opacity: 0.8 });
-
-  // Top: hood, the glass house set in from the shoulders, trunk and lip.
-  top(0.05, 0.35, 0.5, 0.41, 0, { fill: "#d63a2e" });
-  top(0.5, 0.41, 1.68, 0.46, 0, { fill: "#c9352a" });
-  top(0.5, 0.41, 0.8, 0.61, 0.06, { fill: "#22303f" });
-  top(0.8, 0.61, 0.98, 0.635, 0.06, { fill: "#141a23" });
-  top(0.98, 0.635, 1.56, 0.5, 0.06, { fill: "#1d2835" });
-  top(1.68, 0.46, 1.75, 0.41, 0, { fill: "#b52d23" });
-
-  // Wheels: tyre and rim.
-  for (const wheel of [0.4, 1.36]) {
-    const [ax, ay] = P(X1 + 0.02, y(wheel), 0.13);
-    g.append(el("ellipse", { cx: ax, cy: ay, rx: 7.2, ry: 4.7, fill: "#0b0c0f" }));
-    g.append(el("ellipse", { cx: ax + 0.4, cy: ay - 0.2, rx: 3.6, ry: 2.3, fill: "#585d66" }));
-    g.append(el("ellipse", { cx: ax + 0.4, cy: ay - 0.2, rx: 1.2, ry: 0.8, fill: "#22252b" }));
+  // The ground shadow, then the faces far to near.
+  const [sx, sy] = P(cx + 0.05, rear - length / 2, 0);
+  body.append(el("ellipse", { cx: sx, cy: sy + 2, rx: 46, ry: 17, fill: "rgba(0,0,0,0.45)", filter: "url(#hsSoft)" }));
+  faces.sort((p, q) => p.depth - q.depth);
+  for (const item of faces) {
+    body.append(el("polygon", { points: item.points.map((p) => P(...p).map((v) => v.toFixed(1)).join(",")).join(" "), fill: item.fill, stroke: item.fill, "stroke-width": 0.5, "stroke-linejoin": "round" }));
   }
+
+  // Wheel arches cut into the side, then the wheels: tyre, rim, hub.
+  const disc = (l, x, zc, radius, fill) => el("polygon", { points: circlePoints(x, rear - l, zc, radius), fill });
+  for (const l of [0.34, 1.4]) {
+    const x = wBelt(l) + cx;
+    body.append(disc(l, x + 0.004, 0.17, 0.205, "#0c0d10"));
+    body.append(disc(l, x + 0.012, 0.16, 0.17, "#111318"));
+    body.append(disc(l, x + 0.02, 0.16, 0.105, "#4a5059"));
+    body.append(disc(l, x + 0.024, 0.16, 0.035, "#1d2025"));
+  }
+
+  // Seams, the shoulder's highlight, the mirror.
+  const seam = (l) => body.append(el("polyline", { points: pts(world(l, wBelt(l) - 0.006, zSill(l) + 0.02), world(l, wBelt(l) + 0.002, zBelt(l) - 0.01)), stroke: "rgba(0,0,0,0.45)", "stroke-width": 0.7, fill: "none" }));
+  seam(0.46); seam(0.9); seam(1.3);
+  const shoulder = [];
+  for (let l = 0.12; l <= 1.62; l += 0.1) shoulder.push(world(l, wBelt(l) + 0.004, zBelt(l) + 0.004));
+  body.append(el("polyline", { points: pts(...shoulder), stroke: "rgba(255,255,255,0.28)", "stroke-width": 0.8, fill: "none", "stroke-linecap": "round" }));
+  const mirror = P(cx + wBelt(1.27) + 0.05, rear - 1.27, 0.43);
+  body.append(el("rect", { x: mirror[0] - 1.5, y: mirror[1] - 1.5, width: 4, height: 2.6, rx: 1, fill: "#5d1510" }));
+
+  // The full-width tail light bar: its own light, lit after dark.
+  lights.append(el("polygon", { points: pts(world(-0.004, -0.27, 0.318), world(-0.004, 0.27, 0.318), world(-0.004, 0.27, 0.346), world(-0.004, -0.27, 0.346)), fill: "#ff4b3e", filter: "url(#hsGlow)" }));
+  lights.append(el("polygon", { points: pts(world(-0.006, -0.25, 0.327), world(-0.006, 0.25, 0.327), world(-0.006, 0.25, 0.337), world(-0.006, -0.25, 0.337)), fill: "#ffd3cd", opacity: 0.85 }));
   return root;
+}
+
+// A circle in a plane of constant x, projected: the wheels.
+function circlePoints(x, y, z, radius, steps = 28) {
+  const points = [];
+  for (let index = 0; index < steps; index += 1) {
+    const t = (index / steps) * Math.PI * 2;
+    points.push(P(x, y + radius * Math.cos(t), z + radius * Math.sin(t)).map((v) => v.toFixed(1)).join(","));
+  }
+  return points.join(" ");
+}
+
+// A smooth curve through (position, value) points: cubic Hermite with
+// Catmull-Rom tangents, clamped to the ends.
+function spline(points) {
+  return (at) => {
+    if (at <= points[0][0]) return points[0][1];
+    if (at >= points[points.length - 1][0]) return points[points.length - 1][1];
+    let index = 0;
+    while (points[index + 1][0] < at) index += 1;
+    const [x0, y0] = points[index];
+    const [x1, y1] = points[index + 1];
+    const before = points[index - 1] ?? points[index];
+    const after = points[index + 2] ?? points[index + 1];
+    const m0 = (y1 - before[1]) / (x1 - before[0]) * (x1 - x0);
+    const m1 = (after[1] - y0) / (after[0] - x0) * (x1 - x0);
+    const t = (at - x0) / (x1 - x0);
+    const t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * m1;
+  };
+}
+
+function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+function normalize(v) { const n = Math.hypot(...v) || 1; return v.map((x) => x / n); }
+function shadeHex(hex, factor) {
+  const [r, g, b] = hexToRgb(hex);
+  const channel = (x) => Math.round(clamp(x * factor, 0, 255)).toString(16).padStart(2, "0");
+  return `#${channel(r)}${channel(g)}${channel(b)}`;
 }
 
 function inverterBox() {
