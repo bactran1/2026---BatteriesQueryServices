@@ -1303,44 +1303,31 @@ button {
     stroke 600ms ease;
 }
 
-/* ---- The conduits ---------------------------------------------------------- */
+/* ---- The conduits: solid hairlines, lit while they carry power, and soft
+   pulses of light gliding along them ---------------------------------------- */
 .hs-flow-track {
-  opacity: 0.18;
+  opacity: 0.16;
   transition: opacity 600ms ease, stroke 600ms ease;
 }
 
 .hs-flow-track[data-active="true"] {
-  opacity: 0.45;
+  opacity: calc(0.4 + var(--hs-active-opacity, 1) * 0.25);
 }
 
-.hs-flow-dash {
-  stroke-dasharray: 10 18;
-  opacity: 0;
-  animation: hs-flow-dash calc(var(--hs-flow-seconds, 4s) * var(--hs-speed)) linear infinite;
-  transition: opacity 600ms ease, stroke 600ms ease;
-}
-
-.hs-flow-dash[data-active="true"] {
-  opacity: var(--hs-active-opacity, 1);
-}
-
-.energy-flow[data-line-glow="true"] .hs-flow-dash[data-active="true"] {
+.energy-flow[data-line-glow="true"] .hs-flow-track[data-active="true"] {
   filter: url(#hsGlow);
 }
 
-@keyframes hs-flow-dash {
-  to {
-    stroke-dashoffset: -28;
-  }
+.hs-pulse {
+  opacity: var(--hs-active-opacity, 1);
 }
 
-.hs-flow-dot {
-  opacity: 0;
-  transition: opacity 600ms ease;
+.hs-pulse__halo {
+  opacity: calc(0.1 + var(--hs-glow) * 0.12);
 }
 
-.hs-flow-dot[data-active="true"] {
-  opacity: calc(0.6 + var(--hs-glow) * 0.4);
+.hs-pulse__core {
+  opacity: calc(0.75 + var(--hs-glow) * 0.25);
 }
 
 /* ---- Leader lines: a hairline from each pill to a dot on its object -------- */
@@ -1471,7 +1458,6 @@ button {
 }
 
 /* ---- Motion that pauses when it should ------------------------------------- */
-.energy-flow.is-offscreen .hs-flow-dash,
 .energy-flow.is-offscreen .hs-star,
 .energy-flow.is-offscreen .hs-panel-glint,
 .energy-flow.is-offscreen .hs-drop {
@@ -1479,19 +1465,19 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hs-flow-dash,
   .hs-star,
   .hs-panel-glint,
   .hs-drop {
     animation: none;
   }
 
-  .hs-flow-dash[data-active="true"] {
-    stroke-dasharray: none;
+  /* No gliding light: a lit conduit says what carries power. */
+  .hs-pulse {
+    display: none;
   }
 
-  .hs-flow-dot {
-    display: none;
+  .hs-flow-track[data-active="true"] {
+    opacity: 0.85;
   }
 
   .hs-star {

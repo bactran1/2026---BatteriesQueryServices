@@ -277,7 +277,11 @@ class FrontendContractTests(unittest.TestCase):
         # Motion respects the viewer and the viewport.
         self.assertIn("IntersectionObserver", scene)
         self.assertIn('matchMedia("(prefers-reduced-motion: reduce)")', scene)
-        self.assertIn("@keyframes hs-flow-dash", css)
+        self.assertIn("function buildPulses", scene)
+        self.assertIn("const PULSE_COUNT = 3", scene)
+        self.assertIn(".hs-pulse {", css)
+        self.assertIn('.hs-flow-track[data-active="true"]', css)
+        self.assertNotIn("hs-flow-dash", css)
         self.assertIn("@keyframes hs-twinkle", css)
         self.assertIn("@keyframes hs-glint", css)
         self.assertIn(".energy-flow.is-offscreen", css)

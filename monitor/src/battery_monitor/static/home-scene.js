@@ -267,8 +267,8 @@ function startHomeScene() {
   for (const key of ["solar", "grid", "home", "backup", "battery"]) {
     parts.flows[key] = {
       track: svg.querySelector(`#hsFlow-${key}-track`),
-      dash: svg.querySelector(`#hsFlow-${key}-dash`),
-      dots: Array.from(svg.querySelectorAll(`.hs-flow-dot[data-flow="${key}"]`)),
+      pulses: svg.querySelector(`#hsFlow-${key}-pulses`),
+      signature: "",
     };
   }
 
@@ -280,6 +280,7 @@ function startHomeScene() {
     precipitation: 0,
     clockOverride: parseClockOverride(window.location?.search),
     pulseSpeed: PULSE_SPEED_DEFAULT,
+    flowInput: null,
     glow: 1,
     lineGlow: true,
     palette: null,
@@ -315,6 +316,7 @@ function startHomeScene() {
     if (Number.isFinite(speed) && speed > 0) {
       state.pulseSpeed = speed;
       section.style.setProperty("--hs-speed", String(PULSE_SPEED_DEFAULT / speed));
+      if (state.flowInput) applyFlows(state.flowInput);
     }
   });
   window.addEventListener("energy-glow-change", (event) => {
@@ -337,7 +339,13 @@ function startHomeScene() {
     const observer = new IntersectionObserver((entries) => {
       state.visible = entries.some((entry) => entry.isIntersecting);
       section.classList.toggle("is-offscreen", !state.visible);
-      if (state.visible) applyLighting();
+      // The pulses are SMIL, which CSS cannot pause; the SVG can.
+      if (state.visible) {
+        svg.unpauseAnimations?.();
+        applyLighting();
+      } else {
+        svg.pauseAnimations?.();
+      }
     }, { threshold: 0.05 });
     observer.observe(section);
   }
@@ -368,26 +376,26 @@ function startHomeScene() {
   }
 
   function applyFlows(input) {
+    state.flowInput = input;
     const flows = flowsFor(input);
+    const reduce = reduceMotion.matches;
+    // The admin's pulse-speed setting scales every conduit's cycle.
+    const durationScale = PULSE_SPEED_DEFAULT / state.pulseSpeed;
     let activeRoutes = 0;
     for (const [key, flow] of Object.entries(flows)) {
       const part = parts.flows[key];
       if (!part?.track) continue;
       activeRoutes += flow.active ? 1 : 0;
       part.track.dataset.active = String(flow.active);
-      part.dash.dataset.active = String(flow.active);
-      part.dash.style.setProperty("--hs-flow-seconds", `${flow.seconds}s`);
-      part.dash.style.animationDirection = flow.direction > 0 ? "normal" : "reverse";
-      part.dash.setAttribute("stroke", flow.active ? flow.color : FLOW_COLORS.idle);
       part.track.setAttribute("stroke", flow.active ? flow.color : FLOW_COLORS.idle);
-      for (const dot of part.dots) {
-        dot.dataset.active = String(flow.active);
-        dot.setAttribute("fill", flow.color);
-        const motion = dot.querySelector("animateMotion");
-        if (motion) {
-          motion.setAttribute("dur", `${flow.seconds * 1.8}s`);
-          motion.setAttribute("keyPoints", flow.direction > 0 ? "0;1" : "1;0");
-        }
+      // Pulses are rebuilt only when their speed, direction or presence
+      // changes, so a steady reading never resets their spacing.
+      const seconds = flow.seconds * 2.2 * durationScale;
+      const signature = flow.active && !reduce ? `${seconds.toFixed(2)}:${flow.direction}:${flow.color}` : "";
+      if (signature !== part.signature) {
+        part.signature = signature;
+        if (signature) buildPulses(part.pulses, key, flow.color, seconds, flow.direction);
+        else part.pulses.replaceChildren();
       }
     }
     stage.dataset.activeRoutes = String(activeRoutes);
@@ -852,29 +860,63 @@ function batteryCabinet() {
 function route(...points) {
   return points.map((point, index) => `${index ? "L" : "M"} ${P(...point).map((v) => v.toFixed(1)).join(" ")}`).join(" ");
 }
+// The inverter box spans y 2.26..2.94 and z 1.2..2.2 on the wall. Solar
+// drops onto its top; the home circuit leaves its right side and climbs to a
+// run under the eave, above the cabinet, the door and the window; the
+// battery leaves the bottom right for the cabinet; the grid arrives at the
+// bottom left from the ground; the backup circuit leaves the left side for
+// the annex.
 const WALL = HOUSE.X1 + 0.06;
+const EAVE_RUN = HOUSE.EAVE - 0.28;
 const ROUTES = {
   solar: route([WALL, 2.6, 2.95], [WALL, 2.6, 2.2]),
-  battery: route([WALL, 2.6, 1.2], [WALL, 2.6, 0.55], [WALL, 3.45, 0.55]),
-  home: route([WALL, 2.6, 1.5], [WALL, 7.5, 1.5], [WALL, 7.5, 2.3]),
-  backup: route([WALL, 2.6, 1.0], [WALL, 0.06, 1.0], [ANNEX.X1 - 0.1, 0.06, 1.0], [ANNEX.X1 + 0.06, -0.3, 1.0]),
-  grid: route([NODES.grid.x, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, 2.6, 0.02], [WALL, 2.6, 0.02], [WALL, 2.6, 1.2]),
+  battery: route([WALL, 2.8, 1.2], [WALL, 2.8, 0.55], [WALL, 3.45, 0.55]),
+  home: route([WALL, 2.94, 1.85], [WALL, 3.18, 1.85], [WALL, 3.18, EAVE_RUN], [WALL, 7.62, EAVE_RUN], [WALL, 7.62, 2.35]),
+  backup: route([WALL, 2.26, 1.5], [WALL, 0.06, 1.5], [ANNEX.X1 - 0.1, 0.06, 1.5], [ANNEX.X1 + 0.06, -0.3, 1.5]),
+  grid: route([NODES.grid.x, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, 2.42, 0.02], [WALL, 2.42, 0.02], [WALL, 2.42, 1.2]),
 };
 
+// Each conduit is a solid hairline, lit in its colour while it carries power.
+// Power itself is a few soft pulses of light gliding along it, evenly spaced
+// whatever the speed, in the direction the meters report.
 function flows() {
   const g = el("g", { class: "hs-flows" });
   for (const [key, d] of Object.entries(ROUTES)) {
-    g.append(el("path", { id: `hsFlow-${key}-track`, class: "hs-flow-track", d, fill: "none", stroke: FLOW_COLORS.idle, "stroke-width": 2.4, "stroke-linecap": "round", "stroke-linejoin": "round", "data-active": "false" }));
-    g.append(el("path", { id: `hsFlow-${key}-dash`, class: "hs-flow-dash", d, fill: "none", stroke: FLOW_COLORS.idle, "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round", "data-active": "false" }));
-    for (let index = 0; index < 2; index += 1) {
-      const dot = el("circle", { class: "hs-flow-dot", r: 2.6, fill: FLOW_COLORS.idle, "data-flow": key, "data-active": "false", filter: "url(#hsGlow)" });
-      const motion = el("animateMotion", { dur: "4s", repeatCount: "indefinite", begin: `${index * 2}s`, keyPoints: "0;1", keyTimes: "0;1", calcMode: "linear" });
-      motion.append(el("mpath", { href: `#hsFlow-${key}-track` }));
-      dot.append(motion);
-      g.append(dot);
-    }
+    g.append(el("path", { id: `hsFlow-${key}-track`, class: "hs-flow-track", d, fill: "none", stroke: FLOW_COLORS.idle, "stroke-width": 1.6, "stroke-linecap": "round", "stroke-linejoin": "round", "data-active": "false" }));
+    g.append(el("g", { id: `hsFlow-${key}-pulses`, class: "hs-flow-pulses", "data-flow": key }));
   }
   return g;
+}
+
+// Pulses per conduit: about one per this many scene pixels of path, so the
+// long grid run carries several and the short drop from the roof just one.
+const PULSE_SPACING = 110;
+const PULSE_COUNT = 3;
+
+// (Re)build a conduit's pulses for a speed and direction. Each pulse begins
+// a fraction of a cycle before the last, in the document's own past, so they
+// stay evenly spaced from the moment they appear.
+function buildPulses(container, key, color, seconds, direction) {
+  container.replaceChildren();
+  const track = container.ownerDocument.getElementById(`hsFlow-${key}-track`);
+  const length = typeof track?.getTotalLength === "function" ? track.getTotalLength() : PULSE_SPACING * PULSE_COUNT;
+  const count = clamp(Math.round(length / PULSE_SPACING), 1, 4);
+  for (let index = 0; index < count; index += 1) {
+    const pulse = el("g", { class: "hs-pulse", fill: color });
+    pulse.append(el("circle", { class: "hs-pulse__halo", r: 6.5 }));
+    pulse.append(el("circle", { class: "hs-pulse__core", r: 2.4, filter: "url(#hsGlow)" }));
+    const motion = el("animateMotion", {
+      dur: `${seconds.toFixed(2)}s`,
+      begin: `${(-index * seconds / count).toFixed(2)}s`,
+      repeatCount: "indefinite",
+      keyPoints: direction > 0 ? "0;1" : "1;0",
+      keyTimes: "0;1",
+      calcMode: "linear",
+    });
+    motion.append(el("mpath", { href: `#hsFlow-${key}-track` }));
+    pulse.append(motion);
+    container.append(pulse);
+  }
 }
 
 // Where each callout pill sits: its leader line ends on `anchor` (world
