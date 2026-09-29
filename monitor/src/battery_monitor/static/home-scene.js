@@ -33,10 +33,10 @@ function pts(...points) {
 // Where each source and sink lives, in world units, and the screen point the
 // callouts' leader lines end on.
 const NODES = {
-  solar: { x: 2.95, y: 5.6, z: 4.4 },
-  home: { x: 2.5, y: 8.05, z: 2.35 },
-  inverter: { x: 5.05, y: 2.6, z: 1.7 },
-  battery: { x: 5.0, y: 4.05, z: 0.8 },
+  solar: { x: 2.95, y: 5.6, z: 4.95 },
+  home: { x: 2.5, y: 8.05, z: 2.7 },
+  inverter: { x: 5.05, y: 2.6, z: 2.65 },
+  battery: { x: 5.0, y: 2.6, z: 0.8 },
   grid: { x: -1.0, y: 8.7, z: 4.85 },
   backup: { x: 7.55, y: -1.6, z: 1.15 },
 };
@@ -657,7 +657,7 @@ function utilityPole() {
 // The main house: a long gabled block, its ridge along y, so the glazed
 // gable end faces the viewer's left and the long clad wall, with the door,
 // the cabinet and the inverter, faces the viewer's right under the array.
-const HOUSE = { X0: 0, X1: 5, Y0: 0, Y1: 8, EAVE: 3.0, RIDGE_X: 2.4, RIDGE_Z: 4.75 };
+const HOUSE = { X0: 0, X1: 5, Y0: 0, Y1: 8, EAVE: 3.6, RIDGE_X: 2.4, RIDGE_Z: 5.35 };
 
 function house() {
   const root = el("g", { class: "hs-house" });
@@ -686,25 +686,25 @@ function house() {
     body.append(el("polygon", { class: "hs-window-glass", points, fill: "url(#hsGlassDay)" }));
     lights.append(el("polygon", { class: "hs-window", points, fill: "url(#hsGlass)", "data-window": key }));
   };
-  const G0 = 0.35, G1 = 4.65, GZ0 = 0.22, GZ1 = 2.85;
+  const G0 = 0.35, G1 = 4.65, GZ0 = 0.22, GZ1 = 3.35;
   glass(pts([G0, Y1, GZ0], [G1, Y1, GZ0], [G1, Y1, GZ1], [G0, Y1, GZ1]), "gable");
   // The rooms: a floor slab, a wooden back wall, a stair of shelves.
-  lights.append(el("polygon", { class: "hs-interior", points: pts([G0, Y1, 1.5], [G1, Y1, 1.5], [G1, Y1, 1.62], [G0, Y1, 1.62]), fill: "#4a2a14", opacity: 0.85 }));
-  lights.append(el("polygon", { class: "hs-interior", points: pts([G0 + 0.3, Y1, GZ0], [G0 + 0.9, Y1, GZ0], [G0 + 0.9, Y1, 1.5], [G0 + 0.3, Y1, 1.5]), fill: "#8a5a2c", opacity: 0.45 }));
-  lights.append(el("polygon", { class: "hs-interior", points: pts([G1 - 1.4, Y1, 1.62], [G1 - 0.4, Y1, 1.62], [G1 - 0.4, Y1, 2.5], [G1 - 1.4, Y1, 2.5]), fill: "#8a5a2c", opacity: 0.4 }));
+  lights.append(el("polygon", { class: "hs-interior", points: pts([G0, Y1, 1.7], [G1, Y1, 1.7], [G1, Y1, 1.82], [G0, Y1, 1.82]), fill: "#4a2a14", opacity: 0.85 }));
+  lights.append(el("polygon", { class: "hs-interior", points: pts([G0 + 0.3, Y1, GZ0], [G0 + 0.9, Y1, GZ0], [G0 + 0.9, Y1, 1.7], [G0 + 0.3, Y1, 1.7]), fill: "#8a5a2c", opacity: 0.45 }));
+  lights.append(el("polygon", { class: "hs-interior", points: pts([G1 - 1.4, Y1, 1.82], [G1 - 0.4, Y1, 1.82], [G1 - 0.4, Y1, 2.9], [G1 - 1.4, Y1, 2.9]), fill: "#8a5a2c", opacity: 0.4 }));
   lights.append(el("polygon", { class: "hs-interior", points: pts([G0 + 1.3, Y1, GZ0 + 0.3], [G0 + 2.4, Y1, GZ0 + 0.3], [G0 + 2.4, Y1, GZ0 + 0.55], [G0 + 1.3, Y1, GZ0 + 0.55]), fill: "#3a2314", opacity: 0.8 }));
   // Mullions.
   for (const x of [1.42, 2.5, 3.58]) {
     lights.append(el("line", { class: "hs-mullion", x1: P(x, Y1, GZ0)[0], y1: P(x, Y1, GZ0)[1], x2: P(x, Y1, GZ1)[0], y2: P(x, Y1, GZ1)[1], stroke: "#0b0c0f", "stroke-width": 2.2 }));
   }
-  lights.append(el("line", { class: "hs-mullion", x1: P(G0, Y1, 1.56)[0], y1: P(G0, Y1, 1.56)[1], x2: P(G1, Y1, 1.56)[0], y2: P(G1, Y1, 1.56)[1], stroke: "#0b0c0f", "stroke-width": 2.6 }));
-  glass(pts([1.5, Y1, 3.2], [3.3, Y1, 3.2], [3.3, Y1, 3.95], [1.5, Y1, 3.95]), "gable-loft");
+  lights.append(el("line", { class: "hs-mullion", x1: P(G0, Y1, 1.76)[0], y1: P(G0, Y1, 1.76)[1], x2: P(G1, Y1, 1.76)[0], y2: P(G1, Y1, 1.76)[1], stroke: "#0b0c0f", "stroke-width": 2.6 }));
+  glass(pts([1.5, Y1, 3.75], [3.3, Y1, 3.75], [3.3, Y1, 4.45], [1.5, Y1, 4.45]), "gable-loft");
 
   // A window and the door on the long wall, and the porch lamp by the door.
-  glass(pts([X1, 6.5, 1.2], [X1, 7.4, 1.2], [X1, 7.4, 2.4], [X1, 6.5, 2.4]), "side");
+  glass(pts([X1, 6.5, 1.3], [X1, 7.4, 1.3], [X1, 7.4, 2.6], [X1, 6.5, 2.6]), "side");
   body.append(el("polygon", { points: pts([X1, 5.35, 0], [X1, 6.15, 0], [X1, 6.15, 2.2], [X1, 5.35, 2.2]), fill: "#2a1c11" }));
   body.append(el("polygon", { points: pts([X1, 5.42, 0.05], [X1, 6.08, 0.05], [X1, 6.08, 2.13], [X1, 5.42, 2.13]), fill: "#3d2917" }));
-  const lamp = P(X1 + 0.02, 6.3, 2.4);
+  const lamp = P(X1 + 0.02, 6.3, 2.5);
   body.append(el("rect", { x: lamp[0] - 3, y: lamp[1] - 4, width: 6, height: 5, rx: 1, fill: "#2f333a" }));
   lights.append(el("circle", { id: "hsLamp", class: "hs-lamp", cx: lamp[0], cy: lamp[1] + 3, r: 3, fill: "#ffd98a" }));
   lights.append(el("circle", { class: "hs-lamp-halo", cx: lamp[0], cy: lamp[1] + 6, r: 26, fill: "url(#hsWindowGlow)" }));
@@ -860,20 +860,25 @@ function batteryCabinet() {
 function route(...points) {
   return points.map((point, index) => `${index ? "L" : "M"} ${P(...point).map((v) => v.toFixed(1)).join(" ")}`).join(" ");
 }
-// The inverter box spans y 2.26..2.94 and z 1.2..2.2 on the wall. Solar
-// drops onto its top; the home circuit leaves its right side and climbs to a
-// run under the eave, above the cabinet, the door and the window; the
-// battery leaves the bottom right for the cabinet; the grid arrives at the
-// bottom left from the ground; the backup circuit leaves the left side for
-// the annex.
+// The inverter box spans y 2.26..2.94 and z 2.15..3.15 high on the wall, the
+// cabinet stands on the floor directly beneath it (y 2.0..3.2, to z 1.55).
+// Solar drops onto the inverter's top from the eave; the battery conduit is
+// the short drop from its underside onto the cabinet; the home circuit
+// leaves its right side and climbs to a run under the eave, above the door
+// and the window, to the glazed end; the grid comes along the ground, up
+// the wall clear of the cabinet, and into the inverter's left side; the
+// backup circuit leaves the left side above that, steps down past it and
+// runs on to the annex. No two conduits cross.
 const WALL = HOUSE.X1 + 0.06;
 const EAVE_RUN = HOUSE.EAVE - 0.28;
+const INVERTER_TOP = NODES.inverter.z + 0.5;
+const INVERTER_BOTTOM = NODES.inverter.z - 0.5;
 const ROUTES = {
-  solar: route([WALL, 2.6, 2.95], [WALL, 2.6, 2.2]),
-  battery: route([WALL, 2.8, 1.2], [WALL, 2.8, 0.55], [WALL, 3.45, 0.55]),
-  home: route([WALL, 2.94, 1.85], [WALL, 3.18, 1.85], [WALL, 3.18, EAVE_RUN], [WALL, 7.62, EAVE_RUN], [WALL, 7.62, 2.35]),
-  backup: route([WALL, 2.26, 1.5], [WALL, 0.06, 1.5], [ANNEX.X1 - 0.1, 0.06, 1.5], [ANNEX.X1 + 0.06, -0.3, 1.5]),
-  grid: route([NODES.grid.x, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, 2.42, 0.02], [WALL, 2.42, 0.02], [WALL, 2.42, 1.2]),
+  solar: route([WALL, 2.6, HOUSE.EAVE + 0.02], [WALL, 2.6, INVERTER_TOP]),
+  battery: route([WALL, 2.6, INVERTER_BOTTOM], [WALL, 2.6, 1.55]),
+  home: route([WALL, 2.94, 2.85], [WALL, 3.18, 2.85], [WALL, 3.18, EAVE_RUN], [WALL, 7.62, EAVE_RUN], [WALL, 7.62, 2.7]),
+  backup: route([WALL, 2.26, 2.9], [WALL, 1.55, 2.9], [WALL, 1.55, 1.5], [WALL, 0.06, 1.5], [ANNEX.X1 - 0.1, 0.06, 1.5], [ANNEX.X1 + 0.06, -0.3, 1.5]),
+  grid: route([NODES.grid.x, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, NODES.grid.y, 0.02], [HOUSE.X1 + 0.5, 1.9, 0.02], [WALL, 1.9, 0.02], [WALL, 1.9, 2.45], [WALL, 2.26, 2.45]),
 };
 
 // Each conduit is a solid hairline, lit in its colour while it carries power.
@@ -925,10 +930,10 @@ function buildPulses(container, key, color, seconds, direction) {
 const CALLOUTS = {
   solar: { anchor: [2.95, 5.6, 4.4], offset: [-46, -48], side: "left" },
   grid: { anchor: [NODES.grid.x, NODES.grid.y, 0.6], offset: [46, 46], side: "right" },
-  inverter: { anchor: [NODES.inverter.x, NODES.inverter.y, NODES.inverter.z - 0.45], offset: [40, 24], side: "right" },
+  inverter: { anchor: [NODES.inverter.x, NODES.inverter.y - 0.34, NODES.inverter.z + 0.5], offset: [46, -40], side: "right" },
   load: { anchor: [2.5, HOUSE.Y1 + 0.05, 2.35], offset: [-46, -54], side: "left" },
   backup: { anchor: [ANNEX.X1 + 0.05, -1.6, 1.15], offset: [24, -78], side: "right" },
-  battery: { anchor: [NODES.battery.x + 0.06, NODES.battery.y + 0.1, 0.95], offset: [34, 86], side: "right" },
+  battery: { anchor: [NODES.battery.x + 0.06, NODES.battery.y + 0.1, 0.95], offset: [40, 78], side: "right" },
 };
 
 function calloutPoints(callout) {
