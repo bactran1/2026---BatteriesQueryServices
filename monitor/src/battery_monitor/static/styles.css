@@ -4909,10 +4909,11 @@ select {
   }
 
   /* A closer view of the house on a phone: the picture outgrows the width
-     and its edges crop, the house itself kept in the middle. */
+     and its edges crop, but only the empty margins go; the pole at the left
+     and the garage at the right both stay in view. */
   .energy-flow {
-    --hs-zoom: 1.32;
-    --hs-focus: 0.53;
+    --hs-zoom: 1.14;
+    --hs-focus: 0.49;
     height: clamp(600px, 156vw, 680px);
     border-radius: 18px;
   }
