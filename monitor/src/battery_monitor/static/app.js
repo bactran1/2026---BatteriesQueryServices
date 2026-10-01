@@ -19,6 +19,7 @@ const state = {
   energyBucketSeconds: 3600,
   savingsPeriod: "month",
   savingsDate: localCalendarDateValue(new Date()),
+  savingsMonth: localCalendarMonthValue(new Date()),
   savings: null,
   weather: null,
   storage: {},
@@ -285,6 +286,8 @@ const translations = {
     "savings.date": "Date",
     "savings.selectDate": "Select day",
     "savings.selectDateAria": "Select savings date",
+    "savings.selectMonth": "Select month",
+    "savings.selectMonthAria": "Select savings month",
     "savings.today": "Today",
     "savings.month": "Month",
     "savings.year": "Year",
@@ -732,6 +735,8 @@ const translations = {
     "savings.date": "Ngày",
     "savings.selectDate": "Chọn ngày",
     "savings.selectDateAria": "Chọn ngày xem tiết kiệm",
+    "savings.selectMonth": "Chọn tháng",
+    "savings.selectMonthAria": "Chọn tháng xem tiết kiệm",
     "savings.today": "Hôm nay",
     "savings.month": "Tháng",
     "savings.year": "Năm",
@@ -998,6 +1003,10 @@ function localCalendarDateValue(date) {
   return `${year}-${month}-${day}`;
 }
 
+function localCalendarMonthValue(date) {
+  return localCalendarDateValue(date).slice(0, 7);
+}
+
 function applyStaticTranslations() {
   document.title = t("page.title");
   document.querySelectorAll("[data-i18n]").forEach((element) => {
@@ -1212,13 +1221,18 @@ async function refreshEnergyHistory() {
 
 async function refreshSavings() {
   const requestedDate = state.savingsDate;
+  const requestedMonth = state.savingsMonth;
   const params = new URLSearchParams({
     timezone: state.energyTimezone,
     date: requestedDate,
+    month: requestedMonth,
   });
   const payload = await getJson(`/api/savings?${params}`, "savings");
-  if (requestedDate !== state.savingsDate) return refreshSavings();
+  if (requestedDate !== state.savingsDate || requestedMonth !== state.savingsMonth) {
+    return refreshSavings();
+  }
   state.savingsDate = payload.selected_date || requestedDate;
+  state.savingsMonth = payload.selected_month || requestedMonth;
   state.savings = payload;
   state.lastSavingsRefreshAt = Date.now();
   state.resourceErrors.savings = null;
@@ -2620,11 +2634,19 @@ function renderSavings() {
     retained: "savings.retainedLabel",
   }[state.savingsPeriod] || "savings.monthLabel";
 
+  // The month window reads "This month" until another month is chosen, and
+  // then names that month.
+  const pastMonth = state.savingsPeriod === "month"
+    && state.savingsMonth !== localCalendarMonthValue(new Date());
   $("savingsPeriodLabel").textContent = state.savingsPeriod === "date"
     ? formatCalendarDate(state.savingsDate)
-    : t(periodLabelKey);
+    : pastMonth
+      ? formatCalendarMonth(state.savingsMonth)
+      : t(periodLabelKey);
   $("savingsDateControl").hidden = state.savingsPeriod !== "date";
   $("savingsDateInput").value = state.savingsDate;
+  $("savingsMonthControl").hidden = state.savingsPeriod !== "month";
+  syncSavingsMonthOptions();
   // Schedule 327 has no consumption tiers, so every figure here is one exact
   // number: the old tier-1-to-tier-2 range had nothing left to straddle.
   $("savingsEstimate").textContent = formatCurrency(
@@ -3385,6 +3407,48 @@ function formatCalendarDate(value) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${value}T12:00:00Z`));
+}
+
+function formatCalendarMonth(value) {
+  if (!/^\d{4}-\d{2}$/.test(String(value || ""))) return String(value || "");
+  return new Intl.DateTimeFormat(currentLocale(), {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value}-15T12:00:00Z`));
+}
+
+// The month picker offers every month the three-year archive can hold, the
+// current one first, named in the viewer's language. Its options are rebuilt
+// only when the language changes or the calendar moves to a new month.
+const SAVINGS_MONTH_CHOICES = 37;
+
+function syncSavingsMonthOptions() {
+  const select = $("savingsMonthSelect");
+  const newest = localCalendarMonthValue(new Date());
+  const signature = `${currentLocale()}:${newest}`;
+  if (select.dataset.signature !== signature) {
+    const cursor = new Date();
+    cursor.setDate(1);
+    const options = [];
+    for (let index = 0; index < SAVINGS_MONTH_CHOICES; index += 1) {
+      const option = document.createElement("option");
+      option.value = localCalendarMonthValue(cursor);
+      option.textContent = formatCalendarMonth(option.value);
+      options.push(option);
+      cursor.setMonth(cursor.getMonth() - 1);
+    }
+    select.replaceChildren(...options);
+    select.dataset.signature = signature;
+  }
+  // A month outside the list (one the server answered with) still shows.
+  if (![...select.options].some((option) => option.value === state.savingsMonth)) {
+    const option = document.createElement("option");
+    option.value = state.savingsMonth;
+    option.textContent = formatCalendarMonth(state.savingsMonth);
+    select.append(option);
+  }
+  select.value = state.savingsMonth;
 }
 
 function formatEnergyAxis(value) {
@@ -4516,6 +4580,14 @@ function bindControls() {
   savingsDateInput.addEventListener("change", () => {
     if (!savingsDateInput.value || savingsDateInput.value === state.savingsDate) return;
     state.savingsDate = savingsDateInput.value;
+    renderSavings();
+    refreshSavings().catch((error) => handleResourceFailure("savings", error));
+  });
+
+  const savingsMonthSelect = $("savingsMonthSelect");
+  savingsMonthSelect.addEventListener("change", () => {
+    if (!savingsMonthSelect.value || savingsMonthSelect.value === state.savingsMonth) return;
+    state.savingsMonth = savingsMonthSelect.value;
     renderSavings();
     refreshSavings().catch((error) => handleResourceFailure("savings", error));
   });
