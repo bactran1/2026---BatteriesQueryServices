@@ -1433,6 +1433,14 @@ button {
   color-scheme: light dark;
 }
 
+/* The month picker sits where the day picker does and matches its height. */
+.energy-date-control select {
+  min-height: 36px;
+  max-width: 220px;
+  border-radius: 8px;
+  padding: 0 30px 0 9px;
+}
+
 .energy-history-description {
   max-width: 720px;
   margin: 8px 0 0;
@@ -4625,7 +4633,8 @@ select {
     justify-content: space-between;
   }
 
-  .savings-date-control input {
+  .savings-date-control input,
+  .savings-date-control select {
     min-width: 0;
   }
 

@@ -71,6 +71,41 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(savings["date"]["solar_generation_kwh"], 3)
             self.assertEqual(savings["date"]["observed_days"], 1)
 
+    def test_savings_energy_uses_the_selected_month(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            now = datetime.now(timezone.utc)
+            # A morning squarely inside last month, whatever today's date is.
+            last_month = (now.replace(day=1) - timedelta(days=1)).replace(
+                day=15, hour=8, minute=0, second=0, microsecond=0
+            )
+            for captured_at, solar in [(last_month, 2.0), (last_month + timedelta(hours=1), 5.0)]:
+                store.insert_snapshot(
+                    _energy_snapshot(
+                        captured_at.isoformat(),
+                        consumption_kwh=4.0,
+                        solar_generation_kwh=solar,
+                        grid_import_kwh=1.0,
+                    )
+                )
+
+            chosen = store.savings_energy("UTC", selected_month=last_month.strftime("%Y-%m"))
+            current = store.savings_energy("UTC")
+            store.close()
+
+            # The chosen month carries last month's energy (the day's first
+            # reading counts in full, as the month view always has, then the
+            # rise to the second); the default month window is still the
+            # current month, which has nothing recorded.
+            self.assertEqual(chosen["month"]["solar_generation_kwh"], 5)
+            self.assertEqual(chosen["month"]["observed_days"], 1)
+            self.assertIsNone(current["month"]["solar_generation_kwh"])
+            self.assertEqual(current["month"]["observed_days"], 0)
+            # The other windows are unchanged by the month choice.
+            self.assertEqual(chosen["today"], current["today"])
+            self.assertEqual(chosen["retained"], current["retained"])
+
     def test_insert_snapshot_and_query_latest_history(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")

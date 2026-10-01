@@ -273,16 +273,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def savings(
         timezone_name: str = Query(default="America/Los_Angeles", alias="timezone"),
         date: str | None = Query(default=None),
+        month: str | None = Query(default=None),
     ):
         selected_date, _, _, _, _ = _calendar_day_window(date, timezone_name)
+        selected_month = _calendar_month(month, timezone_name)
         energy = await asyncio.to_thread(
             store.savings_energy,
             timezone_name,
             settings.retention_days,
             selected_date,
+            selected_month,
         )
         payload = build_savings_payload(energy, settings.utility_tariff)
         payload["selected_date"] = selected_date
+        payload["selected_month"] = selected_month
         return payload
 
     @app.get("/api/events")
@@ -658,6 +662,23 @@ def _range_seconds(value: str) -> int:
         return ranges[value]
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=f"Unsupported range: {value}") from exc
+
+
+def _calendar_month(month_value: str | None, timezone_name: str) -> str:
+    """The ``YYYY-MM`` month a savings window covers.
+
+    The month asked for, or the viewer's current month when none was.
+    """
+    try:
+        selected_zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(status_code=400, detail="Unknown timezone") from exc
+    if month_value is None:
+        return datetime.now(selected_zone).strftime("%Y-%m")
+    try:
+        return datetime.strptime(month_value, "%Y-%m").strftime("%Y-%m")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Month must use YYYY-MM") from exc
 
 
 def _calendar_day_window(
