@@ -424,7 +424,8 @@ class RetentionStore:
             ).date().isoformat()
             return self._energy_interval_history(selected_date, energy_timezone)
 
-        # "month" breaks the current calendar month into its days; "year" breaks
+        # "month" breaks a calendar month into its days (the month holding
+        # ``energy_date`` when one is given, else the current one); "year" breaks
         # the current calendar year into its months. Both bucket by the *viewer's*
         # local day (not the UTC date the daily_energy table is keyed by), so an
         # evening reading whose UTC clock has already rolled past midnight is not
@@ -440,8 +441,9 @@ class RetentionStore:
         offset_seconds = int((now_local.utcoffset() or timedelta()).total_seconds())
         if view == "month":
             period_expression = "local_date"  # one bucket per local day
-            selected_period = now_local.strftime("%Y-%m")
-            start_local = now_local.replace(
+            anchor = _month_anchor(energy_date, now_local)
+            selected_period = anchor.strftime("%Y-%m")
+            start_local = anchor.replace(
                 day=1, hour=0, minute=0, second=0, microsecond=0
             )
             end_local = (start_local + timedelta(days=32)).replace(day=1)
@@ -641,6 +643,7 @@ class RetentionStore:
         energy_timezone: str,
         retention_days: int = 1095,
         selected_date: str | None = None,
+        selected_month: str | None = None,
     ) -> dict[str, dict[str, Any]]:
         zone = ZoneInfo(energy_timezone)
         now = datetime.now(zone)
@@ -649,8 +652,11 @@ class RetentionStore:
         selected_day_start = datetime.strptime(selected_day, "%Y-%m-%d").replace(
             tzinfo=zone
         )
-        month_start = today_start.replace(day=1)
-        year_start = month_start.replace(month=1)
+        # The month window is whichever month the viewer picked, the current
+        # one by default; the year window stays the current year.
+        chosen_month = selected_month or today_start.strftime("%Y-%m")
+        month_start = datetime.strptime(chosen_month, "%Y-%m").replace(tzinfo=zone)
+        year_start = today_start.replace(month=1, day=1)
         retained_start = now - timedelta(days=retention_days)
         with self._lock:
             retained_totals = self._energy_totals_locked()
@@ -666,7 +672,7 @@ class RetentionStore:
                 today_start + timedelta(days=1),
             ),
             "month": (
-                self.energy_history("month", None, energy_timezone),
+                self.energy_history("month", chosen_month, energy_timezone),
                 month_start,
                 (month_start + timedelta(days=32)).replace(day=1),
             ),
@@ -1617,6 +1623,19 @@ def _counter_delta_expression(meter: str, previous: str) -> str:
             ELSE {meter}
         END
     """
+
+
+def _month_anchor(value: str | None, now_local: datetime) -> datetime:
+    """A moment inside the month a view covers.
+
+    ``value`` may be a ``YYYY-MM-DD`` day or a bare ``YYYY-MM`` month; either
+    picks that month. Anything else, or nothing, keeps the current month.
+    """
+    try:
+        parsed = datetime.strptime(str(value or "")[:7], "%Y-%m")
+    except ValueError:
+        return now_local
+    return now_local.replace(year=parsed.year, month=parsed.month, day=1)
 
 
 def _sum_energy_rows(rows: list[Any]) -> dict[str, float | None]:

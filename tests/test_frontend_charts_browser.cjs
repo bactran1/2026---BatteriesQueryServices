@@ -82,6 +82,7 @@ const server = http.createServer((request, response) => {
   else if (url.pathname === "/api/savings") body = JSON.stringify({
     ...savings,
     selected_date:url.searchParams.get("date") || day,
+    selected_month:url.searchParams.get("month") || day.slice(0, 7),
   });
   else if (url.pathname.startsWith("/api/")) body = "{}";
   else {
@@ -279,6 +280,25 @@ async function closeReadout(page, id) {
           assert.equal(await page.locator("#savingsDateControl").isVisible(), true);
           assert.equal(await page.locator("#savingsDateInput").inputValue(), selectedSavingsDay);
           assert.notEqual(await page.locator("#savingsPeriodLabel").innerText(), "");
+          // The month window offers a choice of month; picking last month
+          // asks the server for it and names it in the heading.
+          await page.locator('[data-savings-period="month"]').click();
+          assert.equal(await page.locator("#savingsMonthControl").isVisible(), true);
+          assert.equal(await page.locator("#savingsDateControl").isVisible(), false);
+          const thisMonthLabel = await page.locator("#savingsPeriodLabel").innerText();
+          const previousMonth = await page.locator("#savingsMonthSelect option").nth(1).getAttribute("value");
+          assert.match(previousMonth, /^\d{4}-\d{2}$/);
+          const selectedSavingsMonthResponse = page.waitForResponse(response => {
+            const responseUrl = new URL(response.url());
+            return responseUrl.pathname === "/api/savings"
+              && responseUrl.searchParams.get("month") === previousMonth;
+          });
+          await page.locator("#savingsMonthSelect").selectOption(previousMonth);
+          await selectedSavingsMonthResponse;
+          assert.equal(await page.locator("#savingsMonthSelect").inputValue(), previousMonth);
+          const previousMonthLabel = await page.locator("#savingsPeriodLabel").innerText();
+          assert.notEqual(previousMonthLabel, "");
+          assert.notEqual(previousMonthLabel, thisMonthLabel);
           const savingsLayout = await page.locator("#energySavingsSection").evaluate(section => {
             const sectionRect = section.getBoundingClientRect();
             const clipped = [...section.querySelectorAll("*")]
