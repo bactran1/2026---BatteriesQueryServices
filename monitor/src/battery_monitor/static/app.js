@@ -17,6 +17,7 @@ const state = {
   energyWindowStart: null,
   energyWindowEnd: null,
   energyBucketSeconds: 3600,
+  energySolarPeak: null,
   savingsPeriod: "month",
   savingsDate: localCalendarDateValue(new Date()),
   savingsMonth: localCalendarMonthValue(new Date()),
@@ -214,6 +215,7 @@ const translations = {
     "inverter.identity": "{serial} · Protocol {protocol}",
     "inverter.solar": "Solar array",
     "inverter.solarToday": "{voltage} · {current} · {energy} today",
+    "inverter.solarPeak": "Peak today {power} at {time}",
     "inverter.grid": "Grid",
     "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
     "inverter.load": "Backup load",
@@ -253,6 +255,8 @@ const translations = {
     "energyHistory.grid": "Grid draw",
     "energyHistory.kwhAwaiting": "kWh · awaiting data",
     "energyHistory.kwhPeriod": "kWh · {period}",
+    "energyHistory.solarPeakAt": "peak {power} at {time}",
+    "energyHistory.solarPeakOn": "peak {power} on {date}",
     "energyHistory.lastHour": "last 60 minutes",
     "energyHistory.chartAria": "Energy consumption, solar generation and grid draw, in kilowatt-hours by period",
     "energyHistory.pointAria": "Energy for {period}: {values}",
@@ -642,6 +646,7 @@ const translations = {
     "inverter.identity": "{serial} · Giao thức {protocol}",
     "inverter.solar": "Hệ thống điện mặt trời",
     "inverter.solarToday": "{voltage} · {current} · hôm nay {energy}",
+    "inverter.solarPeak": "Đỉnh hôm nay {power} lúc {time}",
     "inverter.grid": "Điện lưới",
     "inverter.gridElectrical": "L1 {l1} · L2 {l2} · {frequency}",
     "inverter.load": "Phụ tải dự phòng",
@@ -681,6 +686,8 @@ const translations = {
     "energyHistory.grid": "Điện lấy từ lưới",
     "energyHistory.kwhAwaiting": "kWh · đang chờ dữ liệu",
     "energyHistory.kwhPeriod": "kWh · {period}",
+    "energyHistory.solarPeakAt": "đỉnh {power} lúc {time}",
+    "energyHistory.solarPeakOn": "đỉnh {power} ngày {date}",
     "energyHistory.lastHour": "60 phút gần nhất",
     "energyHistory.chartAria": "Biểu đồ lịch sử năng lượng theo kilowatt-giờ",
     "energyHistory.pointAria": "Năng lượng trong {period}: {values}",
@@ -1171,6 +1178,9 @@ async function refreshEnergyHistory() {
     state.energySummaryPeriod = latestEnergyHistoryPoint(state.energyHistory);
     state.energySummary = payload.totals || sumEnergyHistoryPoints(state.energyHistory);
   }
+  state.energySolarPeak = payload.solar_peak && typeof payload.solar_peak === "object"
+    ? payload.solar_peak
+    : null;
   state.lastEnergyRefreshAt = Date.now();
   state.resourceErrors.energy = null;
   $("energyHistoryChart").removeAttribute("data-refresh-error");
@@ -1755,6 +1765,16 @@ function renderInverterTelemetry() {
         energy: formatEnergy(reading.pv_energy_today_kwh),
       })
     : t("inverter.waiting");
+  const peak = state.livePayload?.solar_peak_today;
+  const peakPower = finiteNumber(peak?.peak_power_w);
+  const peakLine = $("inverterSolarPeak");
+  peakLine.hidden = peakPower === null || !Number.isFinite(peak.peak_at_unix);
+  if (!peakLine.hidden) {
+    peakLine.textContent = t("inverter.solarPeak", {
+      power: formatPower(peakPower),
+      time: formatClockTime(new Date(peak.peak_at_unix * 1000)),
+    });
+  }
   $("inverterGridPower").textContent = formatGridPower(telemetry.gridPower);
   $("inverterGridDetail").textContent = hasReading
     ? t("inverter.gridElectrical", {
@@ -2498,6 +2518,17 @@ function renderEnergyHistory() {
   ["energyConsumptionPeriod", "energySolarPeriod", "energyGridPeriod"].forEach((id) => {
     $(id).textContent = periodText;
   });
+  // The solar total also names the window's strongest moment: the clock
+  // time for a single day, the date for a month or a year of days.
+  const peak = state.energySolarPeak;
+  const peakPower = finiteNumber(peak?.peak_power_w);
+  if (summaryPeriod && peakPower !== null && Number.isFinite(peak.peak_at_unix)) {
+    const moment = new Date(peak.peak_at_unix * 1000);
+    const peakText = state.energyView === "month" || state.energyView === "year"
+      ? t("energyHistory.solarPeakOn", { power: formatPower(peakPower), date: shortDate(moment) })
+      : t("energyHistory.solarPeakAt", { power: formatPower(peakPower), time: formatClockTime(moment) });
+    $("energySolarPeriod").textContent = `${periodText} · ${peakText}`;
+  }
   $("energyHistoryTotals").setAttribute(
     "aria-label",
     summaryPeriod
@@ -4124,6 +4155,13 @@ function formatTime(value) {
   }).format(new Date(value));
 }
 
+function formatClockTime(value) {
+  return new Intl.DateTimeFormat(currentLocale(), {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function shortDate(value) {
   return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
@@ -4393,6 +4431,7 @@ function bindControls() {
     state.energyHistory = [];
     state.energySummary = {};
     state.energySummaryPeriod = null;
+    state.energySolarPeak = null;
     state.energyWindowStart = null;
     state.energyWindowEnd = null;
     state.energyBucketSeconds = 3600;
@@ -4455,6 +4494,7 @@ function bindControls() {
       state.energyHistory = [];
       state.energySummary = {};
       state.energySummaryPeriod = null;
+      state.energySolarPeak = null;
       state.energyWindowStart = null;
       state.energyWindowEnd = null;
       state.energyBucketSeconds = 3600;

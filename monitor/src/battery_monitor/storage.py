@@ -169,6 +169,16 @@ class RetentionStore:
                     ON inverter_readings (captured_at_unix);
                 CREATE INDEX IF NOT EXISTS idx_inverter_readings_inverter_time
                     ON inverter_readings (inverter_id, captured_at_unix);
+                CREATE TABLE IF NOT EXISTS solar_peaks (
+                    peak_date TEXT PRIMARY KEY,
+                    inverter_id TEXT NOT NULL,
+                    peak_power_w REAL NOT NULL,
+                    peak_at TEXT NOT NULL,
+                    peak_at_unix INTEGER NOT NULL,
+                    updated_at_unix INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_solar_peaks_time
+                    ON solar_peaks (peak_at_unix);
                 """
             )
             self._ensure_column("collector_stream_id", "TEXT")
@@ -249,6 +259,7 @@ class RetentionStore:
         with self._lock:
             inserted = self._insert_snapshot_locked(snapshot)
             self._insert_inverter_reading_locked(snapshot)
+            self._record_solar_peak_locked(snapshot)
             self._upsert_daily_energy_locked(snapshot)
             self._recompute_tou_days_locked(self._tou_days_for(snapshot))
             self.connection.commit()
@@ -263,6 +274,7 @@ class RetentionStore:
                     continue
                 inserted += self._insert_snapshot_locked(snapshot)
                 self._insert_inverter_reading_locked(snapshot)
+                self._record_solar_peak_locked(snapshot)
                 self._upsert_daily_energy_locked(snapshot)
                 touched.update(self._tou_days_for(snapshot))
             # One rollup pass per affected day, not per snapshot: a backfill page
@@ -288,12 +300,16 @@ class RetentionStore:
             inverter_cursor = self.connection.execute(
                 "DELETE FROM inverter_readings WHERE captured_at_unix < ?", (cutoff,)
             )
+            peak_cursor = self.connection.execute(
+                "DELETE FROM solar_peaks WHERE peak_at_unix < ?", (cutoff,)
+            )
             self.connection.commit()
             return (
                 int(cursor.rowcount or 0)
                 + int(energy_cursor.rowcount or 0)
                 + int(tou_cursor.rowcount or 0)
                 + int(inverter_cursor.rowcount or 0)
+                + int(peak_cursor.rowcount or 0)
             )
 
     def integrity_check(self) -> dict[str, Any]:
@@ -316,6 +332,7 @@ class RetentionStore:
             inverter = self.connection.execute("DELETE FROM inverter_readings")
             energy = self.connection.execute("DELETE FROM daily_energy")
             tou = self.connection.execute("DELETE FROM tou_energy")
+            peaks = self.connection.execute("DELETE FROM solar_peaks")
             self.connection.commit()
             try:
                 self.connection.execute("VACUUM")
@@ -327,6 +344,7 @@ class RetentionStore:
                 "inverter_readings": int(inverter.rowcount or 0),
                 "daily_energy": int(energy.rowcount or 0),
                 "tou_energy": int(tou.rowcount or 0),
+                "solar_peaks": int(peaks.rowcount or 0),
             }
 
     def backup_bytes(self) -> bytes:
@@ -524,6 +542,8 @@ class RetentionStore:
         return {
             "view": view,
             "selected_period": selected_period,
+            "window_start_unix": int(start_local.timestamp()),
+            "window_end_unix": int(end_local.timestamp()),
             "points": points,
             "totals": _sum_energy_rows(rows),
         }
@@ -1000,6 +1020,161 @@ class RetentionStore:
                 return day
         return None
 
+    # ------------------------------------------------------------------
+    # Daily solar peak
+    # ------------------------------------------------------------------
+    # One row per tariff-local day keeps the strongest solar reading of the
+    # day and the moment it was seen. The row is raised as readings arrive,
+    # so it is already complete when the day ends and nothing is lost to a
+    # restart, a late replay from the collector's buffer or a gap part-way
+    # through the day.
+
+    def solar_peak_today(self) -> dict[str, Any] | None:
+        return self.solar_peak_for_day(self._tariff_day(int(time.time())))
+
+    def solar_peak_for_day(self, day: date_type) -> dict[str, Any] | None:
+        with self._lock:
+            row = self.connection.execute(
+                "SELECT * FROM solar_peaks WHERE peak_date = ?", (day.isoformat(),)
+            ).fetchone()
+        return _solar_peak_from_row(row)
+
+    def solar_peak_between(
+        self, start_unix: int, end_unix: int
+    ) -> dict[str, Any] | None:
+        """The strongest daily peak whose moment falls inside the span."""
+        with self._lock:
+            row = self.connection.execute(
+                """
+                SELECT * FROM solar_peaks
+                WHERE peak_at_unix >= ? AND peak_at_unix < ?
+                ORDER BY peak_power_w DESC, peak_at_unix ASC
+                LIMIT 1
+                """,
+                (int(start_unix), int(end_unix)),
+            ).fetchone()
+        return _solar_peak_from_row(row)
+
+    def solar_peaks(self, days: int) -> list[dict[str, Any]]:
+        """The most recent days' peaks, newest first."""
+        with self._lock:
+            rows = self.connection.execute(
+                "SELECT * FROM solar_peaks ORDER BY peak_date DESC LIMIT ?",
+                (max(1, int(days)),),
+            ).fetchall()
+        return [peak for peak in (_solar_peak_from_row(row) for row in rows) if peak]
+
+    def backfill_solar_peaks(self, budget_seconds: float = 5.0) -> int:
+        """Record the peak for archived days that have none yet.
+
+        Readings logged before the peak table existed are measured here,
+        newest days first and within a wall-clock budget, the way the
+        time-of-use rollup fills in.
+        """
+        deadline = time.monotonic() + max(0.0, budget_seconds)
+        recorded = 0
+        while time.monotonic() < deadline:
+            with self._lock:
+                day = self._next_day_without_peak_locked()
+                if day is None:
+                    return recorded
+                self._recompute_solar_peak_day_locked(day)
+                self.connection.commit()
+            recorded += 1
+        return recorded
+
+    def _next_day_without_peak_locked(self) -> date_type | None:
+        """The newest day with a solar reading but no peak row.
+
+        Walks back one day at a time with an indexed lookup per step, so a
+        fully recorded archive costs one seek per day rather than a scan of
+        every reading.
+        """
+        before = int(time.time()) + 24 * 60 * 60
+        while True:
+            row = self.connection.execute(
+                """
+                SELECT MAX(captured_at_unix) AS newest
+                FROM inverter_readings
+                WHERE solar_power_w >= 0 AND captured_at_unix < ?
+                """,
+                (before,),
+            ).fetchone()
+            if row is None or row["newest"] is None:
+                return None
+            day = self._tariff_day(int(row["newest"]))
+            covered = self.connection.execute(
+                "SELECT 1 FROM solar_peaks WHERE peak_date = ?", (day.isoformat(),)
+            ).fetchone()
+            if covered is None:
+                return day
+            before, _ = self._day_bounds(day)
+
+    def _recompute_solar_peak_day_locked(self, day: date_type) -> None:
+        day_start, day_end = self._day_bounds(day)
+        row = self.connection.execute(
+            """
+            SELECT inverter_id, solar_power_w, captured_at, captured_at_unix
+            FROM inverter_readings
+            WHERE captured_at_unix >= ? AND captured_at_unix < ?
+              AND solar_power_w >= 0
+            ORDER BY solar_power_w DESC, captured_at_unix ASC
+            LIMIT 1
+            """,
+            (day_start, day_end),
+        ).fetchone()
+        if row is None:
+            return
+        self._upsert_solar_peak_locked(
+            day,
+            str(row["inverter_id"]),
+            float(row["solar_power_w"]),
+            str(row["captured_at"]),
+            int(row["captured_at_unix"]),
+        )
+
+    def _record_solar_peak_locked(self, snapshot: dict[str, Any]) -> None:
+        row = _inverter_reading_row(snapshot)
+        if row is None:
+            return
+        power = row.get("solar_power_w")
+        if power is None or power < 0:
+            return
+        self._upsert_solar_peak_locked(
+            self._tariff_day(int(row["captured_at_unix"])),
+            str(row["inverter_id"]),
+            float(power),
+            str(row["captured_at"]),
+            int(row["captured_at_unix"]),
+        )
+
+    def _upsert_solar_peak_locked(
+        self,
+        day: date_type,
+        inverter_id: str,
+        power_w: float,
+        at: str,
+        at_unix: int,
+    ) -> None:
+        # A stronger reading replaces the day's record; an equal one leaves
+        # the earlier moment in place.
+        self.connection.execute(
+            """
+            INSERT INTO solar_peaks (
+                peak_date, inverter_id, peak_power_w, peak_at, peak_at_unix,
+                updated_at_unix
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(peak_date) DO UPDATE SET
+                inverter_id = excluded.inverter_id,
+                peak_power_w = excluded.peak_power_w,
+                peak_at = excluded.peak_at,
+                peak_at_unix = excluded.peak_at_unix,
+                updated_at_unix = excluded.updated_at_unix
+            WHERE excluded.peak_power_w > solar_peaks.peak_power_w
+            """,
+            (day.isoformat(), inverter_id, power_w, at, at_unix, int(time.time())),
+        )
+
     def _tou_days_for(self, snapshot: dict[str, Any]) -> set[date_type]:
         row = _daily_energy_row(snapshot)
         if row is None:
@@ -1243,6 +1418,9 @@ class RetentionStore:
                 FROM inverter_readings
                 """
             ).fetchone()
+            peak_row = self.connection.execute(
+                "SELECT COUNT(*) AS day_count FROM solar_peaks"
+            ).fetchone()
         return {
             "database_path": str(self.database_path),
             "database_size_bytes": self._database_size_bytes(),
@@ -1256,6 +1434,7 @@ class RetentionStore:
             "inverter_point_count": int(inverter_row["point_count"] or 0),
             "oldest_inverter_reading_at": inverter_row["oldest_reading_at"],
             "newest_inverter_reading_at": inverter_row["newest_reading_at"],
+            "solar_peak_day_count": int(peak_row["day_count"] or 0),
             "retention_days": retention_days,
         }
 
@@ -1526,6 +1705,18 @@ def _daily_energy_row(snapshot: dict[str, Any]) -> dict[str, Any] | None:
         "captured_at": captured_at,
         "captured_at_unix": captured_at_unix,
         **energy,
+    }
+
+
+def _solar_peak_from_row(row: Any) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {
+        "date": str(row["peak_date"]),
+        "inverter_id": str(row["inverter_id"]),
+        "peak_power_w": _rounded_number(row["peak_power_w"]),
+        "peak_at": str(row["peak_at"]),
+        "peak_at_unix": int(row["peak_at_unix"]),
     }
 
 

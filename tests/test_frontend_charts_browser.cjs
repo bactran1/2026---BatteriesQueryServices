@@ -22,9 +22,14 @@ const energy = Array.from({length:24}, (_, index) => ({
   period:`${day} ${String(index).padStart(2,"0")}:00`, consumption_kwh:1.8,
   solar_generation_kwh:Math.max(0, 3 * Math.sin((index-6) * Math.PI / 12)), grid_import_kwh:0.4,
 }));
+const solarPeak = {
+  date:day, inverter_id:"inverter-1", peak_power_w:6210,
+  peak_at:new Date((start + 45600) * 1000).toISOString(), peak_at_unix:start + 45600,
+};
 const live = {
   collector_status:"online", collector_error:null, monitor:{last_success_at:new Date().toISOString()},
   snapshot:{batteries:[]}, summary:{}, rack:{expected_battery_count:3,batteries:[]}, storage:{},
+  solar_peak_today:solarPeak,
 };
 const weather = {
   status:"ok",source:"Open-Meteo",location:"King County, WA",
@@ -78,7 +83,8 @@ const server = http.createServer((request, response) => {
   else if (url.pathname === "/api/power-history") body = JSON.stringify({points:power,
     selected_date:day,window_start_unix:start,window_end_unix:start+86400,bucket_seconds:1800});
   else if (url.pathname === "/api/energy") body = JSON.stringify({points:energy,
-    selected_date:day,selected_period:day,window_start_unix:start,window_end_unix:start+86400});
+    selected_date:day,selected_period:day,window_start_unix:start,window_end_unix:start+86400,
+    solar_peak:solarPeak});
   else if (url.pathname === "/api/savings") body = JSON.stringify({
     ...savings,
     selected_date:url.searchParams.get("date") || day,
@@ -267,6 +273,10 @@ async function closeReadout(page, id) {
           await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
           assert.match(await page.locator("#savingsEstimate").innerText(), /\$/);
+          // The day's solar peak shows on the inverter tile and beside the
+          // energy history's solar total, in the viewer's number format.
+          assert.match(await page.locator("#inverterSolarPeak").innerText(), /6[.,]21 kW/);
+          assert.match(await page.locator("#energySolarPeriod").innerText(), /6[.,]21 kW/);
           await page.locator('[data-savings-period="year"]').click();
           assert.match(await page.locator("#savingsEstimate").innerText(), /1[,.]1|1[,.]2/);
           await page.locator('[data-savings-period="date"]').click();

@@ -208,6 +208,7 @@ async function loadStorage() {
     ["Newest reading", formatWhen(stats.newest_reading_at)],
     ["Inverter points", Number(stats.inverter_point_count || 0).toLocaleString()],
     ["Energy points", Number(stats.energy_point_count || 0).toLocaleString()],
+    ["Solar peak days", Number(stats.solar_peak_day_count || 0).toLocaleString()],
     ["Writable", healthy ? "Yes" : "No", healthy ? "is-ok" : "is-bad"],
     ["Integrity", intact ? "OK" : (integrity && integrity.integrity_check) || "Unknown", intact ? "is-ok" : "is-bad"],
   ]);
