@@ -64,11 +64,15 @@ class MonitorService:
                     await self.prune_once()
                     next_prune_at = now + 60 * 60
                 if now >= next_tou_backfill_at:
-                    # History logged before the time-of-use switch has no rollup.
-                    # Rebuild it in bounded slices so the archive fills in without
-                    # stalling a poll cycle.
+                    # History logged before the time-of-use switch has no rollup,
+                    # and days logged before the peak table existed have no peak.
+                    # Rebuild both in bounded slices so the archive fills in
+                    # without stalling a poll cycle.
                     rebuilt = await self.backfill_tou_once()
-                    next_tou_backfill_at = now + (60.0 if rebuilt else 60 * 60)
+                    recorded = await self.backfill_solar_peaks_once()
+                    next_tou_backfill_at = now + (
+                        60.0 if rebuilt or recorded else 60 * 60
+                    )
 
             elapsed = time.monotonic() - cycle_started
             wait_seconds = max(
@@ -195,6 +199,22 @@ class MonitorService:
             if isinstance(exc, (OSError, sqlite3.Error)):
                 self.last_storage_error = str(exc)
             logger.warning("time-of-use rollup failed: %s", exc)
+            return 0
+
+    async def backfill_solar_peaks_once(self, budget_seconds: float = 2.0) -> int:
+        """Record the daily solar peak for one slice of days that lack it."""
+        try:
+            recorded = await asyncio.to_thread(
+                self.store.backfill_solar_peaks, budget_seconds
+            )
+            if recorded:
+                logger.info("recorded the solar peak of %s archived day(s)", recorded)
+                self.last_storage_error = None
+            return recorded
+        except Exception as exc:
+            if isinstance(exc, (OSError, sqlite3.Error)):
+                self.last_storage_error = str(exc)
+            logger.warning("solar peak backfill failed: %s", exc)
             return 0
 
     async def log_once(self) -> None:

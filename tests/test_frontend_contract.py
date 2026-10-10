@@ -422,6 +422,23 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".chart-tooltip--energy", css)
         self.assertIn(".energy-tooltip__row", css)
 
+    def test_daily_solar_peak_is_shown_on_the_inverter_tile_and_energy_totals(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        admin = (STATIC / "admin.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="inverterSolarPeak"', html)
+        self.assertIn("state.livePayload?.solar_peak_today", javascript)
+        self.assertIn("state.energySolarPeak = payload.solar_peak", javascript)
+        self.assertIn("function formatClockTime", javascript)
+        self.assertIn('"inverter.solarPeak": "Peak today {power} at {time}"', javascript)
+        self.assertIn('"inverter.solarPeak": "Đỉnh hôm nay {power} lúc {time}"', javascript)
+        self.assertIn('"energyHistory.solarPeakOn": "peak {power} on {date}"', javascript)
+        self.assertIn('"energyHistory.solarPeakAt": "đỉnh {power} lúc {time}"', javascript)
+        self.assertIn(".inverter-metric .inverter-peak", css)
+        self.assertIn("solar_peak_day_count", admin)
+
     def test_energy_savings_uses_logged_energy_and_pse_rate_metadata(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")

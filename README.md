@@ -99,6 +99,7 @@ Defaults:
 - Retention: 1095 days, approximately 3 years
 - Storage path on the x86_64 host: `./data/monitor/battery-monitor.sqlite3`
 - CSV export: dashboard download button or `GET /api/export.csv`
+- Daily solar peak: the strongest solar power reading of each day, and the moment it was seen, is kept in the monitor database as readings arrive, one row per day on the tariff's clock, so the record is complete when the day ends and survives restarts and replayed gaps. Days logged before the feature existed are measured from the archive in the background. The inverter tile shows today's peak, the Energy history solar total names the strongest moment of the window it shows, and `GET /api/solar-peaks?days=30` lists recent days.
 - Energy history: grouped bars for hourly, monthly, and yearly consumption, solar generation, and grid import in kWh. Long timelines scroll within the chart with a fixed value axis. The Date view shows hourly bars for a local calendar day selected with `GET /api/energy?view=date&date=YYYY-MM-DD&timezone=Area/City`
 - Power history: line charts near the top of the dashboard with separate grid, direct battery, solar, Home load (CT-side), Backup load (direct inverter output), and Rack SOC series. SOC uses a dashed teal line and its own fixed 0-100% right axis; each series can be toggled independently. Use `GET /api/power-history?range=date&date=YYYY-MM-DD&timezone=Area/City` for a fixed local 0:00–24:00 calendar day, or `range=24h` for a running 24 hours (direct battery charging and grid import are positive; discharge and export are negative)
 - Energy Savings: current-dollar estimates for a chosen day, a chosen month (any month in the three-year archive, this month by default), this year, and the retained three-year archive, priced under PSE Schedule 327 (Residential Time-of-Use with Super Off-Peak). Each recorded kilowatt-hour is valued at the price of the time period it crossed the meter, so the panel shows one exact figure per window plus a per-period breakdown: the kilowatt-hours bought and generated in each period, what that grid purchase cost, and what the solar was worth. A donut divides the window's whole electricity value into the three periods that were bought plus the share solar covered. The panel values recorded solar production as usable net-metering credit. The unavoidable `$7.49` basic charge is excluded.
@@ -504,8 +505,10 @@ Monitor:
 
 - `GET /` - dashboard
 - `GET /healthz` - monitor health
-- `GET /api/live` - cached collector snapshot with connection state and archive stats
+- `GET /api/live` - cached collector snapshot with connection state, archive stats and today's solar peak
 - `GET /api/history` - chart history
+- `GET /api/energy` - energy history for a view; `solar_peak` names the window's strongest solar moment
+- `GET /api/solar-peaks?days=30` - the highest solar power recorded on each recent day
 - `GET /api/events` - recent alarms, faults, and collector errors
 - `GET /api/export.csv` - CSV export
 

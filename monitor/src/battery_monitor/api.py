@@ -131,9 +131,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/live")
     async def live():
         effective = admin_settings.effective_settings(settings)
-        snapshot, storage = await asyncio.gather(
+        snapshot, storage, solar_peak_today = await asyncio.gather(
             asyncio.to_thread(monitor.cached_snapshot),
             asyncio.to_thread(store.stats, effective.retention_days),
+            asyncio.to_thread(store.solar_peak_today),
         )
         collector_status = monitor.connection_state()
         batteries = snapshot.get("batteries", [])
@@ -146,6 +147,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "collector_reachable": monitor.collector_reachable(),
             "monitor": monitor.status(),
             "storage": storage,
+            # The day's strongest solar reading so far, on the tariff's clock.
+            "solar_peak_today": solar_peak_today,
             "summary": _summary(batteries),
             "rack": rack_details(
                 effective,
@@ -205,12 +208,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ZoneInfo(timezone_name)
         except ZoneInfoNotFoundError as exc:
             raise HTTPException(status_code=400, detail="Unknown timezone") from exc
-        return await asyncio.to_thread(
+        payload = await asyncio.to_thread(
             store.energy_history,
             view,
             date,
             timezone_name,
         )
+        payload["solar_peak"] = await asyncio.to_thread(
+            _energy_window_solar_peak, store, view, date, timezone_name, payload
+        )
+        return payload
+
+    @app.get("/api/solar-peaks")
+    async def solar_peaks(days: int = Query(default=30, ge=1, le=1095)):
+        """The highest solar power recorded on each of the most recent days."""
+        return {
+            "timezone": settings.utility_tariff.timezone,
+            "days": await asyncio.to_thread(store.solar_peaks, days),
+        }
 
     @app.get("/api/power-history")
     async def power_history(
@@ -662,6 +677,30 @@ def _range_seconds(value: str) -> int:
         return ranges[value]
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=f"Unsupported range: {value}") from exc
+
+
+def _energy_window_solar_peak(
+    store: RetentionStore,
+    view: str,
+    date_value: str | None,
+    timezone_name: str,
+    payload: dict,
+) -> dict | None:
+    """The strongest daily solar peak inside an energy view's window.
+
+    The Hour tab is a rolling hour, so it reports today's peak; the other
+    views ask for the best day inside their own calendar span.
+    """
+    if view == "hour":
+        return store.solar_peak_today()
+    if view == "date":
+        _, _, _, start, end = _calendar_day_window(date_value, timezone_name)
+        return store.solar_peak_between(start, end)
+    start = payload.get("window_start_unix")
+    end = payload.get("window_end_unix")
+    if start is None or end is None:
+        return None
+    return store.solar_peak_between(int(start), int(end))
 
 
 def _calendar_month(month_value: str | None, timezone_name: str) -> str:

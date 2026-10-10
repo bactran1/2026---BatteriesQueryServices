@@ -1274,6 +1274,16 @@ button {
   font-weight: 720;
 }
 
+/* The day's strongest solar moment, under the live array figure. */
+.inverter-metric .inverter-peak {
+  color: #8a7200;
+  font-weight: 700;
+}
+
+.inverter-peak[hidden] {
+  display: none;
+}
+
 .inverter-runtime[hidden] {
   display: none;
 }

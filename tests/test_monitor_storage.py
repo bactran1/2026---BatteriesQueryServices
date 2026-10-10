@@ -1164,3 +1164,136 @@ class TimeOfUseRollupTests(unittest.TestCase):
             store.close()
             self.assertIn("tou_energy", purged)
             self.assertGreater(purged["tou_energy"], 0)
+
+
+class SolarPeakTests(unittest.TestCase):
+    """The strongest solar reading of each day, kept as readings arrive."""
+
+    ZONE = ZoneInfo("America/Los_Angeles")
+
+    def _store(self, directory: str) -> RetentionStore:
+        store = RetentionStore(
+            Path(directory) / "monitor.sqlite3", "America/Los_Angeles"
+        )
+        store.initialize()
+        return store
+
+    def _solar_reading(self, moment: datetime, solar_power_w: float | None) -> dict:
+        return _energy_snapshot(
+            moment.astimezone(timezone.utc).isoformat(),
+            consumption_kwh=1.0,
+            solar_generation_kwh=1.0,
+            grid_import_kwh=0.0,
+            solar_power_w=solar_power_w,
+        )
+
+    def test_peak_rises_with_readings_and_keeps_the_first_moment_of_a_tie(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            day = datetime.now(self.ZONE).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            noon = day.replace(hour=12)
+            store.insert_snapshot(self._solar_reading(day.replace(hour=9), 1800.0))
+            store.insert_snapshot(self._solar_reading(noon, 6210.0))
+            store.insert_snapshot(self._solar_reading(day.replace(hour=13), 6210.0))
+            store.insert_snapshot(self._solar_reading(day.replace(hour=15), 3100.0))
+            # A reading without solar telemetry neither lowers nor clears it.
+            store.insert_snapshot(self._solar_reading(day.replace(hour=16), None))
+
+            peak = store.solar_peak_for_day(day.date())
+            today = store.solar_peak_today()
+            listed = store.solar_peaks(7)
+            store.close()
+
+            self.assertIsNotNone(peak)
+            self.assertEqual(peak["date"], day.date().isoformat())
+            self.assertEqual(peak["peak_power_w"], 6210)
+            self.assertEqual(peak["peak_at_unix"], int(noon.timestamp()))
+            self.assertEqual(peak["inverter_id"], "inverter-1")
+            self.assertEqual(today, peak)
+            self.assertEqual(listed, [peak])
+
+    def test_days_follow_the_tariff_clock_not_utc(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            # 23:30 in Los Angeles is already the next day in UTC.
+            late = datetime(2026, 6, 10, 23, 30, tzinfo=self.ZONE)
+            store.insert_snapshot(self._solar_reading(late, 120.0))
+            store.insert_snapshot(
+                self._solar_reading(datetime(2026, 6, 11, 12, 0, tzinfo=self.ZONE), 5400.0)
+            )
+
+            listed = store.solar_peaks(30)
+            store.close()
+
+            self.assertEqual(
+                [(row["date"], row["peak_power_w"]) for row in listed],
+                [("2026-06-11", 5400), ("2026-06-10", 120)],
+            )
+
+    def test_backfill_measures_archived_days_newest_first_then_stops(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            older = datetime(2026, 3, 2, 0, 0, tzinfo=self.ZONE)
+            newer = datetime(2026, 3, 5, 0, 0, tzinfo=self.ZONE)
+            for day, power in ((older, 2500.0), (newer, 4100.0)):
+                store.insert_snapshots(
+                    [
+                        self._solar_reading(day.replace(hour=10), power / 2),
+                        self._solar_reading(day.replace(hour=12), power),
+                    ]
+                )
+            # Readings logged before the peak table existed have no rows.
+            with store._lock:
+                store.connection.execute("DELETE FROM solar_peaks")
+                store.connection.commit()
+            self.assertEqual(store.solar_peaks(30), [])
+
+            self.assertEqual(store.backfill_solar_peaks(budget_seconds=5.0), 2)
+            self.assertEqual(store.backfill_solar_peaks(budget_seconds=5.0), 0)
+            listed = store.solar_peaks(30)
+            store.close()
+
+            self.assertEqual(
+                [(row["date"], row["peak_power_w"]) for row in listed],
+                [("2026-03-05", 4100), ("2026-03-02", 2500)],
+            )
+            self.assertEqual(
+                listed[0]["peak_at_unix"], int(newer.replace(hour=12).timestamp())
+            )
+
+    def test_window_lookup_names_the_strongest_day_in_the_span(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            for day, power in (("2026-07-03", 3000.0), ("2026-07-14", 6800.0), ("2026-08-01", 7200.0)):
+                moment = datetime.fromisoformat(f"{day}T12:00").replace(tzinfo=self.ZONE)
+                store.insert_snapshot(self._solar_reading(moment, power))
+            july_start = int(datetime(2026, 7, 1, tzinfo=self.ZONE).timestamp())
+            august_start = int(datetime(2026, 8, 1, tzinfo=self.ZONE).timestamp())
+
+            best = store.solar_peak_between(july_start, august_start)
+            nothing = store.solar_peak_between(0, july_start)
+            store.close()
+
+            self.assertEqual(best["date"], "2026-07-14")
+            self.assertEqual(best["peak_power_w"], 6800)
+            self.assertIsNone(nothing)
+
+    def test_pruning_purging_and_stats_cover_the_peaks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            today = datetime.now(self.ZONE).replace(hour=12, minute=0, second=0, microsecond=0)
+            store.insert_snapshot(self._solar_reading(today - timedelta(days=400), 900.0))
+            store.insert_snapshot(self._solar_reading(today, 5000.0))
+            self.assertEqual(store.stats(1095)["solar_peak_day_count"], 2)
+
+            store.prune_older_than_days(365)
+            self.assertEqual([row["peak_power_w"] for row in store.solar_peaks(30)], [5000])
+
+            purged = store.purge_all()
+            count = store.stats(1095)["solar_peak_day_count"]
+            store.close()
+
+            self.assertEqual(purged["solar_peaks"], 1)
+            self.assertEqual(count, 0)
