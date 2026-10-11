@@ -1922,6 +1922,10 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.savings-primary > strong[data-negative="true"] {
+  color: var(--orange);
+}
+
 .savings-primary > p {
   max-width: 390px;
   margin: 9px 0 22px;
@@ -2297,7 +2301,7 @@ button {
 
 .savings-tariff {
   display: grid;
-  grid-template-columns: 1.45fr repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1.45fr repeat(4, minmax(0, 1fr));
   margin-top: 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -4341,11 +4345,16 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .savings-tariff > div:nth-child(2) {
+  /* The plan's name takes a row of its own; the four figures pair up. */
+  .savings-tariff > div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .savings-tariff > div:nth-child(odd) {
     border-right: 0;
   }
 
-  .savings-tariff > div:nth-child(-n + 2) {
+  .savings-tariff > div:nth-child(-n + 3) {
     border-bottom: 1px solid var(--line);
   }
 
@@ -4689,8 +4698,8 @@ select {
   }
 
   .savings-tariff > div,
-  .savings-tariff > div:nth-child(2),
-  .savings-tariff > div:nth-child(-n + 2) {
+  .savings-tariff > div:nth-child(odd),
+  .savings-tariff > div:nth-child(-n + 3) {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }

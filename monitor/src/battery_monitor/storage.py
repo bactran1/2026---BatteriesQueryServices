@@ -717,8 +717,61 @@ class RetentionStore:
                 "tou": self.tou_energy_totals(
                     int(start.timestamp()), int(end.timestamp())
                 ),
+                # And its grid draw month by month, with the share of each
+                # month's tier-1 allowance the window owns, so the same energy
+                # can be priced under a tiered plan for comparison.
+                "tier_plan": self._tier_plan(key, start, end, now),
             }
             for key, (payload, start, end) in periods.items()
+        }
+
+    def _tier_plan(
+        self, key: str, start: datetime, end: datetime, now: datetime
+    ) -> dict[str, Any]:
+        """How a tiered plan's monthly allowance applies to one window.
+
+        A tiered bill grants its cheaper first block once per billing month.
+        A month the window covers from its first day owns the whole block,
+        even while that month is still running; a single day owns its share
+        of its month; the archive's oldest month owns the part of it the
+        archive reaches.
+        """
+        if key in {"date", "today"}:
+            months = {start.strftime("%Y-%m"): 1.0 / _days_in_month(start)}
+        else:
+            months = {}
+            cursor = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            last = min(end - timedelta(seconds=1), now)
+            while cursor <= last:
+                label = cursor.strftime("%Y-%m")
+                if cursor < start:
+                    owned = _days_in_month(cursor) - (start.day - 1)
+                    months[label] = owned / _days_in_month(cursor)
+                else:
+                    months[label] = 1.0
+                cursor = (cursor + timedelta(days=32)).replace(day=1)
+        with self._lock:
+            rows = self.connection.execute(
+                """
+                SELECT substr(energy_date, 1, 7) AS month,
+                       SUM(grid_import_kwh) AS grid_import_kwh
+                FROM tou_energy
+                WHERE day_start_unix >= ? AND day_start_unix < ?
+                GROUP BY month
+                """,
+                (int(start.timestamp()), int(end.timestamp())),
+            ).fetchall()
+        grid = {str(row["month"]): float(row["grid_import_kwh"] or 0.0) for row in rows}
+        return {
+            "allowance_months": round(sum(months.values()), 6),
+            "months": [
+                {
+                    "month": month,
+                    "allowance_fraction": round(fraction, 6),
+                    "grid_import_kwh": round(grid.get(month, 0.0), 4),
+                }
+                for month, fraction in sorted(months.items())
+            ],
         }
 
     def _observed_solar_days(
@@ -1706,6 +1759,11 @@ def _daily_energy_row(snapshot: dict[str, Any]) -> dict[str, Any] | None:
         "captured_at_unix": captured_at_unix,
         **energy,
     }
+
+
+def _days_in_month(moment: datetime) -> int:
+    first = moment.replace(day=1, hour=12, minute=0, second=0, microsecond=0)
+    return ((first + timedelta(days=32)).replace(day=1) - first).days
 
 
 def _solar_peak_from_row(row: Any) -> dict[str, Any] | None:

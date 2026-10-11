@@ -50,6 +50,13 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual(settings.utility_tariff.super_off_peak_usd_per_kwh, 0.076)
         self.assertEqual(settings.utility_tariff.timezone, "America/Los_Angeles")
         self.assertEqual(settings.utility_tariff.municipal_tax_percent, 6.5)
+        # Schedule 7, the comparison plan, keeps its defaults when unset.
+        self.assertEqual(
+            settings.utility_tariff.comparison_schedule, "Residential Service (Schedule 7)"
+        )
+        self.assertEqual(settings.utility_tariff.comparison_tier_1_usd_per_kwh, 0.187465)
+        self.assertEqual(settings.utility_tariff.comparison_tier_2_usd_per_kwh, 0.206882)
+        self.assertEqual(settings.utility_tariff.comparison_tier_1_limit_kwh, 600)
         self.assertTrue(settings.weather_enabled)
         self.assertEqual(settings.weather_latitude, 47.61)
         self.assertEqual(settings.weather_longitude, -122.33)

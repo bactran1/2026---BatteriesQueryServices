@@ -40,8 +40,13 @@ def build_savings_payload(
     all_rates = [value for value in taxed.values() if value > 0]
     current_period = period_for(moment)
 
+    comparison = {
+        "tier_1": tariff.comparison_tier_1_usd_per_kwh * tax_multiplier,
+        "tier_2": tariff.comparison_tier_2_usd_per_kwh * tax_multiplier,
+        "limit": tariff.comparison_tier_1_limit_kwh,
+    }
     periods = {
-        key: _period_value(value, taxed, season_rates)
+        key: _period_value(value, taxed, season_rates, comparison)
         for key, value in energy.items()
     }
     return {
@@ -88,9 +93,20 @@ def build_savings_payload(
             "effective_rate_high_usd_per_kwh": (
                 round(max(all_rates), 6) if all_rates else None
             ),
+            # The standard plan the savings figure compares against.
+            "comparison": {
+                "schedule": tariff.comparison_schedule,
+                "kind": "tiered",
+                "tier_1_usd_per_kwh": round(comparison["tier_1"], 6),
+                "tier_2_usd_per_kwh": round(comparison["tier_2"], 6),
+                "tier_1_limit_kwh": comparison["limit"],
+            },
         },
         "methodology": {
-            "kind": "time_of_use_solar_value",
+            # The headline is the grid bill's saving against the standard
+            # plan; the solar value is still reported beside it.
+            "kind": "time_of_use_vs_tiered_grid_cost",
+            "savings_basis": "schedule_7_grid_cost_minus_time_of_use_grid_cost",
             "net_metering_assumed": True,
             "fixed_charge_excluded": True,
             "municipal_tax_included": tariff.municipal_tax_percent > 0,
@@ -103,6 +119,7 @@ def _period_value(
     energy: dict[str, Any],
     taxed: dict[str, float],
     season_rates: dict[str, float],
+    comparison: dict[str, float],
 ) -> dict[str, Any]:
     solar = _nonnegative_number(energy.get("solar_generation_kwh"))
     grid = _nonnegative_number(energy.get("grid_import_kwh"))
@@ -162,7 +179,26 @@ def _period_value(
         else round((grid_cost or 0.0) + (savings or 0.0), 2)
     )
 
+    # The same grid draw billed on the standard tiered plan, and what the
+    # time-of-use plan saved against it. Positive means time-of-use was the
+    # cheaper bill; negative means the standard plan would have been.
+    tiered_cost, tier_1_kwh = _tiered_cost(grid, energy.get("tier_plan"), comparison)
+    rate_savings = (
+        None
+        if tiered_cost is None or grid_cost is None
+        else round(tiered_cost - grid_cost, 2)
+    )
+    rate_daily = (
+        None
+        if rate_savings is None or observed_days <= 0
+        else round(rate_savings / observed_days, 2)
+    )
+
     return {
+        "comparison_grid_cost_usd": tiered_cost,
+        "comparison_tier_1_kwh": tier_1_kwh,
+        "rate_savings_usd": rate_savings,
+        "average_rate_savings_per_observed_day_usd": rate_daily,
         "solar_generation_kwh": _rounded(solar),
         "grid_import_kwh": _rounded(grid),
         "consumption_kwh": _rounded(consumption),
@@ -186,6 +222,41 @@ def _period_value(
         "average_savings_per_observed_day_usd_low": daily,
         "average_savings_per_observed_day_usd_high": daily,
     }
+
+
+def _tiered_cost(
+    grid: float | None, plan: Any, comparison: dict[str, float]
+) -> tuple[float | None, float | None]:
+    """Bill a window's grid draw on a two-tier monthly plan.
+
+    Each month's draw fills that month's share of the first block before
+    any of it is billed at the second price. The window total is then split
+    in the same proportion, so the comparison prices exactly the kilowatt-
+    hours the time-of-use figure prices. With no monthly breakdown yet (the
+    rollup still backfilling) the window's whole allowance is applied to its
+    whole draw.
+    """
+    if grid is None:
+        return None, None
+    plan = plan if isinstance(plan, dict) else {}
+    months = [m for m in plan.get("months") or [] if isinstance(m, dict)]
+    limit = max(0.0, float(comparison["limit"]))
+    classified = sum(max(0.0, float(m.get("grid_import_kwh") or 0.0)) for m in months)
+    if classified > 0:
+        within = sum(
+            min(
+                max(0.0, float(m.get("grid_import_kwh") or 0.0)),
+                limit * max(0.0, float(m.get("allowance_fraction") or 0.0)),
+            )
+            for m in months
+        )
+        tier_1 = grid * (within / classified)
+    else:
+        allowance = limit * max(0.0, float(plan.get("allowance_months", 1.0) or 0.0))
+        tier_1 = min(grid, allowance)
+    tier_2 = max(0.0, grid - tier_1)
+    cost = tier_1 * comparison["tier_1"] + tier_2 * comparison["tier_2"]
+    return round(cost, 2), round(tier_1, 4)
 
 
 def _priced_period(

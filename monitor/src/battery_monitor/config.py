@@ -39,6 +39,12 @@ class UtilityTariff:
     super_off_peak_usd_per_kwh: float
     basic_charge_usd: float
     municipal_tax_percent: float
+    # The standard plan the savings figure is measured against: PSE Schedule 7,
+    # Residential Service, two consumption tiers per billing month.
+    comparison_schedule: str = "Residential Service (Schedule 7)"
+    comparison_tier_1_usd_per_kwh: float = 0.187465
+    comparison_tier_2_usd_per_kwh: float = 0.206882
+    comparison_tier_1_limit_kwh: float = 600.0
 
     def rates(self) -> dict[str, float]:
         """Prices keyed as ``tariff.rate_for`` expects them."""
@@ -166,6 +172,18 @@ def load_settings() -> Settings:
             ),
             municipal_tax_percent=max(
                 0.0, float(os.getenv("BQM_UTILITY_MUNICIPAL_TAX_PERCENT", "0"))
+            ),
+            comparison_schedule=os.getenv(
+                "BQM_UTILITY_COMPARISON_SCHEDULE", "Residential Service (Schedule 7)"
+            ),
+            comparison_tier_1_usd_per_kwh=max(
+                0.0, float(os.getenv("BQM_UTILITY_TIER_1_USD_PER_KWH", "0.187465"))
+            ),
+            comparison_tier_2_usd_per_kwh=max(
+                0.0, float(os.getenv("BQM_UTILITY_TIER_2_USD_PER_KWH", "0.206882"))
+            ),
+            comparison_tier_1_limit_kwh=max(
+                0.0, float(os.getenv("BQM_UTILITY_TIER_1_LIMIT_KWH", "600"))
             ),
         ),
         weather_enabled=_environment_bool("BQM_WEATHER_ENABLED", True),
