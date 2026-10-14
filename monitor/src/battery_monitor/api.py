@@ -92,7 +92,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/")
     async def index():
         return HTMLResponse(
-            render_index(STATIC_DIR / "index.html", static_version),
+            render_index(
+                STATIC_DIR / "index.html",
+                static_version,
+                settings.build_commit,
+                settings.build_commit_date,
+            ),
             headers={"Cache-Control": "no-store"},
         )
 

@@ -133,17 +133,21 @@ update_git_checkout() {
 
 set_image_identity() {
   local commit
+  local commit_date
   local tag
 
   if git_is_available; then
     commit="$(git rev-parse HEAD)"
+    commit_date="$(git log -1 --format=%cs HEAD)"
     tag="$(git rev-parse --short=12 HEAD)"
   else
     commit="unknown"
+    commit_date=""
     tag="$(date -u +%Y%m%d%H%M%S)"
   fi
 
   export MONITOR_COMMIT="${MONITOR_COMMIT:-${commit}}"
+  export MONITOR_COMMIT_DATE="${MONITOR_COMMIT_DATE:-${commit_date}}"
   export MONITOR_IMAGE_NAME="${MONITOR_IMAGE_NAME:-battery-monitor}"
   export MONITOR_IMAGE_TAG="${MONITOR_IMAGE_TAG:-${tag}}"
 }
@@ -276,7 +280,7 @@ set_image_identity
 
 log "Collector URL: ${BQM_COLLECTOR_URL}"
 log "Image: ${MONITOR_IMAGE_NAME}:${MONITOR_IMAGE_TAG}"
-log "Build commit: ${MONITOR_COMMIT}"
+log "Build commit: ${MONITOR_COMMIT} (${MONITOR_COMMIT_DATE:-no date})"
 log "Building ${SERVICE_NAME} from the current Git commit..."
 BUILD_ARGS=(build --pull)
 if [[ "${USE_CACHE}" -eq 0 ]]; then

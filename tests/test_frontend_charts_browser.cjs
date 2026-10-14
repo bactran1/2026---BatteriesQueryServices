@@ -106,7 +106,7 @@ const server = http.createServer((request, response) => {
       response.writeHead(404); response.end(); return;
     }
     body = fs.readFileSync(file);
-    if (file.endsWith("index.html")) body = body.toString().replaceAll("__BUILD_COMMIT__", "chart-test");
+    if (file.endsWith("index.html")) body = body.toString().replaceAll("__BUILD_COMMIT__", "chart-test").replaceAll("__APP_VERSION_TITLE__", "dev").replaceAll("__APP_VERSION__", "dev");
     type = types[path.extname(file)] || "application/octet-stream";
   }
   response.writeHead(200, {"Content-Type":type,"Cache-Control":"no-store"});
