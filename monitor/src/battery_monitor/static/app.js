@@ -2731,6 +2731,10 @@ function renderSavingsTou(period, tariff) {
     return;
   }
 
+  // Each figure carries its column heading: on narrow screens the header row
+  // is gone and the figures sit under the period name instead.
+  const cell = (label, value) =>
+    `<span role="cell" data-label="${escapeHtml(t(label))}">${escapeHtml(value)}</span>`;
   container.innerHTML = rows
     .map(({ key, values }) => `
       <div class="savings-tou__row" role="row" data-tou="${escapeHtml(key)}">
@@ -2738,19 +2742,24 @@ function renderSavingsTou(period, tariff) {
           <strong>${escapeHtml(t(TOU_PERIOD_LABELS[key]))}</strong>
           <small>${escapeHtml(t(TOU_PERIOD_WINDOWS[key]))}</small>
         </span>
-        <span role="cell">${escapeHtml(formatRate(values.rate_usd_per_kwh))}</span>
-        <span role="cell">${escapeHtml(formatEnergyWithUnit(values.solar_generation_kwh))}</span>
-        <span role="cell">${escapeHtml(formatEnergyWithUnit(values.grid_import_kwh))}</span>
-        <span role="cell">${escapeHtml(formatCurrency(values.grid_cost_usd))}</span>
-        <span role="cell">${escapeHtml(formatCurrency(values.savings_usd))}</span>
+        ${cell("savings.touRate", formatRate(values.rate_usd_per_kwh))}
+        ${cell("savings.touSolar", formatEnergyWithUnit(values.solar_generation_kwh))}
+        ${cell("savings.touGrid", formatEnergyWithUnit(values.grid_import_kwh))}
+        ${cell("savings.touGridCost", formatCurrency(values.grid_cost_usd))}
+        ${cell("savings.touValue", formatCurrency(values.savings_usd))}
       </div>`)
     .join("");
 
   const sum = (field) => rows.reduce((total, row) => total + (finiteNumber(row.values[field]) ?? 0), 0);
-  $("savingsTouTotalSolar").textContent = formatEnergyWithUnit(sum("solar_generation_kwh"));
-  $("savingsTouTotalGrid").textContent = formatEnergyWithUnit(sum("grid_import_kwh"));
-  $("savingsTouTotalGridCost").textContent = formatCurrency(sum("grid_cost_usd"));
-  $("savingsTouTotalValue").textContent = formatCurrency(sum("savings_usd"));
+  const total = (id, label, value) => {
+    const element = $(id);
+    element.textContent = value;
+    element.dataset.label = t(label);
+  };
+  total("savingsTouTotalSolar", "savings.touSolar", formatEnergyWithUnit(sum("solar_generation_kwh")));
+  total("savingsTouTotalGrid", "savings.touGrid", formatEnergyWithUnit(sum("grid_import_kwh")));
+  total("savingsTouTotalGridCost", "savings.touGridCost", formatCurrency(sum("grid_cost_usd")));
+  total("savingsTouTotalValue", "savings.touValue", formatCurrency(sum("savings_usd")));
   renderSavingsDonut(period, rows);
 }
 
@@ -2779,6 +2788,7 @@ function renderSavingsDonut(period, rows) {
   }
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
   centre.textContent = total > 0 ? formatCurrency(total) : "--";
+  fitDonutTotal(centre);
 
   if (!total) {
     svg.replaceChildren(...svg.querySelectorAll("title, desc"));
@@ -2820,6 +2830,23 @@ function renderSavingsDonut(period, rows) {
         <span class="savings-donut__share">${escapeHtml(formatPercent(arc.value / total * 100))}</span>
       </li>`)
     .join("");
+}
+
+// The hole is the inner radius twice over, as a share of the plot's width.
+const DONUT_HOLE_FRACTION = 0.56;
+
+// The total has to fit inside the hole whatever the locale makes of it:
+// "$71.54" does at full size, "71,54 US$" does not, so the figure shrinks to
+// the hole rather than spilling over the ring.
+function fitDonutTotal(centre) {
+  centre.style.fontSize = "";
+  const plot = centre.closest(".savings-donut__plot");
+  if (!plot) return;
+  const hole = plot.getBoundingClientRect().width * DONUT_HOLE_FRACTION * 0.84;
+  const width = centre.getBoundingClientRect().width;
+  if (hole <= 0 || width <= hole) return;
+  const size = parseFloat(window.getComputedStyle(centre).fontSize);
+  centre.style.fontSize = `${Math.max(12, Math.floor(size * hole / width))}px`;
 }
 
 // A donut arc as an SVG path: outer edge clockwise, inner edge back.
@@ -4585,6 +4612,23 @@ function bindControls() {
       energyChartResizeFrame = window.requestAnimationFrame(drawEnergyHistoryChart);
     });
     energyObserver.observe(energyChartContainer);
+    // The donut's hole follows the plot's width, so its total is refitted
+    // whenever the plot changes size, such as on a phone turning sideways.
+    const donutPlot = $("savingsDonutTotal")?.closest(".savings-donut__plot");
+    if (donutPlot) {
+      new ResizeObserver(() => fitDonutTotal($("savingsDonutTotal"))).observe(donutPlot);
+    }
+    // On narrow screens the flow scene's copy block sits above its top
+    // callouts, and its height follows the language and the weather line, so
+    // the callouts take its measured bottom edge rather than a fixed offset.
+    const flowSection = $("energyFlowSection");
+    const flowCopy = flowSection?.querySelector(".energy-flow__copy");
+    if (flowSection && flowCopy) {
+      new ResizeObserver(() => {
+        const bottom = flowCopy.getBoundingClientRect().bottom - flowSection.getBoundingClientRect().top;
+        flowSection.style.setProperty("--energy-flow-copy-bottom", `${Math.ceil(bottom)}px`);
+      }).observe(flowCopy);
+    }
   } else {
     window.addEventListener("resize", () => {
       window.cancelAnimationFrame(chartResizeFrame);

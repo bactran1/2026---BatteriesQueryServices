@@ -2223,6 +2223,62 @@ button {
   }
 }
 
+@media (max-width: 560px) {
+  /* Below about 560px three figures no longer fit beside a period name, least
+     of all in Vietnamese, so each period becomes its own block: the name and
+     its hours on top, the three figures beneath. The header row goes and each
+     figure carries its own column heading instead. */
+  .savings-tou__row--head {
+    display: none;
+  }
+
+  .savings-tou__row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px 10px;
+    /* A heading that wraps pushes its figure down; bottom alignment keeps the
+       three figures on one line regardless. */
+    align-items: end;
+    padding: 11px 0;
+  }
+
+  .savings-tou__row > span:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .savings-tou__row > span:nth-child(2) {
+    grid-column: 1;
+  }
+
+  .savings-tou__row > span:nth-child(5) {
+    grid-column: 2;
+  }
+
+  .savings-tou__row > span:nth-child(6) {
+    grid-column: 3;
+  }
+
+  .savings-tou__row > span:not(:first-child) {
+    text-align: left;
+  }
+
+  .savings-tou__row > span:not(:first-child)::before {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--muted);
+    content: attr(data-label);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  /* The total row has no rate; its empty cell would otherwise show a bare
+     heading. */
+  .savings-tou__row--total > span:nth-child(2) {
+    display: none;
+  }
+}
+
 .savings-share > div:first-child {
   display: flex;
   align-items: baseline;
@@ -4122,6 +4178,21 @@ select {
   }
 }
 
+@media (max-width: 960px) {
+  /* Five cells across leave a rate range or the comparison plan's name no
+     room, so the plan's name takes a row of its own and the four figures
+     share the next. */
+  .savings-tariff {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .savings-tariff > div:first-child {
+    grid-column: 1 / -1;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
 @media (max-width: 760px) {
   .shell {
     width: min(100% - 20px, 1480px);
@@ -4437,10 +4508,13 @@ select {
     min-height: 0;
   }
 
+  /* The copy block sits above the top callouts and its height follows the
+     language and the weather line, so each callout clears the copy's
+     measured bottom edge (set by app.js) as well as its own place. */
   .energy-flow__callout--inverter,
   .energy-flow__callout--solar,
   .energy-flow__callout--grid {
-    top: 260px;
+    top: max(260px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
   }
 }
 
@@ -4559,12 +4633,12 @@ select {
   .energy-flow__callout--inverter,
   .energy-flow__callout--solar,
   .energy-flow__callout--grid {
-    top: 276px;
+    top: max(276px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
   }
 
   .energy-flow__callout--inverter {
     --leader-length: 138px;
-    top: 322px;
+    top: max(322px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
     left: 2%;
     width: 104px;
   }
@@ -4581,7 +4655,7 @@ select {
 
   .energy-flow__callout--grid {
     --leader-length: 144px;
-    top: 289px;
+    top: max(289px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
     right: 0;
     width: 80px;
   }
@@ -4650,6 +4724,10 @@ select {
   .savings-date-control {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .savings-date-control > span {
+    white-space: nowrap;
   }
 
   .savings-date-control input,

@@ -115,11 +115,11 @@ Schedule 327 prices a kilowatt-hour by when it crossed the meter, not by how man
 
 | Period | Hours | Winter (Oct 1 – Mar 31) | Summer (Apr 1 – Sep 30) |
 | --- | --- | --- | --- |
-| Peak | Weekdays 7–10 a.m. and 5–8 p.m., excluding legal holidays | `$0.504/kWh` | `$0.272/kWh` |
-| Off-peak | Weekdays 10 a.m.–5 p.m. and 8 p.m.–11 p.m.; weekends and holidays 7 a.m.–11 p.m. | `$0.127/kWh` | `$0.122/kWh` |
-| Super off-peak | Every day 11 p.m.–7 a.m. | `$0.076/kWh` | `$0.076/kWh` |
+| Peak | Weekdays 7–10 a.m. and 5–8 p.m., excluding legal holidays | `$0.551096/kWh` | `$0.319360/kWh` |
+| Off-peak | Weekdays 10 a.m.–5 p.m. and 8 p.m.–11 p.m.; weekends and holidays 7 a.m.–11 p.m. | `$0.174609/kWh` | `$0.169576/kWh` |
+| Super off-peak | Every day 11 p.m.–7 a.m. | `$0.123063/kWh` | `$0.123063/kWh` |
 
-These are the prices PSE publishes for the plan, set through `BQM_UTILITY_*` (see `.env.example`); re-check them at each rate filing. The period structure lives in `tariff.py` because it changes only when PSE refiles the schedule; the prices live in configuration because they do not.
+These are the "Total per kWh" prices from PSE's Summary of Total Current Prices effective October 1, 2026: the Schedule 327 energy charge plus every per-kWh rider, adjustment and credit (power cost adjustment, conservation rider, energy exchange credit, federal wind credit and the rest), before city tax. Schedule 7's tiers below are taken from the same row, `$0.189119/kWh` for the first 600 kWh and `$0.208536/kWh` after, so both plans are priced on one basis. The riders are the same per kWh on both plans, so they cancel out of the savings figure but count toward each plan's cost and toward the value of solar. The prices are set through `BQM_UTILITY_*` (see `.env.example`); re-check them at each rate filing. The period structure lives in `tariff.py` because it changes only when PSE refiles the schedule; the prices live in configuration because they do not.
 
 Periods are resolved on the tariff's own clock (`BQM_UTILITY_TIMEZONE`, default `America/Los_Angeles`), not the browser's, and on wall-clock hours, so a daylight-saving change shifts them exactly as it shifts the meter. Legal holidays carry no on-peak hours; the six the schedule names are New Year's Day, Memorial Day, Independence Day, Labor Day, Thanksgiving and Christmas, observed on the nearest weekday when they land on a weekend.
 
@@ -170,7 +170,7 @@ Environment overrides:
 - `BQM_UTILITY_PROVIDER`, `BQM_UTILITY_SCHEDULE`, and `BQM_UTILITY_REGION`
 - `BQM_UTILITY_RATE_EFFECTIVE_DATE`
 - `BQM_UTILITY_ON_PEAK_WINTER_USD_PER_KWH`, `BQM_UTILITY_ON_PEAK_SUMMER_USD_PER_KWH`, `BQM_UTILITY_OFF_PEAK_WINTER_USD_PER_KWH`, `BQM_UTILITY_OFF_PEAK_SUMMER_USD_PER_KWH`, and `BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH`, the Schedule 327 prices
-- `BQM_UTILITY_COMPARISON_SCHEDULE`, `BQM_UTILITY_TIER_1_USD_PER_KWH`, `BQM_UTILITY_TIER_2_USD_PER_KWH`, and `BQM_UTILITY_TIER_1_LIMIT_KWH`, the Schedule 7 plan the savings figure is compared with (defaults `0.187465`, `0.206882`, and `600`)
+- `BQM_UTILITY_COMPARISON_SCHEDULE`, `BQM_UTILITY_TIER_1_USD_PER_KWH`, `BQM_UTILITY_TIER_2_USD_PER_KWH`, and `BQM_UTILITY_TIER_1_LIMIT_KWH`, the Schedule 7 plan the savings figure is compared with (defaults `0.189119`, `0.208536`, and `600`)
 - `BQM_UTILITY_BASIC_CHARGE_USD`
 - `BQM_UTILITY_MUNICIPAL_TAX_PERCENT`, left at `0` until the exact city tax is known
 - `BQM_WEATHER_ENABLED`, `BQM_WEATHER_LATITUDE`, `BQM_WEATHER_LONGITUDE`, and `BQM_WEATHER_LOCATION`; current conditions are cached from Open-Meteo for the Live Home Energy display and default to Kent, WA

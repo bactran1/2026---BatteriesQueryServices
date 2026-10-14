@@ -18,7 +18,7 @@ function panel() {
         id, textContent: "", innerHTML: "", dataset: {}, hidden: false, style: {},
         children: [], classList: { toggle() {}, add() {}, remove() {} },
         setAttribute() {}, removeAttribute() {},
-        querySelectorAll: () => [],
+        querySelectorAll: () => [], closest: () => null,
         replaceChildren(...nodes) { this.children = nodes; },
       });
     }

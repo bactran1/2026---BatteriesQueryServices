@@ -42,8 +42,8 @@ class UtilityTariff:
     # The standard plan the savings figure is measured against: PSE Schedule 7,
     # Residential Service, two consumption tiers per billing month.
     comparison_schedule: str = "Residential Service (Schedule 7)"
-    comparison_tier_1_usd_per_kwh: float = 0.187465
-    comparison_tier_2_usd_per_kwh: float = 0.206882
+    comparison_tier_1_usd_per_kwh: float = 0.189119
+    comparison_tier_2_usd_per_kwh: float = 0.208536
     comparison_tier_1_limit_kwh: float = 600.0
 
     def rates(self) -> dict[str, float]:
@@ -145,27 +145,27 @@ def load_settings() -> Settings:
                 "Residential Time-of-Use with Super Off-Peak (Schedule 327)",
             ),
             region=os.getenv("BQM_UTILITY_REGION", "King County, WA"),
-            effective_date=os.getenv("BQM_UTILITY_RATE_EFFECTIVE_DATE", "2026-01-29"),
+            effective_date=os.getenv("BQM_UTILITY_RATE_EFFECTIVE_DATE", "2026-10-01"),
             timezone=os.getenv("BQM_UTILITY_TIMEZONE", "America/Los_Angeles"),
             on_peak_winter_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_ON_PEAK_WINTER_USD_PER_KWH", "0.504")),
+                float(os.getenv("BQM_UTILITY_ON_PEAK_WINTER_USD_PER_KWH", "0.551096")),
             ),
             on_peak_summer_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_ON_PEAK_SUMMER_USD_PER_KWH", "0.272")),
+                float(os.getenv("BQM_UTILITY_ON_PEAK_SUMMER_USD_PER_KWH", "0.319360")),
             ),
             off_peak_winter_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_OFF_PEAK_WINTER_USD_PER_KWH", "0.127")),
+                float(os.getenv("BQM_UTILITY_OFF_PEAK_WINTER_USD_PER_KWH", "0.174609")),
             ),
             off_peak_summer_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_OFF_PEAK_SUMMER_USD_PER_KWH", "0.122")),
+                float(os.getenv("BQM_UTILITY_OFF_PEAK_SUMMER_USD_PER_KWH", "0.169576")),
             ),
             super_off_peak_usd_per_kwh=max(
                 0.0,
-                float(os.getenv("BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH", "0.076")),
+                float(os.getenv("BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH", "0.123063")),
             ),
             basic_charge_usd=max(
                 0.0, float(os.getenv("BQM_UTILITY_BASIC_CHARGE_USD", "7.49"))
@@ -177,10 +177,10 @@ def load_settings() -> Settings:
                 "BQM_UTILITY_COMPARISON_SCHEDULE", "Residential Service (Schedule 7)"
             ),
             comparison_tier_1_usd_per_kwh=max(
-                0.0, float(os.getenv("BQM_UTILITY_TIER_1_USD_PER_KWH", "0.187465"))
+                0.0, float(os.getenv("BQM_UTILITY_TIER_1_USD_PER_KWH", "0.189119"))
             ),
             comparison_tier_2_usd_per_kwh=max(
-                0.0, float(os.getenv("BQM_UTILITY_TIER_2_USD_PER_KWH", "0.206882"))
+                0.0, float(os.getenv("BQM_UTILITY_TIER_2_USD_PER_KWH", "0.208536"))
             ),
             comparison_tier_1_limit_kwh=max(
                 0.0, float(os.getenv("BQM_UTILITY_TIER_1_LIMIT_KWH", "600"))
