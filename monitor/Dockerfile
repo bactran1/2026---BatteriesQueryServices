@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
 ARG MONITOR_COMMIT=unknown
+ARG MONITOR_COMMIT_DATE=
 
 LABEL org.opencontainers.image.title="Battery Monitor" \
       org.opencontainers.image.revision="${MONITOR_COMMIT}"
@@ -11,7 +12,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     BQM_HOST=0.0.0.0 \
     BQM_PORT=8080 \
     BQM_DATA_DIR=/data \
-    BQM_BUILD_COMMIT=${MONITOR_COMMIT}
+    BQM_BUILD_COMMIT=${MONITOR_COMMIT} \
+    BQM_BUILD_COMMIT_DATE=${MONITOR_COMMIT_DATE}
 
 WORKDIR /app
 

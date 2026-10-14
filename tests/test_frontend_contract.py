@@ -4,7 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from battery_monitor.assets import BUILD_TOKEN, asset_version, cache_control_for, render_index
+from battery_monitor.assets import (
+    APP_VERSION_TOKEN,
+    BUILD_TOKEN,
+    app_version_label,
+    asset_version,
+    cache_control_for,
+    render_index,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 MONITOR = Path(__file__).resolve().parents[1] / "monitor/src/battery_monitor"
@@ -12,6 +19,24 @@ STATIC = ROOT / "monitor" / "src" / "battery_monitor" / "static"
 
 
 class FrontendContractTests(unittest.TestCase):
+    def test_footer_shows_the_deployed_commit_and_date(self) -> None:
+        commit = "c9d6233a1b2c3d4e5f60718293a4b5c6d7e8f901"
+        html = render_index(STATIC / "index.html", "v1", commit, "2026-10-14")
+
+        self.assertNotIn(APP_VERSION_TOKEN, html)
+        self.assertIn('class="app-version__value">c9d6233 · 2026-10-14<', html)
+        self.assertIn(f'title="{commit} (2026-10-14)"', html)
+        self.assertIn('data-i18n="footer.version"', html)
+
+    def test_footer_falls_back_to_dev_without_build_info(self) -> None:
+        self.assertEqual(app_version_label("unknown", ""), ("dev", "dev"))
+        self.assertEqual(app_version_label("", "2026-10-14"), ("dev", "dev"))
+        self.assertEqual(
+            app_version_label("C9D6233A", "not a date"), ("c9d6233", "c9d6233a")
+        )
+        html = render_index(STATIC / "index.html", "v2")
+        self.assertIn('class="app-version__value">dev<', html)
+
     def test_build_version_prevents_stale_asset_deployments(self) -> None:
         html = render_index(STATIC / "index.html", "abc123")
 

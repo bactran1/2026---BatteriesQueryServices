@@ -121,6 +121,27 @@ button {
   padding: 28px 0 40px;
 }
 
+.app-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.app-version {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.app-version__value {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
 .topbar {
   display: flex;
   align-items: flex-end;
