@@ -43,35 +43,43 @@ const savings = {
   currency:"USD", default_period:"month", selected_date:day,
   periods:{
     date:{solar_generation_kwh:6.4,grid_import_kwh:3.1,observed_days:1,
+      rate_savings_usd:0.21,comparison_grid_cost_usd:0.79,average_rate_savings_per_observed_day_usd:0.21,
       estimated_savings_usd_low:1.2,estimated_savings_usd_high:1.32,
       estimated_grid_cost_usd_low:0.58,estimated_grid_cost_usd_high:0.64,
       solar_share_percent:67.4,average_savings_per_observed_day_usd_low:1.2,
       average_savings_per_observed_day_usd_high:1.32},
     today:{solar_generation_kwh:6.4,grid_import_kwh:3.1,observed_days:1,
+      rate_savings_usd:0.21,comparison_grid_cost_usd:0.79,average_rate_savings_per_observed_day_usd:0.21,
       estimated_savings_usd_low:1.2,estimated_savings_usd_high:1.32,
       estimated_grid_cost_usd_low:0.58,estimated_grid_cost_usd_high:0.64,
       solar_share_percent:67.4,average_savings_per_observed_day_usd_low:1.2,
       average_savings_per_observed_day_usd_high:1.32},
     month:{solar_generation_kwh:642.8,grid_import_kwh:184.2,observed_days:13,
+      rate_savings_usd:41.6,comparison_grid_cost_usd:76.13,average_rate_savings_per_observed_day_usd:3.2,
       estimated_savings_usd_low:120.5,estimated_savings_usd_high:133,
       estimated_grid_cost_usd_low:34.53,estimated_grid_cost_usd_high:38.11,
       solar_share_percent:77.7,average_savings_per_observed_day_usd_low:9.27,
       average_savings_per_observed_day_usd_high:10.23},
     year:{solar_generation_kwh:6240,grid_import_kwh:2810,observed_days:255,
+      rate_savings_usd:1180.4,comparison_grid_cost_usd:1707.18,average_rate_savings_per_observed_day_usd:4.63,
       estimated_savings_usd_low:1169.78,estimated_savings_usd_high:1290.94,
       estimated_grid_cost_usd_low:526.78,estimated_grid_cost_usd_high:581.39,
       solar_share_percent:69,average_savings_per_observed_day_usd_low:4.59,
       average_savings_per_observed_day_usd_high:5.06},
     retained:{solar_generation_kwh:16240,grid_import_kwh:7210,observed_days:730,
+      rate_savings_usd:2960.5,comparison_grid_cost_usd:4312.12,average_rate_savings_per_observed_day_usd:4.06,
       estimated_savings_usd_low:3044.03,estimated_savings_usd_high:3359.77,
       estimated_grid_cost_usd_low:1351.62,estimated_grid_cost_usd_high:1491.62,
       solar_share_percent:69.3,average_savings_per_observed_day_usd_low:4.17,
       average_savings_per_observed_day_usd_high:4.6},
   },
-  tariff:{provider:"Puget Sound Energy",schedule:"Residential Schedule 7",region:"King County, WA",
-    effective_date:"2026-05-01",tier_1_limit_kwh:600,basic_charge_usd:7.49,
-    municipal_tax_percent:0,effective_rate_low_usd_per_kwh:0.187465,
-    effective_rate_high_usd_per_kwh:0.206882},
+  tariff:{provider:"Puget Sound Energy",
+    schedule:"Residential Time-of-Use with Super Off-Peak (Schedule 327)",region:"King County, WA",
+    effective_date:"2026-01-29",basic_charge_usd:7.49,
+    municipal_tax_percent:0,effective_rate_low_usd_per_kwh:0.076,
+    effective_rate_high_usd_per_kwh:0.504,
+    comparison:{schedule:"Residential Service (Schedule 7)",kind:"tiered",
+      tier_1_usd_per_kwh:0.187465,tier_2_usd_per_kwh:0.206882,tier_1_limit_kwh:600}},
 };
 const types = {".html":"text/html", ".js":"text/javascript", ".css":"text/css", ".svg":"image/svg+xml", ".png":"image/png"};
 const server = http.createServer((request, response) => {
@@ -273,6 +281,9 @@ async function closeReadout(page, id) {
           await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
           assert.match(await page.locator("#savingsEstimate").innerText(), /\$/);
+          // The headline compares the time-of-use grid bill with Schedule 7.
+          assert.match(await page.locator("#savingsEstimateDetail").innerText(), /Schedule 7|76[.,]13/);
+          assert.match(await page.locator("#savingsComparisonRates").innerText(), /600/);
           // The day's solar peak shows on the inverter tile and beside the
           // energy history's solar total, in the viewer's number format.
           assert.match(await page.locator("#inverterSolarPeak").innerText(), /6[.,]21 kW/);

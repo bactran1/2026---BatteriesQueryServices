@@ -1113,6 +1113,42 @@ class TimeOfUseRollupTests(unittest.TestCase):
             self.assertEqual(store.backfill_tou_energy(budget_seconds=5.0), 0)
             store.close()
 
+    def test_savings_energy_carries_a_monthly_tier_plan_for_every_window(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            today = datetime.now(self.ZONE).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            self._log_day(store, today, {hour: (0.0, 0.05) for hour in range(17, 20)})
+
+            savings = store.savings_energy(
+                "America/Los_Angeles", selected_date=today.date().isoformat()
+            )
+            store.close()
+
+            label = today.strftime("%Y-%m")
+            days = (
+                (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+                - today.replace(day=1)
+            ).days
+            # A single day owns its share of its month's allowance.
+            day_plan = savings["date"]["tier_plan"]
+            self.assertEqual([m["month"] for m in day_plan["months"]], [label])
+            self.assertAlmostEqual(day_plan["allowance_months"], 1 / days, 5)
+            self.assertAlmostEqual(day_plan["months"][0]["grid_import_kwh"], 1.8, 3)
+            # The running month owns its whole block.
+            month_plan = savings["month"]["tier_plan"]
+            self.assertEqual(month_plan["months"][-1]["month"], label)
+            self.assertEqual(month_plan["months"][-1]["allowance_fraction"], 1.0)
+            # The year counts each month from January to now in full.
+            year_plan = savings["year"]["tier_plan"]
+            self.assertEqual(len(year_plan["months"]), today.month)
+            self.assertTrue(all(m["allowance_fraction"] == 1.0 for m in year_plan["months"]))
+            # The archive's oldest month owns only the part the archive reaches.
+            retained = savings["retained"]["tier_plan"]["months"]
+            self.assertLess(retained[0]["allowance_fraction"], 1.0)
+            self.assertEqual(retained[-1]["month"], label)
+
     def test_savings_energy_carries_the_split_for_every_window(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)

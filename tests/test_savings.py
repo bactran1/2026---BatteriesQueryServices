@@ -246,5 +246,140 @@ class SavingsTests(unittest.TestCase):
             self.assertEqual(month[f"{field}_high"], month[field])
 
 
+class ScheduleSevenComparisonTests(unittest.TestCase):
+    """The headline: the time-of-use grid bill against the same draw on Schedule 7."""
+
+    def setUp(self) -> None:
+        self.tariff = UtilityTariff(
+            provider="Puget Sound Energy",
+            schedule="Residential Time-of-Use with Super Off-Peak (Schedule 327)",
+            region="King County, WA",
+            effective_date="2026-01-29",
+            timezone="America/Los_Angeles",
+            on_peak_winter_usd_per_kwh=0.504,
+            on_peak_summer_usd_per_kwh=0.272,
+            off_peak_winter_usd_per_kwh=0.127,
+            off_peak_summer_usd_per_kwh=0.122,
+            super_off_peak_usd_per_kwh=0.076,
+            basic_charge_usd=7.49,
+            municipal_tax_percent=0,
+            comparison_tier_1_usd_per_kwh=0.18,
+            comparison_tier_2_usd_per_kwh=0.20,
+            comparison_tier_1_limit_kwh=600,
+        )
+
+    def _month(self, grid, tou, months, allowance_months=1.0, observed_days=10):
+        return build_savings_payload(
+            {"month": {"solar_generation_kwh": 0, "grid_import_kwh": grid,
+                       "observed_days": observed_days, "tou": tou,
+                       "tier_plan": {"allowance_months": allowance_months,
+                                     "months": months}}},
+            self.tariff,
+            now=WINTER_NOON,
+        )["periods"]["month"]
+
+    def test_shifting_draw_to_super_off_peak_saves_against_the_first_tier(self) -> None:
+        month = self._month(
+            400, split(super_grid=400),
+            [{"month": "2026-01", "allowance_fraction": 1.0, "grid_import_kwh": 400}],
+        )
+        # 400 kWh: $30.40 at 7.6c super off-peak, $72.00 all inside tier 1.
+        self.assertEqual(month["estimated_grid_cost_usd"], 30.4)
+        self.assertEqual(month["comparison_grid_cost_usd"], 72.0)
+        self.assertEqual(month["comparison_tier_1_kwh"], 400)
+        self.assertEqual(month["rate_savings_usd"], 41.6)
+        self.assertEqual(month["average_rate_savings_per_observed_day_usd"], 4.16)
+
+    def test_draw_past_the_allowance_bills_at_the_second_tier(self) -> None:
+        month = self._month(
+            800, split(off_grid=800),
+            [{"month": "2026-01", "allowance_fraction": 1.0, "grid_import_kwh": 800}],
+        )
+        # 600 x 0.18 + 200 x 0.20 = 148.00 against 800 x 0.127 = 101.60.
+        self.assertEqual(month["comparison_grid_cost_usd"], 148.0)
+        self.assertEqual(month["rate_savings_usd"], 46.4)
+
+    def test_on_peak_heavy_draw_reports_a_negative_saving(self) -> None:
+        month = self._month(
+            300, split(on_grid=300),
+            [{"month": "2026-01", "allowance_fraction": 1.0, "grid_import_kwh": 300}],
+        )
+        # Winter on-peak at 50.4c is far dearer than 18c on Schedule 7.
+        self.assertEqual(month["rate_savings_usd"], round(54.0 - 151.2, 2))
+        self.assertLess(month["rate_savings_usd"], 0)
+
+    def test_each_month_fills_its_own_allowance(self) -> None:
+        # Two months, one well under and one well over 600 kWh: pooling them
+        # would wrongly fit the whole 1,000 kWh under a 1,200 kWh allowance.
+        month = self._month(
+            1000, split(off_grid=1000),
+            [
+                {"month": "2026-01", "allowance_fraction": 1.0, "grid_import_kwh": 200},
+                {"month": "2026-02", "allowance_fraction": 1.0, "grid_import_kwh": 800},
+            ],
+            allowance_months=2.0,
+        )
+        self.assertEqual(month["comparison_tier_1_kwh"], 800)
+        self.assertEqual(month["comparison_grid_cost_usd"], round(800 * 0.18 + 200 * 0.20, 2))
+
+    def test_a_day_owns_its_share_of_the_month_allowance(self) -> None:
+        payload = build_savings_payload(
+            {"date": {"solar_generation_kwh": 0, "grid_import_kwh": 30,
+                      "observed_days": 1, "tou": split(off_grid=30),
+                      "tier_plan": {"allowance_months": 1 / 31, "months": [
+                          {"month": "2026-01", "allowance_fraction": 1 / 31,
+                           "grid_import_kwh": 30}]}}},
+            self.tariff,
+            now=WINTER_NOON,
+        )["periods"]["date"]
+        within = 600 / 31
+        self.assertAlmostEqual(payload["comparison_tier_1_kwh"], round(within, 4), 3)
+        self.assertEqual(
+            payload["comparison_grid_cost_usd"],
+            round(within * 0.18 + (30 - within) * 0.20, 2),
+        )
+
+    def test_without_a_monthly_breakdown_the_window_allowance_applies(self) -> None:
+        month = self._month(700, None, [], allowance_months=1.0)
+        # Off-peak fallback for the time-of-use side; 600 + 100 tiers for Schedule 7.
+        self.assertEqual(month["comparison_grid_cost_usd"], 128.0)
+        self.assertEqual(month["rate_savings_usd"], round(128.0 - 700 * 0.127, 2))
+
+    def test_missing_grid_leaves_the_savings_unknown(self) -> None:
+        payload = build_savings_payload(
+            {"month": {"solar_generation_kwh": 50, "observed_days": 3}},
+            self.tariff,
+            now=WINTER_NOON,
+        )
+        month = payload["periods"]["month"]
+        self.assertIsNone(month["comparison_grid_cost_usd"])
+        self.assertIsNone(month["rate_savings_usd"])
+        # The solar value is still reported under its own name.
+        self.assertIsNotNone(month["estimated_savings_usd"])
+
+    def test_tax_applies_to_both_plans_and_the_comparison_is_described(self) -> None:
+        taxed = UtilityTariff(**{**self.tariff.__dict__, "municipal_tax_percent": 10})
+        payload = build_savings_payload(
+            {"month": {"solar_generation_kwh": 0, "grid_import_kwh": 100,
+                       "observed_days": 1, "tou": split(super_grid=100),
+                       "tier_plan": {"allowance_months": 1.0, "months": [
+                           {"month": "2026-01", "allowance_fraction": 1.0,
+                            "grid_import_kwh": 100}]}}},
+            taxed,
+            now=WINTER_NOON,
+        )
+        month = payload["periods"]["month"]
+        self.assertEqual(month["comparison_grid_cost_usd"], 19.8)
+        self.assertEqual(month["estimated_grid_cost_usd"], 8.36)
+        comparison = payload["tariff"]["comparison"]
+        self.assertEqual(comparison["schedule"], "Residential Service (Schedule 7)")
+        self.assertEqual(comparison["tier_1_limit_kwh"], 600)
+        self.assertAlmostEqual(comparison["tier_1_usd_per_kwh"], 0.198, 6)
+        self.assertEqual(
+            payload["methodology"]["savings_basis"],
+            "schedule_7_grid_cost_minus_time_of_use_grid_cost",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

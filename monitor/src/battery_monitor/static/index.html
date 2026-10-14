@@ -396,7 +396,7 @@
             <div>
               <p class="eyebrow" data-i18n="savings.eyebrow">Financial impact</p>
               <h2 id="energySavingsTitle" data-i18n="savings.title">Energy Savings</h2>
-              <p class="savings-description" data-i18n="savings.description">Estimated value of recorded solar energy under the household's current utility rate</p>
+              <p class="savings-description" data-i18n="savings.description">Estimated savings on the grid bill from the time-of-use plan, compared with PSE's standard Schedule 7 rates</p>
             </div>
             <div class="savings-actions">
               <div id="savingsPeriodControls" class="segmented" role="group" aria-label="Savings period" data-i18n-aria-label="savings.periodAria">
@@ -419,7 +419,7 @@
             <div class="savings-primary">
               <span id="savingsPeriodLabel" data-i18n="savings.monthLabel">This month</span>
               <strong id="savingsEstimate">--</strong>
-              <p data-i18n="savings.estimateDetail">Estimated electricity value, each kilowatt-hour priced by the time period it was recorded in</p>
+              <p id="savingsEstimateDetail" data-i18n="savings.estimateDetail">Estimated electrical savings: the grid energy bought, priced at time-of-use rates, compared with the same energy at Schedule 7 standard rates</p>
               <div class="savings-share">
                 <div>
                   <span data-i18n="savings.solarShare">Solar share of supplied energy</span>
@@ -441,7 +441,7 @@
               </div>
               <div>
                 <dt data-i18n="savings.gridCost">Grid energy charges</dt>
-                <dd><strong id="savingsGridCost">--</strong><small data-i18n="savings.gridCostDetail">Estimated variable charge</small></dd>
+                <dd><strong id="savingsGridCost">--</strong><small id="savingsGridCostDetail" data-i18n="savings.gridCostDetail">Estimated variable charge at time-of-use rates</small></dd>
               </div>
               <div>
                 <dt data-i18n="savings.dailyAverage">Average savings</dt>
@@ -506,6 +506,11 @@
               <span data-i18n="savings.rightNow">Right now</span>
               <strong id="savingsCurrentPeriod">--</strong>
               <small id="savingsCurrentRate">--</small>
+            </div>
+            <div>
+              <span data-i18n="savings.comparedWith">Compared with</span>
+              <strong id="savingsComparisonPlan">Schedule 7</strong>
+              <small id="savingsComparisonRates">--</small>
             </div>
             <div>
               <span data-i18n="savings.fixedCharge">Basic charge</span>

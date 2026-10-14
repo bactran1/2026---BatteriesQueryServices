@@ -511,16 +511,35 @@ class FrontendContractTests(unittest.TestCase):
         # One period-colour mapping, shared by the table dots and the donut.
         self.assertIn('[data-tou="on_peak"] {', css)
         self.assertIn("--tou-colour: var(--tou-on-peak)", css)
-        # The tier range is gone from the markup, the strings and the code.
-        for retired in ("savingsTierLimit", "savings.tierThreshold", "Schedule 7"):
+        # The old low/high tier range is gone from the markup, the strings and
+        # the code. Schedule 7 returns only as the plan the savings compare with.
+        for retired in ("savingsTierLimit", "savings.tierThreshold"):
             self.assertNotIn(retired, html)
         for retired in (
             "formatCurrencyRange",
             "renderPrimaryCurrencyRange",
-            "tier_1_limit_kwh",
             "savings.rangeSeparator",
         ):
             self.assertNotIn(retired, javascript)
+
+    def test_headline_savings_compare_time_of_use_with_schedule_7(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="savingsEstimateDetail"', html)
+        self.assertIn('id="savingsGridCostDetail"', html)
+        self.assertIn('id="savingsComparisonPlan"', html)
+        self.assertIn('id="savingsComparisonRates"', html)
+        self.assertIn("finiteNumber(period.rate_savings_usd)", javascript)
+        self.assertIn("finiteNumber(period.comparison_grid_cost_usd)", javascript)
+        self.assertIn("period.average_rate_savings_per_observed_day_usd", javascript)
+        self.assertIn('"savings.estimateCompare": "Estimated electrical savings:', javascript)
+        self.assertIn('"savings.estimateCompare": "Tiết kiệm điện ước tính:', javascript)
+        self.assertIn('"savings.comparedWith": "So sánh với"', javascript)
+        self.assertIn('.savings-primary > strong[data-negative="true"]', css)
+        self.assertIn("grid-template-columns: 1.45fr repeat(4, minmax(0, 1fr));", css)
+        self.assertNotIn("Estimated electricity value", html + javascript)
 
     def test_live_views_show_estimated_battery_support_time(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")

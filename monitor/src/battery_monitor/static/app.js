@@ -264,7 +264,7 @@ const translations = {
     "energyHistory.unavailable": "Energy history temporarily unavailable",
     "savings.eyebrow": "Financial impact",
     "savings.title": "Energy Savings",
-    "savings.description": "Estimated value of recorded solar energy under the household's current utility rate",
+    "savings.description": "Estimated savings on the grid bill from the time-of-use plan, compared with PSE's standard Schedule 7 rates",
     "savings.periodAria": "Savings period",
     "savings.date": "Date",
     "savings.selectDate": "Select day",
@@ -279,14 +279,19 @@ const translations = {
     "savings.monthLabel": "This month",
     "savings.yearLabel": "This year",
     "savings.retainedLabel": "Three-year archive",
-    "savings.estimateDetail": "Estimated electricity value, each kilowatt-hour priced by the time period it was recorded in",
+    "savings.estimateDetail": "Estimated electrical savings: the grid energy bought, priced at time-of-use rates, compared with the same energy at Schedule 7 standard rates",
+    "savings.estimateCompare": "Estimated electrical savings: {tou} at time-of-use rates against {standard} for the same grid energy on {plan}",
+    "savings.estimateCostlier": "Time-of-use cost more this period: {tou} against {standard} for the same grid energy on {plan}",
+    "savings.comparedWith": "Compared with",
+    "savings.comparisonRates": "{first} first {limit} kWh · {rest} above, per month",
+    "savings.gridCostVersus": "vs {cost} on {plan}",
     "savings.solarShare": "Solar share of supplied energy",
     "savings.solarEnergy": "Solar energy valued",
     "savings.solarEnergyDetail": "Recorded inverter production",
     "savings.gridEnergy": "Grid energy purchased",
     "savings.gridEnergyDetail": "Before net-metering credits",
     "savings.gridCost": "Grid energy charges",
-    "savings.gridCostDetail": "Estimated variable charge",
+    "savings.gridCostDetail": "Estimated variable charge at time-of-use rates",
     "savings.dailyAverage": "Average savings",
     "savings.perDay": "per observed day",
     "savings.awaitingDays": "Awaiting observed days",
@@ -325,8 +330,8 @@ const translations = {
     "savings.fixedChargeDetail": "Monthly · excluded from savings",
     "savings.tariffAria": "Utility rate assumptions",
     "savings.effective": "Effective {date}",
-    "savings.methodology": "Prices each recorded kilowatt-hour at its Schedule 327 time-of-use period and season, and assumes recorded solar receives usable net-metering credit. Municipal utility tax is not included; banked credits expire March 31.",
-    "savings.methodologyTax": "Prices each recorded kilowatt-hour at its Schedule 327 time-of-use period and season, and assumes recorded solar receives usable net-metering credit. Includes {tax}% municipal utility tax; banked credits expire March 31.",
+    "savings.methodology": "Savings compare the recorded grid energy priced at its Schedule 327 time-of-use period and season with the same energy on Schedule 7's two monthly tiers. Solar value assumes recorded solar receives usable net-metering credit. Basic charges and municipal utility tax are not included; banked credits expire March 31.",
+    "savings.methodologyTax": "Savings compare the recorded grid energy priced at its Schedule 327 time-of-use period and season with the same energy on Schedule 7's two monthly tiers. Solar value assumes recorded solar receives usable net-metering credit. Includes {tax}% municipal utility tax on both plans; basic charges are not included and banked credits expire March 31.",
     "savings.awaiting": "Awaiting solar and grid energy readings",
     "savings.unavailable": "Savings estimate temporarily unavailable",
     "runtime.minutes": "{minutes}m",
@@ -695,7 +700,7 @@ const translations = {
     "energyHistory.unavailable": "Lịch sử năng lượng tạm thời không khả dụng",
     "savings.eyebrow": "Hiệu quả tài chính",
     "savings.title": "Tiết kiệm năng lượng",
-    "savings.description": "Giá trị ước tính của điện mặt trời đã ghi nhận theo biểu giá điện hiện tại của hộ gia đình",
+    "savings.description": "Khoản tiết kiệm ước tính trên hóa đơn điện lưới nhờ biểu giá theo khung giờ, so với biểu giá tiêu chuẩn Schedule 7 của PSE",
     "savings.periodAria": "Khoảng thời gian tiết kiệm",
     "savings.date": "Ngày",
     "savings.selectDate": "Chọn ngày",
@@ -710,14 +715,19 @@ const translations = {
     "savings.monthLabel": "Tháng này",
     "savings.yearLabel": "Năm nay",
     "savings.retainedLabel": "Kho lưu trữ ba năm",
-    "savings.estimateDetail": "Giá trị điện ước tính, mỗi kilôwatt giờ được tính theo khung giờ đã ghi nhận",
+    "savings.estimateDetail": "Tiết kiệm điện ước tính: điện mua từ lưới tính theo giá khung giờ, so với cùng lượng điện đó theo giá tiêu chuẩn Schedule 7",
+    "savings.estimateCompare": "Tiết kiệm điện ước tính: {tou} theo giá khung giờ so với {standard} cho cùng lượng điện lưới theo {plan}",
+    "savings.estimateCostlier": "Kỳ này giá khung giờ đắt hơn: {tou} so với {standard} cho cùng lượng điện lưới theo {plan}",
+    "savings.comparedWith": "So sánh với",
+    "savings.comparisonRates": "{first} cho {limit} kWh đầu · {rest} phần vượt, mỗi tháng",
+    "savings.gridCostVersus": "so với {cost} theo {plan}",
     "savings.solarShare": "Tỷ lệ điện cung cấp từ mặt trời",
     "savings.solarEnergy": "Điện mặt trời được tính giá trị",
     "savings.solarEnergyDetail": "Sản lượng biến tần đã ghi nhận",
     "savings.gridEnergy": "Điện mua từ lưới",
     "savings.gridEnergyDetail": "Trước tín dụng điện hai chiều",
     "savings.gridCost": "Chi phí điện lưới",
-    "savings.gridCostDetail": "Ước tính phần chi phí biến đổi",
+    "savings.gridCostDetail": "Ước tính phần chi phí biến đổi theo giá khung giờ",
     "savings.dailyAverage": "Tiết kiệm trung bình",
     "savings.perDay": "mỗi ngày có dữ liệu",
     "savings.awaitingDays": "Đang chờ số ngày có dữ liệu",
@@ -756,8 +766,8 @@ const translations = {
     "savings.fixedChargeDetail": "Hàng tháng · không tính là tiết kiệm",
     "savings.tariffAria": "Các giả định về biểu giá điện",
     "savings.effective": "Có hiệu lực {date}",
-    "savings.methodology": "Tính mỗi kilôwatt giờ đã ghi nhận theo khung giờ và mùa của Biểu giá 327, và giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Chưa bao gồm thuế điện đô thị; tín dụng tích lũy hết hạn ngày 31 tháng 3.",
-    "savings.methodologyTax": "Tính mỗi kilôwatt giờ đã ghi nhận theo khung giờ và mùa của Biểu giá 327, và giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Đã bao gồm {tax}% thuế điện đô thị; tín dụng tích lũy hết hạn ngày 31 tháng 3.",
+    "savings.methodology": "Khoản tiết kiệm so sánh điện lưới đã ghi nhận, tính theo khung giờ và mùa của Biểu giá 327, với cùng lượng điện đó theo hai bậc hàng tháng của Schedule 7. Giá trị điện mặt trời giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Chưa bao gồm phí cơ bản và thuế điện đô thị; tín dụng tích lũy hết hạn ngày 31 tháng 3.",
+    "savings.methodologyTax": "Khoản tiết kiệm so sánh điện lưới đã ghi nhận, tính theo khung giờ và mùa của Biểu giá 327, với cùng lượng điện đó theo hai bậc hàng tháng của Schedule 7. Giá trị điện mặt trời giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Đã bao gồm {tax}% thuế điện đô thị cho cả hai biểu giá; chưa bao gồm phí cơ bản, tín dụng tích lũy hết hạn ngày 31 tháng 3.",
     "savings.awaiting": "Đang chờ dữ liệu điện mặt trời và điện lưới",
     "savings.unavailable": "Ước tính tiết kiệm tạm thời không khả dụng",
     "runtime.minutes": "{minutes} phút",
@@ -2594,11 +2604,23 @@ function renderSavings() {
   $("savingsDateInput").value = state.savingsDate;
   $("savingsMonthControl").hidden = state.savingsPeriod !== "month";
   syncSavingsMonthOptions();
-  // Schedule 327 has no consumption tiers, so every figure here is one exact
-  // number: the old tier-1-to-tier-2 range had nothing left to straddle.
-  $("savingsEstimate").textContent = formatCurrency(
-    savingsFigure(period, "estimated_savings_usd"),
-  );
+  // The headline is what the time-of-use plan saved on the grid bill
+  // against the standard tiered plan, for the same kilowatt-hours.
+  const comparison = tariff.comparison || {};
+  const comparisonPlan = comparison.schedule || "Schedule 7";
+  const rateSavings = finiteNumber(period.rate_savings_usd);
+  const touCost = savingsFigure(period, "estimated_grid_cost_usd");
+  const standardCost = finiteNumber(period.comparison_grid_cost_usd);
+  const estimate = $("savingsEstimate");
+  estimate.textContent = formatCurrency(rateSavings);
+  estimate.dataset.negative = String(rateSavings !== null && rateSavings < 0);
+  $("savingsEstimateDetail").textContent = rateSavings === null || standardCost === null
+    ? t("savings.estimateDetail")
+    : t(rateSavings < 0 ? "savings.estimateCostlier" : "savings.estimateCompare", {
+        tou: formatCurrency(touCost),
+        standard: formatCurrency(standardCost),
+        plan: comparisonPlan,
+      });
   $("savingsSolarEnergy").textContent = formatEnergyWithUnit(solar);
   // What the solar actually earned per kWh once each hour was priced by its
   // own period -- the number that says whether production landed in expensive
@@ -2608,11 +2630,12 @@ function renderSavings() {
     ? t("savings.solarEnergyDetail")
     : t("savings.blendedRate", { rate: formatRate(blended) });
   $("savingsGridEnergy").textContent = formatEnergyWithUnit(grid);
-  $("savingsGridCost").textContent = formatCurrency(
-    savingsFigure(period, "estimated_grid_cost_usd"),
-  );
+  $("savingsGridCost").textContent = formatCurrency(touCost);
+  $("savingsGridCostDetail").textContent = standardCost === null
+    ? t("savings.gridCostDetail")
+    : t("savings.gridCostVersus", { cost: formatCurrency(standardCost), plan: comparisonPlan });
   $("savingsDailyAverage").textContent = formatCurrency(
-    savingsFigure(period, "average_savings_per_observed_day_usd"),
+    finiteNumber(period.average_rate_savings_per_observed_day_usd),
   );
   $("savingsObservedDays").textContent = observedDays === 1
     ? t("savings.observedDay")
@@ -2640,6 +2663,17 @@ function renderSavings() {
     ? t(TOU_PERIOD_LABELS[tariff.current_period] || "savings.periodOffPeak")
     : "--";
   $("savingsCurrentRate").textContent = formatRate(tariff.current_rate_usd_per_kwh);
+  $("savingsComparisonPlan").textContent = comparisonPlan;
+  const firstTier = finiteNumber(comparison.tier_1_usd_per_kwh);
+  const secondTier = finiteNumber(comparison.tier_2_usd_per_kwh);
+  const tierLimit = finiteNumber(comparison.tier_1_limit_kwh);
+  $("savingsComparisonRates").textContent = firstTier === null || secondTier === null || tierLimit === null
+    ? "--"
+    : t("savings.comparisonRates", {
+        first: formatRate(firstTier),
+        rest: formatRate(secondTier),
+        limit: formatNumber(tierLimit),
+      });
   $("savingsBasicCharge").textContent = formatCurrency(tariff.basic_charge_usd);
   renderSavingsTou(period, tariff);
   const tax = finiteNumber(tariff.municipal_tax_percent);
