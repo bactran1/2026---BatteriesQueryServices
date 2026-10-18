@@ -280,8 +280,8 @@ const translations = {
     "savings.yearLabel": "This year",
     "savings.retainedLabel": "Three-year archive",
     "savings.estimateDetail": "Estimated electrical savings: the grid energy bought, priced at time-of-use rates, compared with the same energy at Schedule 7 standard rates",
-    "savings.estimateCompare": "Estimated electrical savings: {tou} at time-of-use rates against {standard} for the same grid energy on {plan}",
-    "savings.estimateCostlier": "Time-of-use cost more this period: {tou} against {standard} for the same grid energy on {plan}",
+    "savings.estimateCompare": "Estimated electrical savings: {tou} at time-of-use rates against {standard} on {plan}, for the same {kwh} of grid energy",
+    "savings.estimateCostlier": "Time-of-use cost more this period: {tou} against {standard} on {plan}, for the same {kwh} of grid energy",
     "savings.comparedWith": "Compared with",
     "savings.comparisonRates": "{first} first {limit} kWh · {rest} above, per month",
     "savings.gridCostVersus": "vs {cost} on {plan}",
@@ -717,8 +717,8 @@ const translations = {
     "savings.yearLabel": "Năm nay",
     "savings.retainedLabel": "Kho lưu trữ ba năm",
     "savings.estimateDetail": "Tiết kiệm điện ước tính: điện mua từ lưới tính theo giá khung giờ, so với cùng lượng điện đó theo giá tiêu chuẩn Schedule 7",
-    "savings.estimateCompare": "Tiết kiệm điện ước tính: {tou} theo giá khung giờ so với {standard} cho cùng lượng điện lưới theo {plan}",
-    "savings.estimateCostlier": "Kỳ này giá khung giờ đắt hơn: {tou} so với {standard} cho cùng lượng điện lưới theo {plan}",
+    "savings.estimateCompare": "Tiết kiệm điện ước tính: {tou} theo giá khung giờ so với {standard} theo {plan}, cho cùng {kwh} điện lưới",
+    "savings.estimateCostlier": "Kỳ này giá khung giờ đắt hơn: {tou} so với {standard} theo {plan}, cho cùng {kwh} điện lưới",
     "savings.comparedWith": "So sánh với",
     "savings.comparisonRates": "{first} cho {limit} kWh đầu · {rest} phần vượt, mỗi tháng",
     "savings.gridCostVersus": "so với {cost} theo {plan}",
@@ -2613,6 +2613,9 @@ function renderSavings() {
   const rateSavings = finiteNumber(period.rate_savings_usd);
   const touCost = savingsFigure(period, "estimated_grid_cost_usd");
   const standardCost = finiteNumber(period.comparison_grid_cost_usd);
+  // The kilowatt-hours both bills cover: the rollup's classified energy
+  // once it covers the window, else the window total.
+  const comparedGrid = finiteNumber(period.comparison_grid_kwh) ?? grid;
   const estimate = $("savingsEstimate");
   estimate.textContent = formatCurrency(rateSavings);
   estimate.dataset.negative = String(rateSavings !== null && rateSavings < 0);
@@ -2622,6 +2625,7 @@ function renderSavings() {
         tou: formatCurrency(touCost),
         standard: formatCurrency(standardCost),
         plan: comparisonPlan,
+        kwh: formatEnergyWithUnit(comparedGrid),
       });
   $("savingsSolarEnergy").textContent = formatEnergyWithUnit(solar);
   // What the solar actually earned per kWh once each hour was priced by its

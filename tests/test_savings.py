@@ -345,6 +345,27 @@ class ScheduleSevenComparisonTests(unittest.TestCase):
         self.assertEqual(month["comparison_grid_cost_usd"], 128.0)
         self.assertEqual(month["rate_savings_usd"], round(128.0 - 700 * 0.127, 2))
 
+    def test_both_bills_cover_the_energy_the_rollup_classified(self) -> None:
+        # The energy history's window total can run above the rollup's
+        # classified energy (it counts each day's first reading in full).
+        # The time-of-use bill prices the classified 100 kWh, so Schedule 7
+        # must price those same 100 kWh, not the 130 kWh window total.
+        month = self._month(
+            130, split(super_grid=100),
+            [{"month": "2026-01", "allowance_fraction": 1.0, "grid_import_kwh": 100}],
+        )
+        self.assertEqual(month["grid_import_kwh"], 130)
+        self.assertEqual(month["comparison_grid_kwh"], 100)
+        self.assertEqual(month["estimated_grid_cost_usd"], 7.6)
+        self.assertEqual(month["comparison_grid_cost_usd"], 18.0)
+        self.assertEqual(month["rate_savings_usd"], 10.4)
+
+    def test_without_a_split_both_bills_cover_the_window_total(self) -> None:
+        month = self._month(130, None, [], allowance_months=1.0)
+        self.assertEqual(month["comparison_grid_kwh"], 130)
+        self.assertEqual(month["comparison_grid_cost_usd"], round(130 * 0.18, 2))
+        self.assertEqual(month["estimated_grid_cost_usd"], round(130 * 0.127, 2))
+
     def test_missing_grid_leaves_the_savings_unknown(self) -> None:
         payload = build_savings_payload(
             {"month": {"solar_generation_kwh": 50, "observed_days": 3}},

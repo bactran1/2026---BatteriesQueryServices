@@ -55,7 +55,7 @@ const savings = {
       solar_share_percent:67.4,average_savings_per_observed_day_usd_low:1.2,
       average_savings_per_observed_day_usd_high:1.32},
     month:{solar_generation_kwh:642.8,grid_import_kwh:184.2,observed_days:13,
-      rate_savings_usd:41.6,comparison_grid_cost_usd:76.13,average_rate_savings_per_observed_day_usd:3.2,
+      rate_savings_usd:41.6,comparison_grid_kwh:184.2,comparison_grid_cost_usd:76.13,average_rate_savings_per_observed_day_usd:3.2,
       estimated_savings_usd_low:120.5,estimated_savings_usd_high:133,
       estimated_grid_cost_usd_low:34.53,estimated_grid_cost_usd_high:38.11,
       solar_share_percent:77.7,average_savings_per_observed_day_usd_low:9.27,
@@ -283,6 +283,7 @@ async function closeReadout(page, id) {
           assert.match(await page.locator("#savingsEstimate").innerText(), /\$/);
           // The headline compares the time-of-use grid bill with Schedule 7.
           assert.match(await page.locator("#savingsEstimateDetail").innerText(), /Schedule 7|76[.,]13/);
+          assert.match(await page.locator("#savingsEstimateDetail").innerText(), /184[.,]2 kWh/);
           assert.match(await page.locator("#savingsComparisonRates").innerText(), /600/);
           // The day's solar peak shows on the inverter tile and beside the
           // energy history's solar total, in the viewer's number format.

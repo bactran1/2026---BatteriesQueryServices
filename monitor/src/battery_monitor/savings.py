@@ -182,7 +182,16 @@ def _period_value(
     # The same grid draw billed on the standard tiered plan, and what the
     # time-of-use plan saved against it. Positive means time-of-use was the
     # cheaper bill; negative means the standard plan would have been.
-    tiered_cost, tier_1_kwh = _tiered_cost(grid, energy.get("tier_plan"), comparison)
+    #
+    # Both bills must cover the same kilowatt-hours. Once the rollup has
+    # classified the window, the time-of-use bill prices the classified
+    # energy, so the tiered bill prices that same energy rather than the
+    # window total from the energy history, which measures each day's first
+    # reading differently and can run higher.
+    compared_grid = classified_grid if classified_grid > 0 else grid
+    tiered_cost, tier_1_kwh = _tiered_cost(
+        compared_grid, energy.get("tier_plan"), comparison
+    )
     rate_savings = (
         None
         if tiered_cost is None or grid_cost is None
@@ -195,6 +204,7 @@ def _period_value(
     )
 
     return {
+        "comparison_grid_kwh": _rounded(compared_grid),
         "comparison_grid_cost_usd": tiered_cost,
         "comparison_tier_1_kwh": tier_1_kwh,
         "rate_savings_usd": rate_savings,
@@ -230,11 +240,10 @@ def _tiered_cost(
     """Bill a window's grid draw on a two-tier monthly plan.
 
     Each month's draw fills that month's share of the first block before
-    any of it is billed at the second price. The window total is then split
-    in the same proportion, so the comparison prices exactly the kilowatt-
-    hours the time-of-use figure prices. With no monthly breakdown yet (the
-    rollup still backfilling) the window's whole allowance is applied to its
-    whole draw.
+    any of it is billed at the second price. The energy handed in is then
+    split in the same proportion. With no monthly breakdown yet (the rollup
+    still backfilling) the window's whole allowance is applied to its whole
+    draw.
     """
     if grid is None:
         return None, None
