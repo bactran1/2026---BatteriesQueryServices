@@ -17,12 +17,18 @@ class BatteryProfile:
 
 @dataclass(frozen=True)
 class UtilityTariff:
-    """PSE Schedule 327 prices, in USD per kWh.
+    """PSE prices, in USD per kWh, as a residential statement itemises them.
 
     Schedule 327 has no consumption tiers: the price of a kilowatt-hour is set
-    by the time period it crossed the meter and, for on-peak and off-peak, by
-    the season. Super off-peak carries one price year round. The period
-    structure itself lives in ``tariff.py``.
+    by the time period it crossed the meter and by the season. The energy
+    charges here are the statement's own line items; every kilowatt-hour on
+    either schedule also carries the same per-kWh riders and credits, netted
+    into ``riders_usd_per_kwh``, and the city's utility tax on top. The
+    period structure itself lives in ``tariff.py``.
+
+    The defaults are the October 2026 statement: Schedule 327 at the prices
+    effective October 1, 2026 for the winter lines and the September prices
+    for the summer lines, and Schedule 7 at the September prices.
     """
 
     provider: str
@@ -36,24 +42,43 @@ class UtilityTariff:
     on_peak_summer_usd_per_kwh: float
     off_peak_winter_usd_per_kwh: float
     off_peak_summer_usd_per_kwh: float
-    super_off_peak_usd_per_kwh: float
+    super_off_peak_winter_usd_per_kwh: float
+    super_off_peak_summer_usd_per_kwh: float
     basic_charge_usd: float
     municipal_tax_percent: float
+    # Per-kWh riders and credits billed on every kilowatt-hour on either
+    # schedule, netted. On the October 2026 statement: the electric
+    # conservation program charge (0.009409) and the power cost adjustment
+    # (0.038719), less the energy exchange credit (0.006648) and other
+    # credits (0.002378). They cancel out of the saving between the two
+    # plans but count toward each plan's bill and toward the value of solar.
+    riders_usd_per_kwh: float = 0.039102
     # The standard plan the savings figure is measured against: PSE Schedule 7,
-    # Residential Service, two consumption tiers per billing month.
+    # Residential Service, two consumption tiers. The cheaper first block is
+    # granted per billing period and prorated by day: the statement's 18-day
+    # period got 360 kWh of the 600 kWh per 30 days.
     comparison_schedule: str = "Residential Service (Schedule 7)"
-    comparison_tier_1_usd_per_kwh: float = 0.189119
-    comparison_tier_2_usd_per_kwh: float = 0.208536
+    comparison_tier_1_usd_per_kwh: float = 0.148363
+    comparison_tier_2_usd_per_kwh: float = 0.167780
     comparison_tier_1_limit_kwh: float = 600.0
+    comparison_tier_1_period_days: float = 30.0
 
-    def rates(self) -> dict[str, float]:
-        """Prices keyed as ``tariff.rate_for`` expects them."""
+    def energy_charges(self) -> dict[str, float]:
+        """The schedule's own energy charges, keyed as ``tariff.rate_for`` expects."""
         return {
             "on_peak_winter": self.on_peak_winter_usd_per_kwh,
             "on_peak_summer": self.on_peak_summer_usd_per_kwh,
             "off_peak_winter": self.off_peak_winter_usd_per_kwh,
             "off_peak_summer": self.off_peak_summer_usd_per_kwh,
-            "super_off_peak": self.super_off_peak_usd_per_kwh,
+            "super_off_peak_winter": self.super_off_peak_winter_usd_per_kwh,
+            "super_off_peak_summer": self.super_off_peak_summer_usd_per_kwh,
+        }
+
+    def rates(self) -> dict[str, float]:
+        """What a kilowatt-hour costs before tax: energy charge plus riders."""
+        return {
+            key: value + self.riders_usd_per_kwh
+            for key, value in self.energy_charges().items()
         }
 
 
@@ -149,43 +174,51 @@ def load_settings() -> Settings:
             region=os.getenv("BQM_UTILITY_REGION", "King County, WA"),
             effective_date=os.getenv("BQM_UTILITY_RATE_EFFECTIVE_DATE", "2026-10-01"),
             timezone=os.getenv("BQM_UTILITY_TIMEZONE", "America/Los_Angeles"),
-            on_peak_winter_usd_per_kwh=max(
-                0.0,
-                float(os.getenv("BQM_UTILITY_ON_PEAK_WINTER_USD_PER_KWH", "0.551096")),
+            on_peak_winter_usd_per_kwh=_price(
+                "BQM_UTILITY_ON_PEAK_WINTER_USD_PER_KWH", "0.511994"
             ),
-            on_peak_summer_usd_per_kwh=max(
-                0.0,
-                float(os.getenv("BQM_UTILITY_ON_PEAK_SUMMER_USD_PER_KWH", "0.319360")),
+            on_peak_summer_usd_per_kwh=_price(
+                "BQM_UTILITY_ON_PEAK_SUMMER_USD_PER_KWH", "0.278604"
             ),
-            off_peak_winter_usd_per_kwh=max(
-                0.0,
-                float(os.getenv("BQM_UTILITY_OFF_PEAK_WINTER_USD_PER_KWH", "0.174609")),
+            off_peak_winter_usd_per_kwh=_price(
+                "BQM_UTILITY_OFF_PEAK_WINTER_USD_PER_KWH", "0.135507"
             ),
-            off_peak_summer_usd_per_kwh=max(
-                0.0,
-                float(os.getenv("BQM_UTILITY_OFF_PEAK_SUMMER_USD_PER_KWH", "0.169576")),
+            off_peak_summer_usd_per_kwh=_price(
+                "BQM_UTILITY_OFF_PEAK_SUMMER_USD_PER_KWH", "0.128820"
             ),
-            super_off_peak_usd_per_kwh=max(
-                0.0,
-                float(os.getenv("BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH", "0.123063")),
+            # A single BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH still sets both
+            # seasons; the seasonal names take precedence when given.
+            super_off_peak_winter_usd_per_kwh=_price(
+                "BQM_UTILITY_SUPER_OFF_PEAK_WINTER_USD_PER_KWH",
+                os.getenv("BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH", "0.083961"),
+            ),
+            super_off_peak_summer_usd_per_kwh=_price(
+                "BQM_UTILITY_SUPER_OFF_PEAK_SUMMER_USD_PER_KWH",
+                os.getenv("BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH", "0.082307"),
             ),
             basic_charge_usd=max(
                 0.0, float(os.getenv("BQM_UTILITY_BASIC_CHARGE_USD", "7.49"))
             ),
+            # Kent's utility tax on electricity, as the statement shows it.
             municipal_tax_percent=max(
-                0.0, float(os.getenv("BQM_UTILITY_MUNICIPAL_TAX_PERCENT", "0"))
+                0.0, float(os.getenv("BQM_UTILITY_MUNICIPAL_TAX_PERCENT", "6.695"))
+            ),
+            # Riders may net to a credit, so this one is not clamped at zero.
+            riders_usd_per_kwh=float(
+                os.getenv("BQM_UTILITY_RIDERS_USD_PER_KWH", "0.039102")
             ),
             comparison_schedule=os.getenv(
                 "BQM_UTILITY_COMPARISON_SCHEDULE", "Residential Service (Schedule 7)"
             ),
-            comparison_tier_1_usd_per_kwh=max(
-                0.0, float(os.getenv("BQM_UTILITY_TIER_1_USD_PER_KWH", "0.189119"))
+            comparison_tier_1_usd_per_kwh=_price(
+                "BQM_UTILITY_TIER_1_USD_PER_KWH", "0.148363"
             ),
-            comparison_tier_2_usd_per_kwh=max(
-                0.0, float(os.getenv("BQM_UTILITY_TIER_2_USD_PER_KWH", "0.208536"))
+            comparison_tier_2_usd_per_kwh=_price(
+                "BQM_UTILITY_TIER_2_USD_PER_KWH", "0.167780"
             ),
-            comparison_tier_1_limit_kwh=max(
-                0.0, float(os.getenv("BQM_UTILITY_TIER_1_LIMIT_KWH", "600"))
+            comparison_tier_1_limit_kwh=_price("BQM_UTILITY_TIER_1_LIMIT_KWH", "600"),
+            comparison_tier_1_period_days=max(
+                1.0, float(os.getenv("BQM_UTILITY_TIER_1_PERIOD_DAYS", "30"))
             ),
         ),
         weather_enabled=_environment_bool("BQM_WEATHER_ENABLED", True),
@@ -339,6 +372,11 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _price(name: str, default: str) -> float:
+    """A non-negative price from the environment, or its default."""
+    return max(0.0, float(os.getenv(name, default)))
 
 
 def _environment_bool(name: str, default: bool) -> bool:

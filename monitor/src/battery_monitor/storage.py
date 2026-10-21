@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from .tariff import TOU_PERIODS, period_for
+from .tariff import TOU_PERIODS, period_for, season_for
 
 logger = logging.getLogger(__name__)
 
@@ -728,28 +728,29 @@ class RetentionStore:
     def _tier_plan(
         self, key: str, start: datetime, end: datetime, now: datetime
     ) -> dict[str, Any]:
-        """How a tiered plan's monthly allowance applies to one window.
+        """The billing days and grid draw of each month inside one window.
 
-        A tiered bill grants its cheaper first block once per billing month.
-        A month the window covers from its first day owns the whole block,
-        even while that month is still running; a single day owns its share
-        of its month; the archive's oldest month owns the part of it the
-        archive reaches.
+        A tiered plan grants its cheaper first block per billing period and
+        prorates it by day: the October 2026 statement gave an 18-day period
+        360 kWh of the 600 kWh per 30 days. So each month the window touches
+        reports how many of its days the window covers, up to today, along
+        with the grid draw the rollup holds for them, and the savings engine
+        sizes each month's block from those days. A day still in progress
+        counts as a billing day.
         """
-        if key in {"date", "today"}:
-            months = {start.strftime("%Y-%m"): 1.0 / _days_in_month(start)}
-        else:
-            months = {}
-            cursor = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            last = min(end - timedelta(seconds=1), now)
-            while cursor <= last:
-                label = cursor.strftime("%Y-%m")
-                if cursor < start:
-                    owned = _days_in_month(cursor) - (start.day - 1)
-                    months[label] = owned / _days_in_month(cursor)
-                else:
-                    months[label] = 1.0
-                cursor = (cursor + timedelta(days=32)).replace(day=1)
+        del key  # every window is measured the same way
+        months: dict[str, int] = {}
+        cursor = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        last = min(end, now)
+        while cursor < last:
+            month_end = (cursor.replace(day=1) + timedelta(days=32)).replace(day=1)
+            segment_end = min(month_end, last)
+            days = (segment_end.date() - cursor.date()).days
+            if segment_end.time() != time_type.min:
+                days += 1
+            if days > 0:
+                months[cursor.strftime("%Y-%m")] = days
+            cursor = month_end
         with self._lock:
             rows = self.connection.execute(
                 """
@@ -763,14 +764,14 @@ class RetentionStore:
             ).fetchall()
         grid = {str(row["month"]): float(row["grid_import_kwh"] or 0.0) for row in rows}
         return {
-            "allowance_months": round(sum(months.values()), 6),
+            "days": sum(months.values()),
             "months": [
                 {
                     "month": month,
-                    "allowance_fraction": round(fraction, 6),
+                    "days": days,
                     "grid_import_kwh": round(grid.get(month, 0.0), 4),
                 }
-                for month, fraction in sorted(months.items())
+                for month, days in sorted(months.items())
             ],
         }
 
@@ -992,38 +993,46 @@ class RetentionStore:
 
     def tou_energy_totals(
         self, start_unix: int, end_unix: int
-    ) -> dict[str, dict[str, float]]:
-        """Time-of-use split of the days starting inside a unix range."""
+    ) -> dict[str, dict[str, Any]]:
+        """Time-of-use split of the days starting inside a unix range.
+
+        Each period carries its totals and, under ``seasons``, the part of
+        them that fell in winter and in summer, so a window that spans the
+        season boundary can be priced the way a statement prices it: each
+        kilowatt-hour at the price of its own season.
+        """
         with self._lock:
             rows = self.connection.execute(
                 """
                 SELECT tou_period,
+                       substr(energy_date, 1, 7) AS month,
                        SUM(consumption_kwh) AS consumption_kwh,
                        SUM(solar_generation_kwh) AS solar_generation_kwh,
                        SUM(grid_import_kwh) AS grid_import_kwh
                 FROM tou_energy
                 WHERE day_start_unix >= ? AND day_start_unix < ?
-                GROUP BY tou_period
+                GROUP BY tou_period, month
                 """,
                 (int(start_unix), int(end_unix)),
             ).fetchall()
-        totals = {
-            period: {
-                "consumption_kwh": 0.0,
-                "solar_generation_kwh": 0.0,
-                "grid_import_kwh": 0.0,
-            }
+        fields = ("consumption_kwh", "solar_generation_kwh", "grid_import_kwh")
+        totals: dict[str, dict[str, Any]] = {
+            period: {**{field: 0.0 for field in fields}, "seasons": {}}
             for period in TOU_PERIODS
         }
         for row in rows:
             period = str(row["tou_period"])
             if period not in totals:
                 continue
-            totals[period] = {
-                "consumption_kwh": float(row["consumption_kwh"] or 0.0),
-                "solar_generation_kwh": float(row["solar_generation_kwh"] or 0.0),
-                "grid_import_kwh": float(row["grid_import_kwh"] or 0.0),
-            }
+            year, month = (int(part) for part in str(row["month"]).split("-"))
+            season = season_for(datetime(year, month, 1))
+            share = totals[period]["seasons"].setdefault(
+                season, {field: 0.0 for field in fields}
+            )
+            for field in fields:
+                value = float(row[field] or 0.0)
+                totals[period][field] += value
+                share[field] += value
         return totals
 
     def backfill_tou_energy(self, budget_seconds: float = 5.0) -> int:
@@ -1759,11 +1768,6 @@ def _daily_energy_row(snapshot: dict[str, Any]) -> dict[str, Any] | None:
         "captured_at_unix": captured_at_unix,
         **energy,
     }
-
-
-def _days_in_month(moment: datetime) -> int:
-    first = moment.replace(day=1, hour=12, minute=0, second=0, microsecond=0)
-    return ((first + timedelta(days=32)).replace(day=1) - first).days
 
 
 def _solar_peak_from_row(row: Any) -> dict[str, Any] | None:

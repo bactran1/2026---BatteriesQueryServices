@@ -559,6 +559,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("finiteNumber(period.rate_savings_usd)", javascript)
         self.assertIn("finiteNumber(period.comparison_grid_cost_usd)", javascript)
         self.assertIn("finiteNumber(period.comparison_grid_kwh)", javascript)
+        # The statement's riders, city tax, per-day block and seasonal rates show.
+        self.assertIn('"savings.effectiveRidersTax": "Effective {date} · incl. {riders} riders and credits, {tax}% city tax"', javascript)
+        self.assertIn('"savings.comparisonRates": "{first} first {limit} kWh per {days} days · {rest} above"', javascript)
+        self.assertIn('"savings.seasonWinter": "mùa đông"', javascript)
+        self.assertIn("function seasonRateCell", javascript)
+        self.assertIn(".savings-tou__season", css)
+        self.assertIn("comparison.tier_1_period_days", javascript)
         self.assertIn("for the same {kwh} of grid energy", javascript)
         self.assertIn("cho cùng {kwh} điện lưới", javascript)
         self.assertIn("period.average_rate_savings_per_observed_day_usd", javascript)

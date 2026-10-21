@@ -2215,6 +2215,18 @@ button {
   list-style: none;
 }
 
+/* A window across both seasons shows each season's price on its own line. */
+.savings-tou__season {
+  display: block;
+  white-space: nowrap;
+}
+
+.savings-tou__season small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .savings-tou__empty {
   padding: 12px 0;
   color: var(--muted);
