@@ -50,6 +50,17 @@ def build_savings_payload(
     }
     season_rates = rates_by_season[season]
     all_rates = [value for value in taxed.values() if value > 0]
+    # The statement's own energy charges, which the panel shows as the rates.
+    energy_charges = tariff.energy_charges()
+    charges_by_season = {
+        year_season: {
+            period: rate_for(period, year_season, energy_charges) or 0.0
+            for period in TOU_PERIODS
+        }
+        for year_season in SEASONS
+    }
+    season_charges = charges_by_season[season]
+    all_charges = [value for value in energy_charges.values() if value > 0]
     current_period = period_for(moment)
 
     comparison = {
@@ -61,7 +72,7 @@ def build_savings_payload(
         "period_days": max(1.0, float(tariff.comparison_tier_1_period_days or 30.0)),
     }
     periods = {
-        key: _period_value(value, season, rates_by_season, comparison)
+        key: _period_value(value, season, rates_by_season, charges_by_season, comparison)
         for key, value in energy.items()
     }
     return {
@@ -80,6 +91,7 @@ def build_savings_payload(
             # own clock so a browser in another timezone still sees the truth.
             "current_period": current_period,
             "current_rate_usd_per_kwh": round(season_rates[current_period], 6),
+            "current_energy_charge_usd_per_kwh": round(season_charges[current_period], 6),
             # What a kilowatt-hour costs in each period and season: the
             # schedule's energy charge, plus the riders, plus tax.
             "rates_usd_per_kwh": {
@@ -88,11 +100,25 @@ def build_savings_payload(
                 "super_off_peak": round(season_rates[SUPER_OFF_PEAK], 6),
             },
             "energy_charges_usd_per_kwh": {
-                key: round(value, 6) for key, value in tariff.energy_charges().items()
+                key: round(value, 6) for key, value in energy_charges.items()
             },
-            "riders_usd_per_kwh": round(tariff.riders_usd_per_kwh * tax_multiplier, 6),
+            # The riders as the statement prints them, and with the tax on.
+            "riders_usd_per_kwh": round(tariff.riders_usd_per_kwh, 6),
+            "riders_with_tax_usd_per_kwh": round(
+                tariff.riders_usd_per_kwh * tax_multiplier, 6
+            ),
             "season_rates_usd_per_kwh": {
                 period: round(season_rates[period], 6) for period in TOU_PERIODS
+            },
+            "season_energy_charges_usd_per_kwh": {
+                period: round(season_charges[period], 6) for period in TOU_PERIODS
+            },
+            "energy_charges_by_season_usd_per_kwh": {
+                year_season: {
+                    period: round(charges_by_season[year_season][period], 6)
+                    for period in TOU_PERIODS
+                }
+                for year_season in SEASONS
             },
             "rates_by_season_usd_per_kwh": {
                 year_season: {
@@ -119,12 +145,25 @@ def build_savings_payload(
             "effective_rate_high_usd_per_kwh": (
                 round(max(all_rates), 6) if all_rates else None
             ),
+            # The same span in the statement's energy charges alone.
+            "energy_charge_low_usd_per_kwh": (
+                round(min(all_charges), 6) if all_charges else None
+            ),
+            "energy_charge_high_usd_per_kwh": (
+                round(max(all_charges), 6) if all_charges else None
+            ),
             # The standard plan the savings figure compares against.
             "comparison": {
                 "schedule": tariff.comparison_schedule,
                 "kind": "tiered",
                 "tier_1_usd_per_kwh": round(comparison["tier_1"], 6),
                 "tier_2_usd_per_kwh": round(comparison["tier_2"], 6),
+                "tier_1_energy_charge_usd_per_kwh": round(
+                    tariff.comparison_tier_1_usd_per_kwh, 6
+                ),
+                "tier_2_energy_charge_usd_per_kwh": round(
+                    tariff.comparison_tier_2_usd_per_kwh, 6
+                ),
                 "tier_1_limit_kwh": comparison["limit"],
                 "tier_1_period_days": comparison["period_days"],
             },
@@ -149,6 +188,7 @@ def _period_value(
     energy: dict[str, Any],
     season: str,
     rates_by_season: dict[str, dict[str, float]],
+    charges_by_season: dict[str, dict[str, float]],
     comparison: dict[str, float],
 ) -> dict[str, Any]:
     season_rates = rates_by_season[season]
@@ -169,6 +209,7 @@ def _period_value(
             period,
             split.get(period),
             {year_season: rates_by_season[year_season][period] for year_season in SEASONS},
+            {year_season: charges_by_season[year_season][period] for year_season in SEASONS},
             season,
         )
         for period in TOU_PERIODS
@@ -311,6 +352,7 @@ def _priced_period(
     period: str,
     values: dict[str, Any] | None,
     season_prices: dict[str, float],
+    season_charges: dict[str, float],
     season: str,
 ) -> dict[str, Any]:
     """Price one time period's energy, each season's share at its own rate.
@@ -345,6 +387,7 @@ def _priced_period(
             "solar_generation_kwh": round(season_solar, 4),
             "grid_import_kwh": round(season_grid, 4),
             "rate_usd_per_kwh": round(rate, 6),
+            "energy_charge_usd_per_kwh": round(season_charges[year_season], 6),
             "savings_usd": round(season_solar * rate, 2),
             "grid_cost_usd": round(season_grid * rate, 2),
         }
@@ -361,6 +404,7 @@ def _priced_period(
         "grid_import_kwh": round(grid, 4),
         "consumption_kwh": round(consumption, 4),
         "rate_usd_per_kwh": round(current, 6),
+        "energy_charge_usd_per_kwh": round(season_charges[season], 6),
         "savings_usd": round(savings, 2),
         "grid_cost_usd": round(grid_cost, 2),
         "seasons": by_season,
