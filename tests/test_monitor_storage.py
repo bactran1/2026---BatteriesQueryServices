@@ -1113,12 +1113,11 @@ class TimeOfUseRollupTests(unittest.TestCase):
             self.assertEqual(store.backfill_tou_energy(budget_seconds=5.0), 0)
             store.close()
 
-    def test_savings_energy_carries_a_monthly_tier_plan_for_every_window(self) -> None:
+    def test_savings_energy_carries_the_billing_days_of_every_window(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            today = datetime.now(self.ZONE).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            now = datetime.now(self.ZONE)
+            today = now.replace(hour=0, minute=0, second=0, microsecond=0)
             self._log_day(store, today, {hour: (0.0, 0.05) for hour in range(17, 20)})
 
             savings = store.savings_energy(
@@ -1127,27 +1126,50 @@ class TimeOfUseRollupTests(unittest.TestCase):
             store.close()
 
             label = today.strftime("%Y-%m")
-            days = (
-                (today.replace(day=1) + timedelta(days=32)).replace(day=1)
-                - today.replace(day=1)
-            ).days
-            # A single day owns its share of its month's allowance.
+            # A single day is one billing day of its month.
             day_plan = savings["date"]["tier_plan"]
-            self.assertEqual([m["month"] for m in day_plan["months"]], [label])
-            self.assertAlmostEqual(day_plan["allowance_months"], 1 / days, 5)
+            self.assertEqual(day_plan["days"], 1)
+            self.assertEqual([(m["month"], m["days"]) for m in day_plan["months"]], [(label, 1)])
             self.assertAlmostEqual(day_plan["months"][0]["grid_import_kwh"], 1.8, 3)
-            # The running month owns its whole block.
+            # The running month counts its days so far, today included.
             month_plan = savings["month"]["tier_plan"]
-            self.assertEqual(month_plan["months"][-1]["month"], label)
-            self.assertEqual(month_plan["months"][-1]["allowance_fraction"], 1.0)
-            # The year counts each month from January to now in full.
+            self.assertEqual(month_plan["days"], today.day)
+            self.assertEqual(month_plan["months"], [
+                {"month": label, "days": today.day, "grid_import_kwh": 1.8}
+            ])
+            # The year counts every day from January 1 to today.
             year_plan = savings["year"]["tier_plan"]
             self.assertEqual(len(year_plan["months"]), today.month)
-            self.assertTrue(all(m["allowance_fraction"] == 1.0 for m in year_plan["months"]))
-            # The archive's oldest month owns only the part the archive reaches.
-            retained = savings["retained"]["tier_plan"]["months"]
-            self.assertLess(retained[0]["allowance_fraction"], 1.0)
-            self.assertEqual(retained[-1]["month"], label)
+            self.assertEqual(year_plan["days"], today.timetuple().tm_yday)
+            # The archive counts the retention span plus today, oldest month partial.
+            retained = savings["retained"]["tier_plan"]
+            self.assertEqual(retained["days"], 1095 + 1)
+            self.assertEqual(retained["months"][-1]["month"], label)
+            self.assertGreaterEqual(len(retained["months"]), 36)
+
+    def test_time_of_use_totals_are_split_by_season(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            september = datetime(2026, 9, 30, tzinfo=self.ZONE)  # a summer Wednesday
+            october = datetime(2026, 10, 1, tzinfo=self.ZONE)  # the first winter day
+            for day in (september, october):
+                self._log_day(store, day, {hour: (0.05, 0.0) for hour in range(9, 16)})
+
+            both = store.tou_energy_totals(
+                int(september.timestamp()), int((october + timedelta(days=1)).timestamp())
+            )
+            one = store.tou_energy_totals(
+                int(october.timestamp()), int((october + timedelta(days=1)).timestamp())
+            )
+            store.close()
+
+            off_peak = both["off_peak"]
+            self.assertAlmostEqual(off_peak["solar_generation_kwh"], 7.2, 3)
+            self.assertAlmostEqual(off_peak["seasons"]["summer"]["solar_generation_kwh"], 3.6, 3)
+            self.assertAlmostEqual(off_peak["seasons"]["winter"]["solar_generation_kwh"], 3.6, 3)
+            # A single winter day reports only its own season.
+            self.assertEqual(set(one["off_peak"]["seasons"]), {"winter"})
+            self.assertAlmostEqual(one["off_peak"]["seasons"]["winter"]["solar_generation_kwh"], 3.6, 3)
 
     def test_savings_energy_carries_the_split_for_every_window(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

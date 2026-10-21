@@ -76,10 +76,10 @@ const savings = {
   tariff:{provider:"Puget Sound Energy",
     schedule:"Residential Time-of-Use with Super Off-Peak (Schedule 327)",region:"King County, WA",
     effective_date:"2026-01-29",basic_charge_usd:7.49,
-    municipal_tax_percent:0,effective_rate_low_usd_per_kwh:0.076,
-    effective_rate_high_usd_per_kwh:0.504,
+    municipal_tax_percent:6.695,riders_usd_per_kwh:0.041720,effective_rate_low_usd_per_kwh:0.131302,
+    effective_rate_high_usd_per_kwh:0.587992,
     comparison:{schedule:"Residential Service (Schedule 7)",kind:"tiered",
-      tier_1_usd_per_kwh:0.187465,tier_2_usd_per_kwh:0.206882,tier_1_limit_kwh:600}},
+      tier_1_usd_per_kwh:0.200016,tier_2_usd_per_kwh:0.220733,tier_1_limit_kwh:600,tier_1_period_days:30}},
 };
 const types = {".html":"text/html", ".js":"text/javascript", ".css":"text/css", ".svg":"image/svg+xml", ".png":"image/png"};
 const server = http.createServer((request, response) => {
@@ -285,6 +285,8 @@ async function closeReadout(page, id) {
           assert.match(await page.locator("#savingsEstimateDetail").innerText(), /Schedule 7|76[.,]13/);
           assert.match(await page.locator("#savingsEstimateDetail").innerText(), /184[.,]2 kWh/);
           assert.match(await page.locator("#savingsComparisonRates").innerText(), /600/);
+          assert.match(await page.locator("#savingsComparisonRates").innerText(), /30/);
+          assert.match(await page.locator("#savingsRateEffective").innerText(), /6[.,]695/);
           // The day's solar peak shows on the inverter tile and beside the
           // energy history's solar total, in the viewer's number format.
           assert.match(await page.locator("#inverterSolarPeak").innerText(), /6[.,]21 kW/);

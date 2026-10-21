@@ -8,12 +8,16 @@ from .config import UtilityTariff
 from .tariff import (
     OFF_PEAK,
     ON_PEAK,
+    SUMMER,
     SUPER_OFF_PEAK,
     TOU_PERIODS,
+    WINTER,
     period_for,
     rate_for,
     season_for,
 )
+
+SEASONS: tuple[str, ...] = (WINTER, SUMMER)
 
 
 def build_savings_payload(
@@ -21,32 +25,43 @@ def build_savings_payload(
     tariff: UtilityTariff,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Price recorded energy under a time-of-use schedule.
+    """Price recorded energy the way a PSE statement does.
 
-    Schedule 327 has no consumption tiers, so a period's value is no longer a
-    range between a tier-1 and a tier-2 guess: every kilowatt-hour has one
-    price, set by the time period it crossed the meter. Each window is priced
-    from its own time-of-use split and the season that split fell in.
+    Schedule 327 has no consumption tiers: every kilowatt-hour has one price,
+    set by the time period it crossed the meter and the season it fell in.
+    Each window is priced from its own time-of-use split, season by season
+    where the rollup carries that detail, with the same per-kWh riders and
+    the city's utility tax on top as the statement adds them. The same
+    kilowatt-hours are also billed on Schedule 7, with its first block
+    prorated by day, for the headline saving.
     """
     tax_multiplier = 1.0 + tariff.municipal_tax_percent / 100.0
     zone = ZoneInfo(tariff.timezone)
     moment = now.astimezone(zone) if now else datetime.now(zone)
     season = season_for(moment)
-    base_rates = tariff.rates()
-    taxed = {key: value * tax_multiplier for key, value in base_rates.items()}
-    season_rates = {
-        period: rate_for(period, season, taxed) or 0.0 for period in TOU_PERIODS
+    # Energy charge plus riders, then tax: what a kilowatt-hour costs.
+    taxed = {key: value * tax_multiplier for key, value in tariff.rates().items()}
+    rates_by_season = {
+        year_season: {
+            period: rate_for(period, year_season, taxed) or 0.0
+            for period in TOU_PERIODS
+        }
+        for year_season in SEASONS
     }
+    season_rates = rates_by_season[season]
     all_rates = [value for value in taxed.values() if value > 0]
     current_period = period_for(moment)
 
     comparison = {
-        "tier_1": tariff.comparison_tier_1_usd_per_kwh * tax_multiplier,
-        "tier_2": tariff.comparison_tier_2_usd_per_kwh * tax_multiplier,
+        "tier_1": (tariff.comparison_tier_1_usd_per_kwh + tariff.riders_usd_per_kwh)
+        * tax_multiplier,
+        "tier_2": (tariff.comparison_tier_2_usd_per_kwh + tariff.riders_usd_per_kwh)
+        * tax_multiplier,
         "limit": tariff.comparison_tier_1_limit_kwh,
+        "period_days": max(1.0, float(tariff.comparison_tier_1_period_days or 30.0)),
     }
     periods = {
-        key: _period_value(value, taxed, season_rates, comparison)
+        key: _period_value(value, season, rates_by_season, comparison)
         for key, value in energy.items()
     }
     return {
@@ -65,15 +80,26 @@ def build_savings_payload(
             # own clock so a browser in another timezone still sees the truth.
             "current_period": current_period,
             "current_rate_usd_per_kwh": round(season_rates[current_period], 6),
+            # What a kilowatt-hour costs in each period and season: the
+            # schedule's energy charge, plus the riders, plus tax.
             "rates_usd_per_kwh": {
-                "on_peak_winter": round(taxed["on_peak_winter"], 6),
-                "on_peak_summer": round(taxed["on_peak_summer"], 6),
-                "off_peak_winter": round(taxed["off_peak_winter"], 6),
-                "off_peak_summer": round(taxed["off_peak_summer"], 6),
-                "super_off_peak": round(taxed["super_off_peak"], 6),
+                **{key: round(value, 6) for key, value in taxed.items()},
+                # The year-round key older clients read; the season's price.
+                "super_off_peak": round(season_rates[SUPER_OFF_PEAK], 6),
             },
+            "energy_charges_usd_per_kwh": {
+                key: round(value, 6) for key, value in tariff.energy_charges().items()
+            },
+            "riders_usd_per_kwh": round(tariff.riders_usd_per_kwh * tax_multiplier, 6),
             "season_rates_usd_per_kwh": {
                 period: round(season_rates[period], 6) for period in TOU_PERIODS
+            },
+            "rates_by_season_usd_per_kwh": {
+                year_season: {
+                    period: round(rates_by_season[year_season][period], 6)
+                    for period in TOU_PERIODS
+                }
+                for year_season in SEASONS
             },
             "windows": {
                 ON_PEAK: "Weekdays 7-10 a.m. and 5-8 p.m., excluding holidays",
@@ -100,6 +126,7 @@ def build_savings_payload(
                 "tier_1_usd_per_kwh": round(comparison["tier_1"], 6),
                 "tier_2_usd_per_kwh": round(comparison["tier_2"], 6),
                 "tier_1_limit_kwh": comparison["limit"],
+                "tier_1_period_days": comparison["period_days"],
             },
         },
         "methodology": {
@@ -109,18 +136,22 @@ def build_savings_payload(
             "savings_basis": "schedule_7_grid_cost_minus_time_of_use_grid_cost",
             "net_metering_assumed": True,
             "fixed_charge_excluded": True,
+            "riders_included": True,
             "municipal_tax_included": tariff.municipal_tax_percent > 0,
             "priced_by_clock": True,
+            "priced_by_season": True,
+            "tier_block_prorated_by_day": True,
         },
     }
 
 
 def _period_value(
     energy: dict[str, Any],
-    taxed: dict[str, float],
-    season_rates: dict[str, float],
+    season: str,
+    rates_by_season: dict[str, dict[str, float]],
     comparison: dict[str, float],
 ) -> dict[str, Any]:
+    season_rates = rates_by_season[season]
     solar = _nonnegative_number(energy.get("solar_generation_kwh"))
     grid = _nonnegative_number(energy.get("grid_import_kwh"))
     consumption = _nonnegative_number(energy.get("consumption_kwh"))
@@ -134,7 +165,12 @@ def _period_value(
 
     split = _tou_split(energy.get("tou"))
     priced = {
-        period: _priced_period(period, split.get(period), season_rates[period])
+        period: _priced_period(
+            period,
+            split.get(period),
+            {year_season: rates_by_season[year_season][period] for year_season in SEASONS},
+            season,
+        )
         for period in TOU_PERIODS
     }
     classified_solar = sum(item["solar_generation_kwh"] for item in priced.values())
@@ -237,51 +273,97 @@ def _period_value(
 def _tiered_cost(
     grid: float | None, plan: Any, comparison: dict[str, float]
 ) -> tuple[float | None, float | None]:
-    """Bill a window's grid draw on a two-tier monthly plan.
+    """Bill a window's grid draw on a two-tier plan.
 
-    Each month's draw fills that month's share of the first block before
-    any of it is billed at the second price. The energy handed in is then
-    split in the same proportion. With no monthly breakdown yet (the rollup
-    still backfilling) the window's whole allowance is applied to its whole
-    draw.
+    The first block is granted per billing period and prorated by day, as
+    the statement did (600 kWh per 30 days gave an 18-day period 360 kWh).
+    Each month the window touches gets a block for the days it covers, and
+    its draw fills that block before any of it is billed at the second
+    price. The energy handed in is then split in the same proportion. With
+    no monthly breakdown yet (the rollup still backfilling) one block for
+    the window's days is applied to its whole draw.
     """
     if grid is None:
         return None, None
     plan = plan if isinstance(plan, dict) else {}
     months = [m for m in plan.get("months") or [] if isinstance(m, dict)]
-    limit = max(0.0, float(comparison["limit"]))
+    period_days = max(1.0, float(comparison.get("period_days") or 30.0))
+    per_day = max(0.0, float(comparison["limit"])) / period_days
     classified = sum(max(0.0, float(m.get("grid_import_kwh") or 0.0)) for m in months)
     if classified > 0:
         within = sum(
             min(
                 max(0.0, float(m.get("grid_import_kwh") or 0.0)),
-                limit * max(0.0, float(m.get("allowance_fraction") or 0.0)),
+                per_day * max(0.0, float(m.get("days") or 0.0)),
             )
             for m in months
         )
         tier_1 = grid * (within / classified)
     else:
-        allowance = limit * max(0.0, float(plan.get("allowance_months", 1.0) or 0.0))
-        tier_1 = min(grid, allowance)
+        days = float(plan.get("days") or period_days)
+        tier_1 = min(grid, per_day * max(0.0, days))
     tier_2 = max(0.0, grid - tier_1)
     cost = tier_1 * comparison["tier_1"] + tier_2 * comparison["tier_2"]
     return round(cost, 2), round(tier_1, 4)
 
 
 def _priced_period(
-    period: str, values: dict[str, float] | None, rate: float
+    period: str,
+    values: dict[str, Any] | None,
+    season_prices: dict[str, float],
+    season: str,
 ) -> dict[str, Any]:
-    solar = max(0.0, float((values or {}).get("solar_generation_kwh") or 0.0))
-    grid = max(0.0, float((values or {}).get("grid_import_kwh") or 0.0))
-    consumption = max(0.0, float((values or {}).get("consumption_kwh") or 0.0))
+    """Price one time period's energy, each season's share at its own rate.
+
+    The rollup carries the period's energy by season where it has it; that
+    energy is priced at the season it fell in, as the statement prices it.
+    Anything the seasons do not account for (a rollup written before the
+    split, or rounding) is priced at the current season's rate. The row's
+    headline rate is the current season's, which is what the table's
+    "winter rates" or "summer rates" heading says.
+    """
+    values = values if isinstance(values, dict) else {}
+    solar = max(0.0, float(values.get("solar_generation_kwh") or 0.0))
+    grid = max(0.0, float(values.get("grid_import_kwh") or 0.0))
+    consumption = max(0.0, float(values.get("consumption_kwh") or 0.0))
+    current = season_prices[season]
+
+    seasons_in = values.get("seasons")
+    seasons_in = seasons_in if isinstance(seasons_in, dict) else {}
+    by_season: dict[str, dict[str, float]] = {}
+    savings = grid_cost = solar_assigned = grid_assigned = 0.0
+    for year_season in SEASONS:
+        share = seasons_in.get(year_season)
+        if not isinstance(share, dict):
+            continue
+        season_solar = max(0.0, float(share.get("solar_generation_kwh") or 0.0))
+        season_grid = max(0.0, float(share.get("grid_import_kwh") or 0.0))
+        if season_solar <= 0 and season_grid <= 0:
+            continue
+        rate = season_prices[year_season]
+        by_season[year_season] = {
+            "solar_generation_kwh": round(season_solar, 4),
+            "grid_import_kwh": round(season_grid, 4),
+            "rate_usd_per_kwh": round(rate, 6),
+            "savings_usd": round(season_solar * rate, 2),
+            "grid_cost_usd": round(season_grid * rate, 2),
+        }
+        savings += season_solar * rate
+        grid_cost += season_grid * rate
+        solar_assigned += season_solar
+        grid_assigned += season_grid
+    savings += max(0.0, solar - solar_assigned) * current
+    grid_cost += max(0.0, grid - grid_assigned) * current
+
     return {
         "period": period,
         "solar_generation_kwh": round(solar, 4),
         "grid_import_kwh": round(grid, 4),
         "consumption_kwh": round(consumption, 4),
-        "rate_usd_per_kwh": round(rate, 6),
-        "savings_usd": round(solar * rate, 2),
-        "grid_cost_usd": round(grid * rate, 2),
+        "rate_usd_per_kwh": round(current, 6),
+        "savings_usd": round(savings, 2),
+        "grid_cost_usd": round(grid_cost, 2),
+        "seasons": by_season,
     }
 
 

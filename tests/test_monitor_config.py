@@ -47,20 +47,39 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual(settings.utility_tariff.on_peak_winter_usd_per_kwh, 0.52)
         # Unset prices keep the Schedule 327 defaults, and the tariff carries its
         # own clock so time-of-use periods do not follow the viewer's timezone.
-        self.assertEqual(settings.utility_tariff.super_off_peak_usd_per_kwh, 0.123063)
+        self.assertEqual(settings.utility_tariff.super_off_peak_winter_usd_per_kwh, 0.083961)
+        self.assertEqual(settings.utility_tariff.super_off_peak_summer_usd_per_kwh, 0.082307)
+        self.assertEqual(settings.utility_tariff.riders_usd_per_kwh, 0.039102)
         self.assertEqual(settings.utility_tariff.timezone, "America/Los_Angeles")
         self.assertEqual(settings.utility_tariff.municipal_tax_percent, 6.5)
         # Schedule 7, the comparison plan, keeps its defaults when unset.
         self.assertEqual(
             settings.utility_tariff.comparison_schedule, "Residential Service (Schedule 7)"
         )
-        self.assertEqual(settings.utility_tariff.comparison_tier_1_usd_per_kwh, 0.189119)
-        self.assertEqual(settings.utility_tariff.comparison_tier_2_usd_per_kwh, 0.208536)
+        self.assertEqual(settings.utility_tariff.comparison_tier_1_usd_per_kwh, 0.148363)
+        self.assertEqual(settings.utility_tariff.comparison_tier_2_usd_per_kwh, 0.167780)
         self.assertEqual(settings.utility_tariff.comparison_tier_1_limit_kwh, 600)
+        self.assertEqual(settings.utility_tariff.comparison_tier_1_period_days, 30)
         self.assertTrue(settings.weather_enabled)
         self.assertEqual(settings.weather_latitude, 47.61)
         self.assertEqual(settings.weather_longitude, -122.33)
         self.assertEqual(settings.weather_location, "Home")
+
+    def test_tariff_defaults_follow_the_october_2026_statement(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            tariff = load_settings().utility_tariff
+        self.assertEqual(tariff.on_peak_winter_usd_per_kwh, 0.511994)
+        self.assertEqual(tariff.off_peak_summer_usd_per_kwh, 0.128820)
+        self.assertEqual(tariff.municipal_tax_percent, 6.695)
+        # Energy charge plus riders is what a kilowatt-hour costs before tax.
+        self.assertAlmostEqual(tariff.rates()["super_off_peak_winter"], 0.123063, 6)
+        self.assertAlmostEqual(tariff.rates()["on_peak_winter"], 0.551096, 6)
+
+    def test_one_super_off_peak_price_still_sets_both_seasons(self) -> None:
+        with patch.dict(os.environ, {"BQM_UTILITY_SUPER_OFF_PEAK_USD_PER_KWH": "0.09"}, clear=True):
+            tariff = load_settings().utility_tariff
+        self.assertEqual(tariff.super_off_peak_winter_usd_per_kwh, 0.09)
+        self.assertEqual(tariff.super_off_peak_summer_usd_per_kwh, 0.09)
 
     def test_rack_details_combines_profile_and_live_reading(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

@@ -283,7 +283,11 @@ const translations = {
     "savings.estimateCompare": "Estimated electrical savings: {tou} at time-of-use rates against {standard} on {plan}, for the same {kwh} of grid energy",
     "savings.estimateCostlier": "Time-of-use cost more this period: {tou} against {standard} on {plan}, for the same {kwh} of grid energy",
     "savings.comparedWith": "Compared with",
-    "savings.comparisonRates": "{first} first {limit} kWh · {rest} above, per month",
+    "savings.comparisonRates": "{first} first {limit} kWh per {days} days · {rest} above",
+    "savings.effectiveRiders": "Effective {date} · incl. {riders} riders and credits",
+    "savings.effectiveRidersTax": "Effective {date} · incl. {riders} riders and credits, {tax}% city tax",
+    "savings.seasonWinter": "winter",
+    "savings.seasonSummer": "summer",
     "savings.gridCostVersus": "vs {cost} on {plan}",
     "savings.solarShare": "Solar share of supplied energy",
     "savings.solarEnergy": "Solar energy valued",
@@ -330,8 +334,8 @@ const translations = {
     "savings.fixedChargeDetail": "Monthly · excluded from savings",
     "savings.tariffAria": "Utility rate assumptions",
     "savings.effective": "Effective {date}",
-    "savings.methodology": "Savings compare the recorded grid energy priced at its Schedule 327 time-of-use period and season with the same energy on Schedule 7's two monthly tiers. Solar value assumes recorded solar receives usable net-metering credit. Basic charges and municipal utility tax are not included; banked credits expire March 31.",
-    "savings.methodologyTax": "Savings compare the recorded grid energy priced at its Schedule 327 time-of-use period and season with the same energy on Schedule 7's two monthly tiers. Solar value assumes recorded solar receives usable net-metering credit. Includes {tax}% municipal utility tax on both plans; basic charges are not included and banked credits expire March 31.",
+    "savings.methodology": "Savings compare the recorded grid energy, priced at its Schedule 327 time-of-use period and the season it fell in, with the same energy on Schedule 7's two tiers, 600 kWh per 30 days at the first price. Both plans carry the same per-kilowatt-hour riders and credits. Solar value assumes recorded solar receives usable net-metering credit. Basic charges and city utility tax are not included; banked credits expire March 31.",
+    "savings.methodologyTax": "Savings compare the recorded grid energy, priced at its Schedule 327 time-of-use period and the season it fell in, with the same energy on Schedule 7's two tiers, 600 kWh per 30 days at the first price. Both plans carry the same per-kilowatt-hour riders and credits and {tax}% city utility tax. Basic charges are not included; banked credits expire March 31.",
     "savings.awaiting": "Awaiting solar and grid energy readings",
     "savings.unavailable": "Savings estimate temporarily unavailable",
     "runtime.minutes": "{minutes}m",
@@ -720,7 +724,11 @@ const translations = {
     "savings.estimateCompare": "Tiết kiệm điện ước tính: {tou} theo giá khung giờ so với {standard} theo {plan}, cho cùng {kwh} điện lưới",
     "savings.estimateCostlier": "Kỳ này giá khung giờ đắt hơn: {tou} so với {standard} theo {plan}, cho cùng {kwh} điện lưới",
     "savings.comparedWith": "So sánh với",
-    "savings.comparisonRates": "{first} cho {limit} kWh đầu · {rest} phần vượt, mỗi tháng",
+    "savings.comparisonRates": "{first} cho {limit} kWh đầu mỗi {days} ngày · {rest} phần vượt",
+    "savings.effectiveRiders": "Có hiệu lực {date} · gồm {riders} phụ phí và tín dụng",
+    "savings.effectiveRidersTax": "Có hiệu lực {date} · gồm {riders} phụ phí và tín dụng, {tax}% thuế thành phố",
+    "savings.seasonWinter": "mùa đông",
+    "savings.seasonSummer": "mùa hè",
     "savings.gridCostVersus": "so với {cost} theo {plan}",
     "savings.solarShare": "Tỷ lệ điện cung cấp từ mặt trời",
     "savings.solarEnergy": "Điện mặt trời được tính giá trị",
@@ -767,8 +775,8 @@ const translations = {
     "savings.fixedChargeDetail": "Hàng tháng · không tính là tiết kiệm",
     "savings.tariffAria": "Các giả định về biểu giá điện",
     "savings.effective": "Có hiệu lực {date}",
-    "savings.methodology": "Khoản tiết kiệm so sánh điện lưới đã ghi nhận, tính theo khung giờ và mùa của Biểu giá 327, với cùng lượng điện đó theo hai bậc hàng tháng của Schedule 7. Giá trị điện mặt trời giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Chưa bao gồm phí cơ bản và thuế điện đô thị; tín dụng tích lũy hết hạn ngày 31 tháng 3.",
-    "savings.methodologyTax": "Khoản tiết kiệm so sánh điện lưới đã ghi nhận, tính theo khung giờ và mùa của Biểu giá 327, với cùng lượng điện đó theo hai bậc hàng tháng của Schedule 7. Giá trị điện mặt trời giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Đã bao gồm {tax}% thuế điện đô thị cho cả hai biểu giá; chưa bao gồm phí cơ bản, tín dụng tích lũy hết hạn ngày 31 tháng 3.",
+    "savings.methodology": "Khoản tiết kiệm so sánh điện lưới đã ghi nhận, tính theo khung giờ và mùa thực tế của Biểu giá 327, với cùng lượng điện đó theo hai bậc của Schedule 7, 600 kWh mỗi 30 ngày ở giá bậc một. Cả hai biểu giá đều chịu cùng phụ phí và tín dụng trên mỗi kilôwatt giờ. Giá trị điện mặt trời giả định điện mặt trời đã ghi nhận nhận được tín dụng điện hai chiều có thể sử dụng. Chưa bao gồm phí cơ bản và thuế thành phố; tín dụng tích lũy hết hạn ngày 31 tháng 3.",
+    "savings.methodologyTax": "Khoản tiết kiệm so sánh điện lưới đã ghi nhận, tính theo khung giờ và mùa thực tế của Biểu giá 327, với cùng lượng điện đó theo hai bậc của Schedule 7, 600 kWh mỗi 30 ngày ở giá bậc một. Cả hai biểu giá đều chịu cùng phụ phí và tín dụng trên mỗi kilôwatt giờ và {tax}% thuế thành phố. Chưa bao gồm phí cơ bản; tín dụng tích lũy hết hạn ngày 31 tháng 3.",
     "savings.awaiting": "Đang chờ dữ liệu điện mặt trời và điện lưới",
     "savings.unavailable": "Ước tính tiết kiệm tạm thời không khả dụng",
     "runtime.minutes": "{minutes} phút",
@@ -2662,9 +2670,17 @@ function renderSavings() {
     tariff.effective_rate_low_usd_per_kwh,
     tariff.effective_rate_high_usd_per_kwh,
   );
-  $("savingsRateEffective").textContent = tariff.effective_date
-    ? t("savings.effective", { date: formatCalendarDate(tariff.effective_date) })
-    : "--";
+  const riders = finiteNumber(tariff.riders_usd_per_kwh);
+  const cityTax = finiteNumber(tariff.municipal_tax_percent);
+  $("savingsRateEffective").textContent = !tariff.effective_date
+    ? "--"
+    : riders === null
+      ? t("savings.effective", { date: formatCalendarDate(tariff.effective_date) })
+      : t(cityTax !== null && cityTax > 0 ? "savings.effectiveRidersTax" : "savings.effectiveRiders", {
+          date: formatCalendarDate(tariff.effective_date),
+          riders: formatRate(riders),
+          tax: formatTaxPercent(cityTax),
+        });
   $("savingsCurrentPeriod").textContent = tariff.current_period
     ? t(TOU_PERIOD_LABELS[tariff.current_period] || "savings.periodOffPeak")
     : "--";
@@ -2673,18 +2689,20 @@ function renderSavings() {
   const firstTier = finiteNumber(comparison.tier_1_usd_per_kwh);
   const secondTier = finiteNumber(comparison.tier_2_usd_per_kwh);
   const tierLimit = finiteNumber(comparison.tier_1_limit_kwh);
+  const tierDays = finiteNumber(comparison.tier_1_period_days) ?? 30;
   $("savingsComparisonRates").textContent = firstTier === null || secondTier === null || tierLimit === null
     ? "--"
     : t("savings.comparisonRates", {
         first: formatRate(firstTier),
         rest: formatRate(secondTier),
         limit: formatNumber(tierLimit),
+        days: formatNumber(tierDays),
       });
   $("savingsBasicCharge").textContent = formatCurrency(tariff.basic_charge_usd);
   renderSavingsTou(period, tariff);
   const tax = finiteNumber(tariff.municipal_tax_percent);
   $("savingsMethodology").textContent = tax !== null && tax > 0
-    ? t("savings.methodologyTax", { tax: formatValue(tax) })
+    ? t("savings.methodologyTax", { tax: formatTaxPercent(tax) })
     : t("savings.methodology");
 
   const hasEnergy = solar !== null || grid !== null;
@@ -2748,7 +2766,7 @@ function renderSavingsTou(period, tariff) {
           <strong>${escapeHtml(t(TOU_PERIOD_LABELS[key]))}</strong>
           <small>${escapeHtml(t(TOU_PERIOD_WINDOWS[key]))}</small>
         </span>
-        ${cell("savings.touRate", formatRate(values.rate_usd_per_kwh))}
+        ${seasonRateCell(values)}
         ${cell("savings.touSolar", formatEnergyWithUnit(values.solar_generation_kwh))}
         ${cell("savings.touGrid", formatEnergyWithUnit(values.grid_import_kwh))}
         ${cell("savings.touGridCost", formatCurrency(values.grid_cost_usd))}
@@ -2767,6 +2785,22 @@ function renderSavingsTou(period, tariff) {
   total("savingsTouTotalGridCost", "savings.touGridCost", formatCurrency(sum("grid_cost_usd")));
   total("savingsTouTotalValue", "savings.touValue", formatCurrency(sum("savings_usd")));
   renderSavingsDonut(period, rows);
+}
+
+// A period priced across both seasons lists each season's rate on its own
+// line; otherwise the row shows the current season's rate, which is what the
+// table's heading says.
+function seasonRateCell(values) {
+  const label = escapeHtml(t("savings.touRate"));
+  const seasons = values?.seasons && typeof values.seasons === "object" ? values.seasons : {};
+  const winter = finiteNumber(seasons.winter?.rate_usd_per_kwh);
+  const summer = finiteNumber(seasons.summer?.rate_usd_per_kwh);
+  if (winter !== null && summer !== null && winter !== summer) {
+    const line = (rate, key) =>
+      `<span class="savings-tou__season">${escapeHtml(formatRate(rate))} <small>${escapeHtml(t(key))}</small></span>`;
+    return `<span role="cell" data-label="${label}">${line(winter, "savings.seasonWinter")}${line(summer, "savings.seasonSummer")}</span>`;
+  }
+  return `<span role="cell" data-label="${label}">${escapeHtml(formatRate(values?.rate_usd_per_kwh))}</span>`;
 }
 
 // The donut divides one whole: what this window's electricity was worth at
@@ -3009,6 +3043,13 @@ function formatWeatherWind(kilometersPerHour) {
     return `${formatNumber(Math.round(kilometersPerHour * 0.621371))} mph`;
   }
   return `${formatNumber(Math.round(kilometersPerHour))} km/h`;
+}
+
+// A city tax rate as the statement prints it, to the thousandth of a percent.
+function formatTaxPercent(value) {
+  const number = finiteNumber(value);
+  if (number === null) return "--";
+  return new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 3 }).format(number);
 }
 
 function formatRateRange(low, high) {
