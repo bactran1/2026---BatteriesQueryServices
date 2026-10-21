@@ -2233,6 +2233,18 @@ button {
   font-size: 12px;
 }
 
+/* What the rate column shows and what the cost columns add to it. */
+.savings-tou__note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.savings-tou__note[hidden] {
+  display: none;
+}
+
 @media (max-width: 1120px) {
   .savings-tou__layout {
     grid-template-columns: minmax(0, 1fr);

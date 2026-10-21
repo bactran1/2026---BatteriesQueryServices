@@ -283,9 +283,12 @@ const translations = {
     "savings.estimateCompare": "Estimated electrical savings: {tou} at time-of-use rates against {standard} on {plan}, for the same {kwh} of grid energy",
     "savings.estimateCostlier": "Time-of-use cost more this period: {tou} against {standard} on {plan}, for the same {kwh} of grid energy",
     "savings.comparedWith": "Compared with",
-    "savings.comparisonRates": "{first} first {limit} kWh per {days} days · {rest} above",
-    "savings.effectiveRiders": "Effective {date} · incl. {riders} riders and credits",
-    "savings.effectiveRidersTax": "Effective {date} · incl. {riders} riders and credits, {tax}% city tax",
+    "savings.comparisonRates": "{first} first {limit} kWh per {days} days · {rest} above · plus the same riders and tax",
+    "savings.rateBasis": "Statement energy charges · +{riders} riders and credits · effective {date}",
+    "savings.rateBasisTax": "Statement energy charges · +{riders} riders and credits · +{tax}% city tax · effective {date}",
+    "savings.rightNowRates": "{charge} energy charge · {allIn} all-in",
+    "savings.touNote": "Rates are the statement's energy charges; costs add {riders} riders and credits.",
+    "savings.touNoteTax": "Rates are the statement's energy charges; costs add {riders} riders and credits and {tax}% city tax.",
     "savings.seasonWinter": "winter",
     "savings.seasonSummer": "summer",
     "savings.gridCostVersus": "vs {cost} on {plan}",
@@ -724,9 +727,12 @@ const translations = {
     "savings.estimateCompare": "Tiết kiệm điện ước tính: {tou} theo giá khung giờ so với {standard} theo {plan}, cho cùng {kwh} điện lưới",
     "savings.estimateCostlier": "Kỳ này giá khung giờ đắt hơn: {tou} so với {standard} theo {plan}, cho cùng {kwh} điện lưới",
     "savings.comparedWith": "So sánh với",
-    "savings.comparisonRates": "{first} cho {limit} kWh đầu mỗi {days} ngày · {rest} phần vượt",
-    "savings.effectiveRiders": "Có hiệu lực {date} · gồm {riders} phụ phí và tín dụng",
-    "savings.effectiveRidersTax": "Có hiệu lực {date} · gồm {riders} phụ phí và tín dụng, {tax}% thuế thành phố",
+    "savings.comparisonRates": "{first} cho {limit} kWh đầu mỗi {days} ngày · {rest} phần vượt · cộng cùng phụ phí và thuế",
+    "savings.rateBasis": "Đơn giá điện theo hóa đơn · +{riders} phụ phí và tín dụng · có hiệu lực {date}",
+    "savings.rateBasisTax": "Đơn giá điện theo hóa đơn · +{riders} phụ phí và tín dụng · +{tax}% thuế thành phố · có hiệu lực {date}",
+    "savings.rightNowRates": "{charge} đơn giá · {allIn} tổng cộng",
+    "savings.touNote": "Đơn giá là giá điện trên hóa đơn; chi phí cộng thêm {riders} phụ phí và tín dụng.",
+    "savings.touNoteTax": "Đơn giá là giá điện trên hóa đơn; chi phí cộng thêm {riders} phụ phí và tín dụng và {tax}% thuế thành phố.",
     "savings.seasonWinter": "mùa đông",
     "savings.seasonSummer": "mùa hè",
     "savings.gridCostVersus": "so với {cost} theo {plan}",
@@ -2666,9 +2672,13 @@ function renderSavings() {
   const plan = [tariff.provider, tariff.schedule].filter(Boolean).join(" · ");
   $("savingsUtilityPlan").textContent = plan || "--";
   $("savingsUtilityRegion").textContent = tariff.region || "--";
+  // The rates shown are the statement's own energy charges, so they match
+  // the bill line for line; the riders and the city tax that every
+  // kilowatt-hour also carries are named beside them. A payload without
+  // energy charges (an older monitor) still shows its all-in rates.
   $("savingsRate").textContent = formatRateRange(
-    tariff.effective_rate_low_usd_per_kwh,
-    tariff.effective_rate_high_usd_per_kwh,
+    finiteNumber(tariff.energy_charge_low_usd_per_kwh) ?? tariff.effective_rate_low_usd_per_kwh,
+    finiteNumber(tariff.energy_charge_high_usd_per_kwh) ?? tariff.effective_rate_high_usd_per_kwh,
   );
   const riders = finiteNumber(tariff.riders_usd_per_kwh);
   const cityTax = finiteNumber(tariff.municipal_tax_percent);
@@ -2676,7 +2686,7 @@ function renderSavings() {
     ? "--"
     : riders === null
       ? t("savings.effective", { date: formatCalendarDate(tariff.effective_date) })
-      : t(cityTax !== null && cityTax > 0 ? "savings.effectiveRidersTax" : "savings.effectiveRiders", {
+      : t(cityTax !== null && cityTax > 0 ? "savings.rateBasisTax" : "savings.rateBasis", {
           date: formatCalendarDate(tariff.effective_date),
           riders: formatRate(riders),
           tax: formatTaxPercent(cityTax),
@@ -2684,10 +2694,16 @@ function renderSavings() {
   $("savingsCurrentPeriod").textContent = tariff.current_period
     ? t(TOU_PERIOD_LABELS[tariff.current_period] || "savings.periodOffPeak")
     : "--";
-  $("savingsCurrentRate").textContent = formatRate(tariff.current_rate_usd_per_kwh);
+  const currentCharge = finiteNumber(tariff.current_energy_charge_usd_per_kwh);
+  const currentAllIn = finiteNumber(tariff.current_rate_usd_per_kwh);
+  $("savingsCurrentRate").textContent = currentCharge === null || currentAllIn === null
+    ? formatRate(currentAllIn)
+    : t("savings.rightNowRates", { charge: formatRate(currentCharge), allIn: formatRate(currentAllIn) });
   $("savingsComparisonPlan").textContent = comparisonPlan;
-  const firstTier = finiteNumber(comparison.tier_1_usd_per_kwh);
-  const secondTier = finiteNumber(comparison.tier_2_usd_per_kwh);
+  const firstTier = finiteNumber(comparison.tier_1_energy_charge_usd_per_kwh)
+    ?? finiteNumber(comparison.tier_1_usd_per_kwh);
+  const secondTier = finiteNumber(comparison.tier_2_energy_charge_usd_per_kwh)
+    ?? finiteNumber(comparison.tier_2_usd_per_kwh);
   const tierLimit = finiteNumber(comparison.tier_1_limit_kwh);
   const tierDays = finiteNumber(comparison.tier_1_period_days) ?? 30;
   $("savingsComparisonRates").textContent = firstTier === null || secondTier === null || tierLimit === null
@@ -2750,6 +2766,16 @@ function renderSavingsTou(period, tariff) {
   const rows = Object.keys(TOU_PERIOD_LABELS)
     .map((key) => ({ key, values: breakdown?.[key] }))
     .filter((row) => row.values);
+  const note = $("savingsTouNote");
+  const riders = finiteNumber(tariff.riders_usd_per_kwh);
+  const cityTax = finiteNumber(tariff.municipal_tax_percent);
+  note.hidden = !rows.length || riders === null;
+  if (!note.hidden) {
+    note.textContent = t(cityTax !== null && cityTax > 0 ? "savings.touNoteTax" : "savings.touNote", {
+      riders: formatRate(riders),
+      tax: formatTaxPercent(cityTax),
+    });
+  }
   if (!rows.length) {
     container.innerHTML = `<div class="savings-tou__empty">${escapeHtml(t("savings.touAwaiting"))}</div>`;
     return;
@@ -2787,20 +2813,26 @@ function renderSavingsTou(period, tariff) {
   renderSavingsDonut(period, rows);
 }
 
-// A period priced across both seasons lists each season's rate on its own
-// line; otherwise the row shows the current season's rate, which is what the
-// table's heading says.
+// The rate column shows the statement's energy charge for the period (the
+// all-in price when an older payload carries no energy charge). A period
+// priced across both seasons lists each season's charge on its own line;
+// otherwise the row shows the current season's, which is what the table's
+// heading says.
+function shownRate(values) {
+  return finiteNumber(values?.energy_charge_usd_per_kwh) ?? finiteNumber(values?.rate_usd_per_kwh);
+}
+
 function seasonRateCell(values) {
   const label = escapeHtml(t("savings.touRate"));
   const seasons = values?.seasons && typeof values.seasons === "object" ? values.seasons : {};
-  const winter = finiteNumber(seasons.winter?.rate_usd_per_kwh);
-  const summer = finiteNumber(seasons.summer?.rate_usd_per_kwh);
+  const winter = shownRate(seasons.winter);
+  const summer = shownRate(seasons.summer);
   if (winter !== null && summer !== null && winter !== summer) {
     const line = (rate, key) =>
       `<span class="savings-tou__season">${escapeHtml(formatRate(rate))} <small>${escapeHtml(t(key))}</small></span>`;
     return `<span role="cell" data-label="${label}">${line(winter, "savings.seasonWinter")}${line(summer, "savings.seasonSummer")}</span>`;
   }
-  return `<span role="cell" data-label="${label}">${escapeHtml(formatRate(values?.rate_usd_per_kwh))}</span>`;
+  return `<span role="cell" data-label="${label}">${escapeHtml(formatRate(shownRate(values)))}</span>`;
 }
 
 // The donut divides one whole: what this window's electricity was worth at

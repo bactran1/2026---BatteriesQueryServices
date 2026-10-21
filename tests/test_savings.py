@@ -469,6 +469,36 @@ class ScheduleSevenComparisonTests(unittest.TestCase):
         self.assertEqual(payload["tariff"]["rates_usd_per_kwh"]["on_peak_winter"], 0.544)
         self.assertEqual(payload["tariff"]["energy_charges_usd_per_kwh"]["on_peak_winter"], 0.504)
         self.assertTrue(payload["methodology"]["riders_included"])
+
+    def test_the_panel_rates_are_the_statement_energy_charges(self) -> None:
+        # The costs carry riders and tax; the rates shown beside them are the
+        # statement's own energy charges, with the riders and tax named.
+        tariff = UtilityTariff(**{
+            **self.tariff.__dict__, "riders_usd_per_kwh": 0.04, "municipal_tax_percent": 10,
+        })
+        payload = build_savings_payload(
+            {"month": {"solar_generation_kwh": 0, "grid_import_kwh": 100,
+                       "observed_days": 1, "tou": split(super_grid=100),
+                       "tier_plan": {"days": 30, "months": [
+                           {"month": "2026-01", "days": 30, "grid_import_kwh": 100}]}}},
+            tariff,
+            now=WINTER_NOON,
+        )
+        rates = payload["tariff"]
+        self.assertEqual(rates["riders_usd_per_kwh"], 0.04)
+        self.assertEqual(rates["riders_with_tax_usd_per_kwh"], 0.044)
+        self.assertEqual(rates["energy_charge_low_usd_per_kwh"], 0.076)
+        self.assertEqual(rates["energy_charge_high_usd_per_kwh"], 0.504)
+        self.assertEqual(rates["current_energy_charge_usd_per_kwh"], 0.127)
+        self.assertAlmostEqual(rates["current_rate_usd_per_kwh"], 0.1837, 6)
+        self.assertEqual(rates["season_energy_charges_usd_per_kwh"]["super_off_peak"], 0.076)
+        self.assertEqual(rates["energy_charges_by_season_usd_per_kwh"]["summer"]["on_peak"], 0.272)
+        self.assertEqual(rates["comparison"]["tier_1_energy_charge_usd_per_kwh"], 0.18)
+        self.assertEqual(rates["comparison"]["tier_2_energy_charge_usd_per_kwh"], 0.20)
+        row = payload["periods"]["month"]["tou"]["super_off_peak"]
+        self.assertEqual(row["energy_charge_usd_per_kwh"], 0.076)
+        self.assertAlmostEqual(row["rate_usd_per_kwh"], 0.1276, 6)
+        self.assertEqual(row["grid_cost_usd"], 12.76)
         self.assertEqual(
             payload["methodology"]["savings_basis"],
             "schedule_7_grid_cost_minus_time_of_use_grid_cost",
@@ -544,6 +574,10 @@ class OctoberStatementTests(unittest.TestCase):
         self.assertEqual(rows["on_peak"]["seasons"]["winter"]["rate_usd_per_kwh"], 0.551096)
         self.assertEqual(rows["on_peak"]["seasons"]["summer"]["rate_usd_per_kwh"], 0.317706)
         self.assertEqual(rows["super_off_peak"]["seasons"]["summer"]["rate_usd_per_kwh"], 0.121409)
+        # The rates the panel shows are the statement's lines themselves.
+        self.assertEqual(rows["super_off_peak"]["energy_charge_usd_per_kwh"], 0.083961)
+        self.assertEqual(rows["super_off_peak"]["seasons"]["summer"]["energy_charge_usd_per_kwh"], 0.082307)
+        self.assertEqual(rows["on_peak"]["seasons"]["winter"]["energy_charge_usd_per_kwh"], 0.511994)
         # Each row rounds to the cent on its own, so the sum can differ from
         # the statement's line-by-line rounding by a cent or two.
         self.assertAlmostEqual(month["estimated_grid_cost_usd"], 82.96, delta=0.02)
