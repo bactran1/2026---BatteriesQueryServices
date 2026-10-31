@@ -71,9 +71,25 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual([p.id for p in profiles], ["rack-1", "rack-2", "rack-3", "rack-4"])
         self.assertEqual([p.address for p in profiles], [1, 2, 3, 4])
         self.assertEqual(profiles[3].name, "Rack Battery 4")
-        self.assertEqual(profiles[3].model, "Eco-worthy 51.2V 314Ah server rack battery")
+        self.assertEqual(
+            profiles[3].model,
+            "Eco-worthy 51.2V 314Ah floor-standing battery (first generation)",
+        )
         self.assertEqual(profiles[0].model, "Eco-worthy 48V 100Ah server rack battery")
         self.assertTrue(all(p.ip_address is None for p in profiles))
+        # The 314 Ah unit is a floor-standing battery on casters, not a rack module.
+        self.assertEqual([p.form_factor for p in profiles], ["rack", "rack", "rack", "floor"])
+
+    def test_form_factors_come_from_the_environment_and_default_to_rack(self) -> None:
+        environment = {
+            "BQM_BATTERY_IDS": "a,b,c,d,e",
+            "BQM_BATTERY_FORM_FACTORS": "Floor,floor-standing,, tower ,nonsense",
+        }
+        with patch.dict(os.environ, environment, clear=True):
+            profiles = load_settings().battery_profiles
+        self.assertEqual(
+            [p.form_factor for p in profiles], ["floor", "floor", "rack", "floor", "rack"]
+        )
 
     def test_tariff_defaults_follow_the_october_2026_statement(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -122,6 +138,11 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual(details["batteries"][0]["serial_number"], "EW123")
         self.assertEqual(details["batteries"][0]["status"], "ok")
         self.assertEqual(details["batteries"][1]["status"], "not_seen")
+        # The inventory tells the dashboard how each pack is built.
+        self.assertEqual(
+            [battery["form_factor"] for battery in details["batteries"]],
+            ["rack", "rack", "rack", "floor"],
+        )
 
         stale_details = rack_details(settings, details["batteries"], collector_online=False)
         self.assertEqual(stale_details["online_battery_count"], 0)

@@ -26,10 +26,35 @@ const solarPeak = {
   date:day, inverter_id:"inverter-1", peak_power_w:6210,
   peak_at:new Date((start + 45600) * 1000).toISOString(), peak_at_unix:start + 45600,
 };
+// Three rack packs and the floor-standing 314 Ah unit, so both 3D scenes build
+// and drive each kind of hardware under a real WebGL context.
+const packs = [
+  ["rack-1", 1, 62, 100, "rack", "Eco-worthy 48V 100Ah server rack battery"],
+  ["rack-2", 2, 61, 100, "rack", "Eco-worthy 48V 100Ah server rack battery"],
+  ["rack-3", 3, 63, 100, "rack", "Eco-worthy 48V 100Ah server rack battery"],
+  ["rack-4", 4, 71, 314, "floor", "Eco-worthy 51.2V 314Ah floor-standing battery (first generation)"],
+];
+const polledAt = new Date().toISOString();
 const live = {
-  collector_status:"online", collector_error:null, monitor:{last_success_at:new Date().toISOString()},
-  snapshot:{batteries:[]}, summary:{}, rack:{expected_battery_count:4,batteries:[]}, storage:{},
-  solar_peak_today:solarPeak,
+  collector_status:"online", collector_error:null, monitor:{last_success_at:polledAt},
+  snapshot:{batteries:packs.map(([id, address, soc, capacity]) => ({
+    id, address, status:"ok", last_polled_at:polledAt,
+    last_reading:{
+      timestamp:polledAt, soc_percent:soc, voltage_v:52.6, current_a:-11, power_w:-580,
+      remaining_capacity_ah:capacity * soc / 100, full_capacity_ah:capacity, rated_capacity_ah:capacity,
+      alarms:[], faults:[],
+    },
+  }))},
+  summary:{
+    source:"direct_battery_telemetry", battery_count:4, online_count:4, average_soc_percent:66.6,
+    soc_weighting:"capacity", total_power_w:-2320, total_current_a:-44, average_voltage_v:52.6,
+    remaining_capacity_ah:408.9, full_capacity_ah:614,
+  },
+  rack:{expected_battery_count:4, batteries:packs.map(([id, address, , , form_factor, model]) => ({
+    id, name:`Rack Battery ${address}`, address, ip_address:null, model, form_factor,
+    status:"ok", last_polled_at:polledAt,
+  }))},
+  storage:{}, solar_peak_today:solarPeak,
 };
 const weather = {
   status:"ok",source:"Open-Meteo",location:"King County, WA",

@@ -209,6 +209,14 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("capacityAh: optionalFinite(pack?.capacityAh)", scene)
         self.assertIn("capacityAh: packCapacityAh(reading)", javascript)
         self.assertIn("function rackStateOfCharge", javascript)
+        # The floor-standing 314 Ah unit is its own hardware, chosen by the
+        # inventory's form factor, and taps the same bus riser as the modules.
+        self.assertIn("function createFloorUnit", scene)
+        self.assertIn("function floorLayout", scene)
+        self.assertIn('form: pack?.form === "floor" ? "floor" : "rack"', scene)
+        self.assertIn("canvas.dataset.floorUnits", scene)
+        self.assertIn("function packFormFactor", javascript)
+        self.assertIn("form: packFormFactor(battery)", javascript)
         # Nothing from the home scene's cast is modelled here: no house, no solar
         # array, no utility pole, no inverter, no metered grid or load.
         for absent in (
@@ -270,6 +278,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function createHouseShell", scene)
         self.assertIn("function createSolarArray", scene)
         self.assertIn("function createPowerCenter", scene)
+        self.assertIn("function createFloorBattery", scene)
+        self.assertIn("function assignPacksToModules", scene)
         self.assertIn("function createUtilityPole", scene)
         self.assertIn("function createFlowNetwork", scene)
         self.assertIn("function createFlowRoute", scene)

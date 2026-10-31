@@ -53,22 +53,44 @@ test("Every pulse covers the same distance per second on every conduit, at any p
   assert.equal(rate(network.battery, speed), lowPower);
 });
 
-test("Modern equipment contains four distinct battery modules and independent load signals", async () => {
+test("Modern equipment holds three cabinet modules plus a floor-standing unit, with independent load signals", async () => {
   const {THREE, run} = await scene();
   const system = run("createRenogySystem(createMaterials())");
   assert.equal(system.batteryModules.length, 4);
-  // One slot per rack pack, laid out top to bottom inside the cabinet face.
+  assert.deepEqual(Array.from(system.batteryModules, (module) => module.kind), ["rack", "rack", "rack", "floor"]);
+  // One cabinet slot per rack pack, laid out top to bottom inside the cabinet face.
   const offsets = run("CABINET_MODULE_OFFSETS");
-  assert.equal(offsets.length, system.batteryModules.length);
+  assert.equal(offsets.length, 3);
   assert.deepEqual([...offsets], [...offsets].sort((a, b) => b - a));
-  assert.ok(Math.max(...offsets) + 0.31 / 2 < 1.54 / 2);
-  const packs = run('normalizePackTelemetry([{id: "rack-1"}, {id: "rack-2"}, {id: "rack-3"}, {id: "rack-4"}, {id: "rack-5"}])');
-  assert.deepEqual(Array.from(packs, (pack) => pack.id), ["rack-1", "rack-2", "rack-3", "rack-4"]);
+  assert.ok(Math.max(...offsets) + 0.31 / 2 < 1.32 / 2);
+  // The floor-standing unit stands on the floor between the cabinet and the meter.
+  const floor = run("FLOOR_BATTERY");
+  assert.ok(floor.x - floor.width / 2 > 1.63 + 0.92 / 2);
+  assert.ok(floor.x + floor.width / 2 < 3.05 - 0.55 / 2);
+  assert.ok(Math.abs(system.floorBattery.position.y - floor.height / 2 - floor.lift - floor.floorY) < 1e-9);
+  assert.equal(system.floorBattery.visible, true);
   assert.notEqual(system.loadSignalMaterial, system.backupSignalMaterial);
   const bounds = new THREE.Box3().setFromObject(system.group);
   assert.ok(bounds.getSize(new THREE.Vector3()).x < 9);
   assert.ok(Number.isFinite(bounds.max.y));
   assert.equal(run("HOUSE_SCENE_SCALE"), 0.8);
+});
+
+test("Rack packs fill the cabinet and the floor-standing pack takes the floor unit", async () => {
+  const {run} = await scene();
+  const packs = run('normalizePackTelemetry([{id: "rack-1"}, {id: "rack-4", form: "floor"}, {id: "rack-2"}, {id: "rack-3"}, {id: "rack-5"}])');
+  assert.deepEqual(Array.from(packs, (pack) => pack.form), ["rack", "floor", "rack", "rack", "rack"]);
+  const assign = run("assignPacksToModules");
+  const modules = [{kind: "rack"}, {kind: "rack"}, {kind: "rack"}, {kind: "floor"}];
+  const assigned = assign(modules, packs);
+  assert.deepEqual(Array.from(assigned, (pack) => pack?.id), ["rack-1", "rack-2", "rack-3", "rack-4"]);
+  // Without a floor-standing pack the floor unit stays empty rather than taking a rack pack.
+  const rackOnly = assign(modules, Array.from(packs).filter((pack) => pack.form === "rack"));
+  assert.equal(rackOnly[3], undefined);
+  assert.equal(rackOnly[2].id, "rack-3");
+  // Unknown forms are rack packs, and an oversized list is capped, never doubled up.
+  assert.equal(run('normalizePackTelemetry([{id: "x", form: "tower"}])[0].form'), "rack");
+  assert.equal(run("normalizePackTelemetry(new Array(20).fill({id: \"x\"})).length"), run("MAX_SCENE_PACKS"));
 });
 
 test("Unmetered service link stays inactive; supported direction reverses with power", async () => {

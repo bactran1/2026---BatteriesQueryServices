@@ -42,7 +42,7 @@ See [Renogy X inverter telemetry](docs/renogy-x-telemetry.md).
 
 This first driver targets Eco-worthy/JBD-UP style Modbus RTU frames at 9600 baud. Eco-worthy documentation lists RS485-1 for host computer/inverter access and RS232 for host computer access; their protocol table lists PYLON-LV on RS485-1 and JBD-UP/Solar Assistant/Overkill on RS232.
 
-For the four rack batteries (three Eco-worthy 48 V 100 Ah packs and one Eco-worthy 51.2 V 314 Ah pack) and the inverter, the usual deployment is:
+For the four batteries (three Eco-worthy 48 V 100 Ah rack packs and a first-generation Eco-worthy 51.2 V 314 Ah floor-standing unit on casters, which stands beside the rack on the same RS485 bus) and the inverter, the usual deployment is:
 
 1. Set the battery DIP switches so the packs have addresses 1, 2, 3, and 4.
 2. Connect the Raspberry Pi to the battery communication port through the first USB RS485 or RS232 adapter.
@@ -137,7 +137,7 @@ Solar and grid are settled independently within a window. A window can have one 
 
 The chart palette lives in its own `--tou-*` tokens rather than reusing the interface status colours: a categorical chart palette has to clear colour-vision, lightness-band and contrast checks that the UI tokens are not built for, and light and dark each carry their own validated steps. Re-validate before changing one.
 
-Power history returns `battery_soc_percent` from the existing battery logs, with no database migration required. Each time bucket averages valid SOC readings per pack, then combines the packs by capacity: the rack's SOC is the packs' remaining amp-hours over their full-charge amp-hours whenever every pack with an SOC also reports its capacity, and the plain mean otherwise. The live rack SOC (`average_soc_percent`, with `soc_weighting` saying which rule applied) and the dashboard's own rack figure use the same rule, so a 314 Ah pack beside three 100 Ah packs counts for its size. Missing or invalid SOC stays unavailable, not 0%; inverter SOC is never used as a fallback.
+Power history returns `battery_soc_percent` from the existing battery logs, with no database migration required. Each time bucket averages valid SOC readings per pack, then combines the packs by capacity: the rack's SOC is the packs' remaining amp-hours over their full-charge amp-hours whenever every pack with an SOC also reports its capacity, and the plain mean otherwise. The live rack SOC (`average_soc_percent`, with `soc_weighting` saying which rule applied) and the dashboard's own rack figure use the same rule, so the 314 Ah floor-standing unit beside three 100 Ah rack packs counts for its size. Missing or invalid SOC stays unavailable, not 0%; inverter SOC is never used as a fallback.
 
 Energy history draws its overlapping areas as smooth curves in every view, Hour through Year. The smoothing is monotone cubic interpolation, so it only rounds the corners between readings: each recorded value still sits exactly on the line, no point between two readings rises above or falls below the pair that brackets it, and a flat run of zeros stays flat on the baseline instead of dipping under the axis.
 
@@ -145,9 +145,9 @@ Both history charts support mouse hover, touch selection, and keyboard arrows. O
 
 In Live home energy, Home load uses `home_load_total_power_w` for the load between the CT meter and the inverter breaker. Backup load uses `load_total_power_w` for the inverter's direct load output. An unavailable Home load reading is shown as not metered and its animation pauses; a measured zero is shown as 0 W.
 
-The modern house scene uses straight conduit runs with separate CT-side Home load and inverter-fed Backup load branches. Direction on the inverter-to-CT link is derived from Home load minus signed grid import, and pauses if either reading is unavailable. The battery cabinet holds one module per pack, four for this rack, each filled and lit from that pack's own telemetry; the modules and their charging direction continue to use direct battery telemetry.
+The modern house scene uses straight conduit runs with separate CT-side Home load and inverter-fed Backup load branches. Direction on the inverter-to-CT link is derived from Home load minus signed grid import, and pauses if either reading is unavailable. The battery cabinet holds one module per rack pack, three for this rack, and the first-generation 314 Ah floor-standing unit stands on its casters between the cabinet and the meter. Each is filled and lit from its own pack's telemetry, packs reaching the cabinet or the floor unit by their inventory form factor, and the modules and their charging direction continue to use direct battery telemetry.
 
-Rack overview carries a second 3D scene in the same visual language, but its stage holds only the batteries and their energy flow: no house, inverter, solar, or grid. One Eco-worthy 19-inch 3U pack is modelled per configured battery, up to eight, stacked in rack order and framed so a three-pack and an eight-pack rack both fill the stage; the 314 Ah pack is drawn at the same size as the 100 Ah ones. Each faceplate shows the branding with the pack's own model line (its rated capacity and kilowatt-hours, from telemetry, so the 314 Ah pack reads as 16.08 kWh), the LCD readout, a six-cell SOC gauge, RUN and ALM indicators, the RS485/CAN port bank, and the DC terminal block the conduit leaves from, all driven by that pack's own telemetry: SOC, voltage, current, mode, and whether the collector is still hearing from it. A pack that stops reporting goes dark and its conduit parks. Every pack taps a shared bus riser that carries the combined rack flow out of the frame; pulses run pack-to-bus while discharging and bus-to-pack while charging, at the same constant speed as the home scene. The Energy scene glow, conduit glow, and pulse-speed admin settings apply to both scenes.
+Rack overview carries a second 3D scene in the same visual language, but its stage holds only the batteries and their energy flow: no house, inverter, solar, or grid. One Eco-worthy 19-inch 3U pack is modelled per configured rack battery, up to eight, stacked in rack order. A battery whose inventory form factor is `floor` is modelled instead as the first-generation floor-standing 314 Ah unit: a tower on four casters, about 83 cm tall, 52 cm wide and 25 cm deep at the modules' scale, standing on the floor to the right of the bus riser (up to four such units line up beside it). The stage is framed so a three-pack and an eight-pack rack both fill it, with or without floor-standing units. Each faceplate or door shows the branding with the pack's own model line (its rated capacity and kilowatt-hours, from telemetry, so the 314 Ah unit reads as 16.08 kWh) and its hardware line, the LCD readout, a six-cell SOC gauge, RUN and ALM indicators, the comms port bank (with breakers on the floor-standing unit), and the DC terminal block the conduit leaves from, all driven by that pack's own telemetry: SOC, voltage, current, mode, and whether the collector is still hearing from it. A pack that stops reporting goes dark and its conduit parks. Every pack taps a shared bus riser, the modules from its left and the floor-standing units from its right; the riser carries the combined rack flow out of the frame, climbing past any floor-standing unit first. Pulses run pack-to-bus while discharging and bus-to-pack while charging, at the same constant speed as the home scene. The Energy scene glow, conduit glow, and pulse-speed admin settings apply to both scenes.
 
 The monitor archives Home load separately as `home_load_power_w`; the existing `load_power_w` history field remains Backup load. Existing SQLite databases are upgraded automatically without deleting readings. Home load history starts with newly logged samples after this update; older rows remain unavailable rather than being filled with backup values or zeros.
 
@@ -181,6 +181,7 @@ Environment overrides:
 - `BQM_BATTERY_NAMES`
 - `BQM_BATTERY_IPS`
 - `BQM_BATTERY_MODELS`
+- `BQM_BATTERY_FORM_FACTORS`
 - `BQM_DATA_DIR`
 - `BQM_DATABASE_PATH`
 - `BQM_LOG_INTERVAL_SECONDS`
@@ -190,14 +191,15 @@ Environment overrides:
 - `BQM_PORT`
 - `BQM_LOG_LEVEL`
 
-The dashboard defaults to the four rack batteries (three Eco-worthy 48 V 100 Ah packs on addresses 1-3 and an Eco-worthy 51.2 V 314 Ah pack on address 4) and shows the rack builder as Tran Thanh Tuan. Set the inventory values as comma-separated lists before deployment to show your actual names and addresses; a host `.env` that still lists three packs must gain the fourth:
+The dashboard defaults to the four batteries (three Eco-worthy 48 V 100 Ah rack packs on addresses 1-3 and the first-generation Eco-worthy 51.2 V 314 Ah floor-standing unit on address 4) and shows the rack builder as Tran Thanh Tuan. Set the inventory values as comma-separated lists before deployment to show your actual names and addresses; a host `.env` that still lists three packs must gain the fourth. `BQM_BATTERY_FORM_FACTORS` says how each battery is built, `rack` for a module in the 19-inch stack or `floor` for a floor-standing unit on casters, and both 3D scenes draw it that way:
 
 ```bash
 export BQM_BATTERY_IDS="rack-1,rack-2,rack-3,rack-4"
 export BQM_BATTERY_ADDRESSES="1,2,3,4"
 export BQM_BATTERY_NAMES="Top Battery,Upper Middle Battery,Lower Middle Battery,Bottom Battery"
 export BQM_BATTERY_IPS="192.168.1.61,192.168.1.62,192.168.1.63,"
-export BQM_BATTERY_MODELS="Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 51.2V 314Ah"
+export BQM_BATTERY_MODELS="Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 51.2V 314Ah floor-standing"
+export BQM_BATTERY_FORM_FACTORS="rack,rack,rack,floor"
 bash monitor/deploy-monitor.sh --collector-url http://192.168.10.194:8000
 ```
 

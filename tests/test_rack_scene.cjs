@@ -62,9 +62,80 @@ test("The rack stack carries one Eco-worthy module per pack and stays centred", 
     }
     assert.ok(Math.abs(layout.reduce((sum, y) => sum + y, 0)) < 1e-9);
   }
-  // Out-of-range pack counts fall back to something renderable.
-  assert.equal(run("rackLayout(0)").length, run("DEFAULT_MODULES"));
+  // A rack with no modules (a floor-standing unit on its own) lays out an empty stack,
+  // an oversized one is capped, and no hardware at all falls back to the default stack.
+  assert.equal(run("rackLayout(0)").length, 0);
   assert.equal(run("rackLayout(99)").length, run("MAX_MODULES"));
+  assert.deepEqual({...run("normalizeRackCounts(0)")}, {rack: run("DEFAULT_MODULES"), floor: 0});
+  assert.deepEqual({...run("rackCountsFor([], 0)")}, {rack: run("DEFAULT_MODULES"), floor: 0});
+  // Floor-standing packs become floor units; every other listed or expected pack a module.
+  assert.deepEqual(
+    {...run('rackCountsFor([{form: "rack"}, {form: "rack"}, {form: "rack"}, {form: "floor"}], 4)')},
+    {rack: 3, floor: 1},
+  );
+  assert.deepEqual({...run('rackCountsFor([{form: "floor"}], 1)')}, {rack: 0, floor: 1});
+  assert.deepEqual({...run('rackCountsFor([{form: "floor"}], 4)')}, {rack: 3, floor: 1});
+});
+
+test("The floor-standing unit stands on casters beside the riser and taps it like a module", async () => {
+  const {run} = await scene();
+  const rack = run("buildRack(createRackMaterials(), {rack: 3, floor: 1})");
+  assert.equal(rack.modules.length, 3);
+  assert.equal(rack.floorUnits.length, 1);
+  assert.equal(rack.units.length, 4);
+  const [unit] = rack.floorUnits;
+  const [slot] = rack.floors;
+  const tower = run("TOWER");
+  const caster = run("CASTER");
+  assert.equal(unit.kind, "floor");
+  assert.equal(unit.wheels.length, 4);
+  assert.equal(unit.socLedMaterials.length, run("SOC_LEDS"));
+  assert.equal(unit.terminals.length, 2);
+  assert.ok(unit.brand.material.userData.hardwareLine.includes("FLOOR-STANDING"));
+  // It stands to the right of the bus riser, its casters on the same floor the stack sits over.
+  assert.ok(slot.x - tower.width / 2 > run("BUS_X"));
+  const floorY = run("rackFloorY")(rack.layout);
+  assert.ok(Math.abs((unit.group.position.y - tower.height / 2 - caster.lift) - floorY) < 1e-9);
+  unit.wheels.forEach((wheel) => {
+    assert.ok(Math.abs((unit.group.position.y + wheel.position.y - caster.radius) - floorY) < 1e-9);
+  });
+  // Its front furniture sits proud of its door, which lines up with the modules' faceplates.
+  const front = run("TOWER_FRONT");
+  const faceZ = run("TOWER_FACE_Z");
+  const furniture = unit.group.children.filter(child => child.position.z > faceZ);
+  assert.ok(furniture.length > 30, "the door should carry real hardware detail");
+  furniture.forEach(child => assert.ok(child.position.z >= front - 1e-6));
+  assert.ok(Math.abs((unit.group.position.z + front) - run("FACE_FRONT")) < 1e-9);
+  // Its conduit leaves the terminal block and runs straight to the riser, with a lug there.
+  const tap = rack.network.floorTaps[0];
+  assert.equal(unit.tap, tap);
+  const terminal = run("TOWER_TERMINAL");
+  assert.ok(Math.abs(tap.curve.getPointAt(0).x - (slot.x + terminal.x)) < 1e-8);
+  assert.ok(Math.abs(tap.curve.getPointAt(0).y - (unit.group.position.y + terminal.y)) < 1e-8);
+  assert.ok(Math.abs(tap.curve.getPointAt(1).x - run("BUS_X")) < 1e-8);
+  for (const segment of tap.curve.curves) {
+    const delta = segment.v2.clone().sub(segment.v1);
+    assert.equal([delta.x, delta.y, delta.z].filter(value => Math.abs(value) > 1e-8).length, 1);
+  }
+  assert.equal(rack.network.routes.length, 5);
+  // The rack output climbs past the unit before leaving, and the stage includes the unit.
+  assert.ok(rack.network.trunk.curve.getPointAt(1).y > slot.top);
+  assert.ok(rack.bounds.max.x >= slot.x + tower.width / 2);
+  assert.ok(rack.bounds.max.y >= rack.network.trunk.curve.getPointAt(1).y - 1e-9);
+  assert.ok(rack.bounds.min.y <= floorY);
+});
+
+test("A floor-standing unit on its own builds no stack but still a travellable bus", async () => {
+  const {run} = await scene();
+  const rack = run("buildRack(createRackMaterials(), {rack: 0, floor: 1})");
+  assert.equal(rack.modules.length, 0);
+  assert.equal(rack.floorUnits.length, 1);
+  assert.equal(rack.network.taps.length, 0);
+  assert.equal(rack.network.routes.length, 2);
+  assert.ok(rack.network.trunk.curve.getLength() > 0.5);
+  assert.ok(rack.bounds.max.x > rack.bounds.min.x);
+  // Nothing at all still draws the default stack so the stage is never empty.
+  assert.equal(run("buildRack(createRackMaterials(), {rack: 0, floor: 0})").modules.length, run("DEFAULT_MODULES"));
 });
 
 test("Each pack taps the bus riser and every conduit segment is single-axis", async () => {
@@ -196,8 +267,11 @@ test("Pack telemetry from the dashboard is normalised before it reaches the scen
   ]));
   assert.deepEqual(JSON.parse(JSON.stringify(pack)), {
     id: "rack-1", mode: "charging", soc: 92, power: 324,
-    current: 6, voltage: 53.4, capacityAh: null, alarm: false, reporting: true,
+    current: 6, voltage: 53.4, capacityAh: null, form: "rack", alarm: false, reporting: true,
   });
+  // How a pack is built travels with it; anything but "floor" is a rack module.
+  assert.equal(normalize([{id: "rack-4", form: "floor"}])[0].form, "floor");
+  assert.equal(normalize([{id: "rack-4", form: "tower"}])[0].form, "rack");
   // Unknown modes and missing readings degrade to a stale pack with no readout.
   const [unknown] = normalize([{id: "rack-2", mode: "exploding", soc: null}]);
   assert.equal(unknown.mode, "stale");
@@ -251,4 +325,11 @@ test("Each pack's faceplate names its own size, and the stack keeps one plate pe
   // One shared material per model line, not one per module.
   assert.equal(run("sharedBrandMaterial(moduleModelLine({capacityAh: 314})) === sharedBrandMaterial(moduleModelLine({capacityAh: 314}))"), true);
   assert.equal(run("sharedBrandMaterial(moduleModelLine({capacityAh: 314})) === sharedBrandMaterial(moduleModelLine({capacityAh: 100}))"), false);
+  // The floor-standing unit's plate names its own hardware, with its own generic line.
+  assert.equal(run('moduleModelLine({capacityAh: 314}, "floor")'), "LiFePO4  51.2V  314Ah  ·  16.08 kWh");
+  assert.equal(run('moduleModelLine({}, "floor")'), run("GENERIC_MODEL_LINES.floor"));
+  assert.notEqual(run("GENERIC_MODEL_LINES.floor"), run("GENERIC_MODEL_LINES.rack"));
+  assert.equal(run('sharedBrandMaterial(moduleModelLine({capacityAh: 314}), "floor") === sharedBrandMaterial(moduleModelLine({capacityAh: 314}), "rack")'), false);
+  assert.equal(run('sharedBrandMaterial(moduleModelLine({capacityAh: 314}), "floor") === sharedBrandMaterial(moduleModelLine({capacityAh: 314}), "floor")'), true);
+  assert.ok(run('sharedBrandMaterial(moduleModelLine({capacityAh: 314}), "floor").userData.hardwareLine').includes("RS232"));
 });
