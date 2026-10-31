@@ -34,6 +34,21 @@ const PULSE_SPEED_DEFAULT = 0.2;
 const PULSE_SPEED_MIN = 0.02;
 const PULSE_SPEED_MAX = 0.6;
 const PULSE_REFERENCE_LENGTH = 3.5;
+// The battery cabinet shows one module per rack pack, top to bottom, in the order
+// the collector lists them: three slots for the three 19-inch packs.
+const CABINET_MODULE_COUNT = 3;
+const CABINET_MODULE_PITCH = 0.42;
+const CABINET_MODULE_OFFSETS = Array.from(
+  {length: CABINET_MODULE_COUNT},
+  (_, index) => ((CABINET_MODULE_COUNT - 1) / 2 - index) * CABINET_MODULE_PITCH,
+);
+// The first-generation 314 Ah unit is a floor-standing tower on casters, not a
+// cabinet module: it stands on the floor between the cabinet and the meter, drawn
+// at the cabinet's scale, and takes the floor-standing pack's telemetry.
+const FLOOR_BATTERY = { width: 0.58, height: 1.6, depth: 0.3, x: 2.45, z: 1.92, floorY: -1.19, lift: 0.1 };
+// Packs beyond what the cabinet and floor can show are dropped, never doubled up.
+const MAX_SCENE_PACKS = 8;
+
 const POWER_PORTS = {
   solar: new THREE.Vector3(0.4, 1.4, 0.75),
   inverterSolar: new THREE.Vector3(0.4, 0.42, 2.2),
@@ -203,6 +218,10 @@ function startEnergyFlowScene() {
 
   function applyFlowState(detail = {}) {
     Object.assign(flowState, readSectionState(detail));
+    flowState.assignedPacks = assignPacksToModules(energySystem.batteryModules, flowState.packs);
+    // The floor-standing unit shows while the inventory is unknown or lists one.
+    energySystem.floorBattery.visible = flowState.packs.length === 0
+      || flowState.packs.some((pack) => pack.form === "floor");
     const flowColor = FLOW_COLORS[flowState.mode];
     const rackMagnitude = Math.max(Math.abs(flowState.current), Math.abs(flowState.power) / 54);
     const live = flowState.mode !== "stale" && flowState.batteryCount > 0;
@@ -274,13 +293,13 @@ function startEnergyFlowScene() {
     setSignal(energySystem.solarSignalMaterial, NODE_COLORS.solar, network.solar.active);
 
     energySystem.batteryModules.forEach((module, index) => {
-      const pack = flowState.packs[index];
+      const pack = flowState.assignedPacks[index];
       const reporting = pack ? pack.reporting : index < flowState.batteryCount;
       const packMode = reporting ? validMode(pack?.mode ?? flowState.mode) : "stale";
       const packColor = FLOW_COLORS[packMode];
       const normalizedSoc = clamp(pack?.soc ?? flowState.soc, 0, 100) / 100;
       module.fill.scale.x = Math.max(0.03, normalizedSoc);
-      module.fill.position.x = -0.235 + (0.51 * module.fill.scale.x) / 2;
+      module.fill.position.x = module.fillLeft + (module.fillWidth * module.fill.scale.x) / 2;
       module.fillMaterial.color.setHex(packColor);
       module.fillMaterial.opacity = reporting ? 0.96 : 0.22;
       module.signalMaterial.color.setHex(packColor);
@@ -363,7 +382,7 @@ function startEnergyFlowScene() {
       ? 2.7 + Math.sin(time * 0.0034) * 0.35
       : 1.65;
     energySystem.batteryModules.forEach((module, index) => {
-      const pack = flowState.packs[index];
+      const pack = (flowState.assignedPacks || [])[index];
       const reporting = pack ? pack.reporting : index < flowState.batteryCount;
       if (reporting && isActiveMode(pack?.mode ?? flowState.mode)) {
         module.signalMaterial.emissiveIntensity = 1.1 + Math.sin(time * 0.004 + index * 0.85) * 0.38;
@@ -650,6 +669,16 @@ function startEnergyFlowScene() {
   });
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
+  // The copy block's measured bottom edge (set by the dashboard on the section's
+  // style) moves the top callouts and, on phones, the stage itself, so the leaders
+  // are re-measured whenever it changes rather than only on a resize.
+  const copyObserver = new MutationObserver(() => {
+    if (disposed) return;
+    measureLeaders();
+    renderOnce(performance.now());
+  });
+  copyObserver.observe(section, { attributes: true, attributeFilter: ["style"] });
+
   window.addEventListener("battery-energy-flow", (event) => applyFlowState(event.detail));
   window.addEventListener("energy-glow-change", (event) => {
     const next = Number(event.detail);
@@ -737,6 +766,7 @@ function createMaterials() {
     trim: new THREE.MeshStandardMaterial({ color: 0xe8e9eb, metalness: 0.72, roughness: 0.26 }),
     utility: new THREE.MeshStandardMaterial({ color: 0x7a7e85, metalness: 0.7, roughness: 0.34 }),
     cable: new THREE.MeshStandardMaterial({ color: 0x3b3e43, metalness: 0.65, roughness: 0.5 }),
+    wheel: new THREE.MeshStandardMaterial({ color: 0x17191c, metalness: 0.18, roughness: 0.86 }),
     ground: new THREE.MeshStandardMaterial({
       color: 0x151618,
       metalness: 0.04,
@@ -804,6 +834,7 @@ function createGrounding() {
     [6.6, 3.7, new THREE.Vector3(-0.7, -1.28, 0.15)],
     [3.1, 1.5, new THREE.Vector3(1.25, -1.275, 1.85)],
     [1.25, 0.95, new THREE.Vector3(-0.8, -1.275, 1.95)],
+    [1.3, 0.9, new THREE.Vector3(FLOOR_BATTERY.x, -1.275, FLOOR_BATTERY.z + 0.05)],
   ].forEach(([width, depth, position]) => {
     addPlane(width, depth, position, new THREE.MeshBasicMaterial({
       map: shadowTexture, transparent: true, depthWrite: false, opacity: 0.92,
@@ -868,6 +899,7 @@ function createRenogySystem(materials) {
   return {
     group,
     batteryModules: powerCenter.batteryModules,
+    floorBattery: powerCenter.floorBattery,
     batterySignalMaterial: powerCenter.batterySignalMaterial,
     gridSignalMaterial: utility.signalMaterial,
     inverterSignalMaterial: powerCenter.inverterSignalMaterial,
@@ -988,7 +1020,7 @@ function createPowerCenter(materials) {
   battery.add(batteryBody, batteryFace, batteryStripe);
 
   const batteryModules = [];
-  [0.42, 0, -0.42].forEach((y) => {
+  CABINET_MODULE_OFFSETS.forEach((y) => {
     const moduleFace = mesh(new THREE.BoxGeometry(0.58, 0.31, 0.055), materials.device);
     moduleFace.position.set(0.05, y, 0.32);
     const track = mesh(new THREE.BoxGeometry(0.51, 0.04, 0.055), materials.utility);
@@ -1009,12 +1041,15 @@ function createPowerCenter(materials) {
     [-0.21, 0.29].forEach((x) => {
       addBox(battery, [0.035, 0.14, 0.08], [x, y, 0.39], materials.trim);
     });
-    batteryModules.push({ fill, fillMaterial, signalMaterial });
+    batteryModules.push({ kind: "rack", fill, fillMaterial, signalMaterial, fillLeft: -0.235, fillWidth: 0.51 });
   });
+
+  const floorBattery = createFloorBattery(materials, displayMaterial);
+  batteryModules.push(floorBattery.module);
 
   const pedestal = mesh(new THREE.BoxGeometry(1.22, 0.12, 0.7), materials.utility, true);
   pedestal.position.set(1.36, -1.12, 1.76);
-  group.add(inverter, battery, pedestal);
+  group.add(inverter, battery, floorBattery.group, pedestal);
   const backupSignalMaterial = createSignalMaterial(NODE_COLORS.backup);
   addBox(group, [0.45, 0.58, 0.18], [-0.8, -0.42, 1.89], materials.device, true);
   addBox(group, [0.32, 0.38, 0.05], [-0.8, -0.42, 2.01], materials.deviceFace);
@@ -1023,7 +1058,67 @@ function createPowerCenter(materials) {
   addBox(group, [0.55, 0.74, 0.18], [3.05, 0.15, 1.92], materials.device, true);
   addBox(group, [0.4, 0.22, 0.05], [3.05, 0.30, 2.03], displayMaterial);
   addBox(group, [0.23, 0.07, 0.06], [3.05, -0.05, 2.06], materials.deviceFace);
-  return { group, batteryModules, batterySignalMaterial, inverterSignalMaterial, backupSignalMaterial };
+  return {
+    group, batteryModules, floorBattery: floorBattery.group,
+    batterySignalMaterial, inverterSignalMaterial, backupSignalMaterial,
+  };
+}
+
+// The floor-standing 314 Ah unit: a tower on four casters with the same readout
+// furniture as a cabinet module (screen, SOC track and signal light), so the same
+// per-pack update drives it. Its local origin is the tower's centre.
+function createFloorBattery(materials, displayMaterial) {
+  const { width, height, depth, x, z, floorY, lift } = FLOOR_BATTERY;
+  const group = new THREE.Group();
+  group.position.set(x, floorY + lift + height / 2, z);
+  group.add(mesh(new THREE.BoxGeometry(width, height, depth), materials.device, true, true));
+  const front = depth / 2;
+  addBox(group, [width - 0.1, height - 0.12, 0.05], [0, 0, front + 0.01], materials.deviceFace);
+  const panel = front + 0.035;
+
+  // Screen, signal light and SOC track near the top of the door.
+  addBox(group, [0.3, 0.16, 0.06], [-0.05, height / 2 - 0.3, panel], displayMaterial);
+  const signalMaterial = createSignalMaterial(FLOW_COLORS.stale);
+  const signal = mesh(new THREE.SphereGeometry(0.035, 12, 8), signalMaterial);
+  signal.position.set(0.19, height / 2 - 0.3, panel + 0.02);
+  const track = mesh(new THREE.BoxGeometry(0.4, 0.04, 0.055), materials.utility);
+  track.position.set(0, height / 2 - 0.55, panel);
+  const fillMaterial = new THREE.MeshBasicMaterial({
+    color: FLOW_COLORS.stale,
+    transparent: true,
+    opacity: 0.22,
+    depthWrite: false,
+  });
+  const fill = mesh(new THREE.BoxGeometry(0.4, 0.045, 0.06), fillMaterial);
+  fill.position.set(0, height / 2 - 0.55, panel + 0.03);
+  fill.scale.x = 0.5;
+  group.add(signal, track, fill);
+
+  // Twin breakers and the comms ports, then vent slits down the door.
+  [-0.14, 0.02].forEach((bx) => addBox(group, [0.1, 0.16, 0.06], [bx, height / 2 - 0.82, panel + 0.01], materials.trim));
+  [0.14, 0.21].forEach((px) => addBox(group, [0.05, 0.07, 0.05], [px, height / 2 - 0.82, panel], materials.cable));
+  for (let slit = 0; slit < 6; slit += 1) {
+    addBox(group, [width - 0.22, 0.012, 0.02], [0, -0.22 - slit * 0.09, panel - 0.02], materials.cable);
+  }
+
+  // Lifting handles on the flanks and four casters under the plinth.
+  [-1, 1].forEach((side) => {
+    addBox(group, [0.02, 0.12, 0.16], [side * (width / 2 + 0.005), height / 2 - 0.35, -0.02], materials.cable);
+  });
+  addBox(group, [width - 0.12, 0.05, depth - 0.1], [0, -height / 2 - 0.025, 0], materials.utility);
+  [-1, 1].forEach((sideX) => {
+    [-1, 1].forEach((sideZ) => {
+      const wheel = mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 12), materials.wheel, true);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(sideX * (width / 2 - 0.09), -height / 2 - lift + 0.055, sideZ * (depth / 2 - 0.07));
+      group.add(wheel);
+    });
+  });
+
+  return {
+    group,
+    module: { kind: "floor", fill, fillMaterial, signalMaterial, fillLeft: -0.2, fillWidth: 0.4 },
+  };
 }
 
 function createUtilityPole(materials) {
@@ -1206,14 +1301,32 @@ function normalizePackTelemetry(value) {
     }
   }
   if (!Array.isArray(packs)) return [];
-  return packs.slice(0, 3).map((pack) => ({
+  return packs.slice(0, MAX_SCENE_PACKS).map((pack) => ({
     id: String(pack?.id || ""),
     mode: validMode(pack?.mode),
     current: finite(pack?.current),
     power: finite(pack?.power),
     soc: optionalFinite(pack?.soc),
+    form: pack?.form === "floor" ? "floor" : "rack",
     reporting: Boolean(pack?.reporting),
   }));
+}
+
+// Packs find their module by how they are built: rack packs fill the cabinet slots in
+// order and floor-standing packs take the floor unit, so a pack never lands in a
+// module of the other kind and a surplus pack is left out rather than doubled up.
+function assignPacksToModules(modules, packs) {
+  const queues = {
+    rack: packs.filter((pack) => pack.form !== "floor"),
+    floor: packs.filter((pack) => pack.form === "floor"),
+  };
+  const taken = { rack: 0, floor: 0 };
+  return modules.map((module) => {
+    const kind = module.kind === "floor" ? "floor" : "rack";
+    const pack = queues[kind][taken[kind]];
+    taken[kind] += 1;
+    return pack;
+  });
 }
 
 function optionalFinite(value) {

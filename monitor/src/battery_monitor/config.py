@@ -13,6 +13,9 @@ class BatteryProfile:
     address: int
     ip_address: str | None
     model: str
+    # "rack" for a 19-inch rack module in the stack, "floor" for a floor-standing
+    # unit on casters that stands beside the rack and is drawn that way.
+    form_factor: str = "rack"
 
 
 @dataclass(frozen=True)
@@ -299,21 +302,46 @@ def rack_details(
     }
 
 
+# The rack as installed: three Eco-worthy 48 V 100 Ah rack packs on DIP
+# addresses 1-3 and, since October 2026, a first-generation Eco-worthy 51.2 V
+# 314 Ah floor-standing unit on casters, on address 4, standing beside the rack.
+RACK_FORM_FACTOR = "rack"
+FLOOR_FORM_FACTOR = "floor"
+DEFAULT_BATTERY_IDS = "rack-1,rack-2,rack-3,rack-4"
+DEFAULT_BATTERY_ADDRESSES = "1,2,3,4"
+DEFAULT_BATTERY_NAMES = "Rack Battery 1,Rack Battery 2,Rack Battery 3,Rack Battery 4"
+DEFAULT_BATTERY_MODELS = (
+    "Eco-worthy 48V 100Ah server rack battery,"
+    "Eco-worthy 48V 100Ah server rack battery,"
+    "Eco-worthy 48V 100Ah server rack battery,"
+    "Eco-worthy 51.2V 314Ah floor-standing battery (first generation)"
+)
+DEFAULT_BATTERY_FORM_FACTORS = "rack,rack,rack,floor"
+
+
+def _form_factor(value: str | None) -> str:
+    text = (value or "").strip().lower().replace("_", "-")
+    if text in {"floor", "floor-standing", "floor standing", "standing", "tower"}:
+        return FLOOR_FORM_FACTOR
+    return RACK_FORM_FACTOR
+
+
 def _load_battery_profiles() -> tuple[BatteryProfile, ...]:
-    ids = _csv_values(os.getenv("BQM_BATTERY_IDS", "rack-1,rack-2,rack-3"))
-    addresses = _csv_ints(os.getenv("BQM_BATTERY_ADDRESSES", "1,2,3"))
+    ids = _csv_values(os.getenv("BQM_BATTERY_IDS", DEFAULT_BATTERY_IDS))
+    addresses = _csv_ints(os.getenv("BQM_BATTERY_ADDRESSES", DEFAULT_BATTERY_ADDRESSES))
     names = _csv_values(
-        os.getenv("BQM_BATTERY_NAMES", "Rack Battery 1,Rack Battery 2,Rack Battery 3"),
+        os.getenv("BQM_BATTERY_NAMES", DEFAULT_BATTERY_NAMES),
         preserve_empty=True,
     )
     ip_addresses = _csv_values(
-        os.getenv("BQM_BATTERY_IPS", ",,"), preserve_empty=True
+        os.getenv("BQM_BATTERY_IPS", ",,,"), preserve_empty=True
     )
     models = _csv_values(
-        os.getenv(
-            "BQM_BATTERY_MODELS",
-            "Eco-worthy server rack battery,Eco-worthy server rack battery,Eco-worthy server rack battery",
-        ),
+        os.getenv("BQM_BATTERY_MODELS", DEFAULT_BATTERY_MODELS),
+        preserve_empty=True,
+    )
+    form_factors = _csv_values(
+        os.getenv("BQM_BATTERY_FORM_FACTORS", DEFAULT_BATTERY_FORM_FACTORS),
         preserve_empty=True,
     )
 
@@ -324,6 +352,7 @@ def _load_battery_profiles() -> tuple[BatteryProfile, ...]:
             address=addresses[index] if index < len(addresses) else index + 1,
             ip_address=_value_at(ip_addresses, index) or None,
             model=_value_at(models, index) or "Eco-worthy server rack battery",
+            form_factor=_form_factor(_value_at(form_factors, index)),
         )
         for index, battery_id in enumerate(ids)
     )
@@ -343,6 +372,7 @@ def _inventory_item(
         "address": battery.get("address", profile.address),
         "ip_address": profile.ip_address,
         "model": profile.model,
+        "form_factor": profile.form_factor,
         "status": (
             battery.get("status", "not_seen") if collector_online else "stale"
         ),

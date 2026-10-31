@@ -49,7 +49,8 @@ function dashboard(homeLoad, backupLoad = 0) {
   );
   const renderWeather = () => vm.runInContext("renderWeather();", context);
   render();
-  return { element, events, state, render, renderWeather };
+  const run = (code) => vm.runInContext(code, context);
+  return { element, events, state, render, renderWeather, run };
 }
 
 test("Current weather is localized without changing its source measurements", () => {
@@ -166,4 +167,31 @@ test("CT-side link obeys home and grid balance without using backup or battery r
   ui.render();
   assert.equal(ui.events.at(-1).detail.acLinkAvailable, false);
   assert.equal(ui.events.at(-1).detail.acLinkPower, null);
+});
+
+test("The rack's state of charge weights packs by capacity, so a 314 Ah pack counts for its size", () => {
+  const ui = dashboard(1500);
+  const pack = (id, soc, remaining, full, rated) => ({
+    id, status: "ok",
+    last_reading: {
+      power_w: -100, current_a: -2, voltage_v: 52, soc_percent: soc,
+      remaining_capacity_ah: remaining, full_capacity_ah: full, rated_capacity_ah: rated,
+    },
+  });
+  ui.state.batteries = [
+    pack("rack-1", 20, 20, 100, 100), pack("rack-2", 20, 20, 100, 100),
+    pack("rack-3", 20, 20, 100, 100), pack("rack-4", 80, 251.2, 314, 314),
+  ];
+  // 311.2 Ah of 614 Ah: 50.7%, not the 35% an equal-weight mean would give.
+  assert.equal(Math.round(ui.run("rackBatteryTelemetry().soc") * 10) / 10, 50.7);
+  // A pack without capacity figures drops the rack back to the plain mean.
+  ui.state.batteries[3].last_reading = { power_w: -100, voltage_v: 52, soc_percent: 80 };
+  assert.equal(ui.run("rackBatteryTelemetry().soc"), 35);
+  // The rack scene is told each pack's size for its faceplate.
+  ui.state.batteries[3].last_reading.rated_capacity_ah = 314;
+  ui.state.collectorOnline = true;
+  ui.run("renderRackFlow({mode: \"discharging\", label: \"Discharging\"}, {average_soc_percent: 50.7, total_power_w: -400, total_current_a: -8})");
+  const rackEvent = ui.events.filter((event) => event.type === "battery-rack-flow").at(-1);
+  assert.equal(rackEvent.detail.packs[3].capacityAh, 314);
+  assert.equal(rackEvent.detail.packs[0].capacityAh, 100);
 });

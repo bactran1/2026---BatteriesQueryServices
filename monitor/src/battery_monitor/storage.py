@@ -601,7 +601,15 @@ class RetentionStore:
                         battery_id,
                         AVG(power_w) AS battery_power_w,
                         AVG(CASE WHEN soc_percent BETWEEN 0 AND 100
-                            THEN soc_percent END) AS battery_soc_percent
+                            THEN soc_percent END) AS battery_soc_percent,
+                        AVG(CASE WHEN soc_percent BETWEEN 0 AND 100
+                                  AND remaining_capacity_ah >= 0
+                                  AND full_capacity_ah > 0
+                            THEN remaining_capacity_ah END) AS remaining_capacity_ah,
+                        AVG(CASE WHEN soc_percent BETWEEN 0 AND 100
+                                  AND remaining_capacity_ah >= 0
+                                  AND full_capacity_ah > 0
+                            THEN full_capacity_ah END) AS full_capacity_ah
                     FROM readings
                     WHERE {time_filter}
                       AND status = 'ok'
@@ -609,10 +617,19 @@ class RetentionStore:
                     GROUP BY bucket_unix, battery_id
                 ),
                 battery_by_bucket AS (
+                    -- Packs of different sizes share the bus: the rack's SOC is
+                    -- remaining over full-charge amp-hours when every pack with
+                    -- an SOC also reports its capacity, the plain mean otherwise.
                     SELECT
                         bucket_unix,
                         SUM(battery_power_w) AS battery_power_w,
-                        AVG(battery_soc_percent) AS battery_soc_percent
+                        CASE
+                            WHEN COUNT(battery_soc_percent) > 0
+                                 AND COUNT(full_capacity_ah) = COUNT(battery_soc_percent)
+                                 AND SUM(full_capacity_ah) > 0
+                            THEN 100.0 * SUM(remaining_capacity_ah) / SUM(full_capacity_ah)
+                            ELSE AVG(battery_soc_percent)
+                        END AS battery_soc_percent
                     FROM battery_by_pack
                     GROUP BY bucket_unix
                 ),

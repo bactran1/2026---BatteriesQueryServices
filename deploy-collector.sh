@@ -11,6 +11,8 @@ COMPOSE_FILE="${REPO_ROOT}/docker-compose.yml"
 SERVICE_NAME="batteries-query-service"
 DEFAULT_SERIAL_DEVICE="/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
 DEFAULT_INVERTER_SERIAL_DEVICE="/dev/ttyUSB1"
+# The floor-standing 314 Ah unit has its own USB RS485 adapter.
+DEFAULT_FLOOR_SERIAL_DEVICE="/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG04TFN9-if00-port0"
 DEFAULT_INVERTER_TRANSPORT="solarman_v5"
 DEFAULT_INVERTER_HOST="192.168.20.138"
 DEFAULT_INVERTER_TCP_PORT="8899"
@@ -33,6 +35,8 @@ usage() {
 "  --serial-device PATH  Host USB serial device for the battery bus" \
 "  --inverter-serial-device PATH" \
 "                        Host USB serial device for the Renogy X inverter" \
+"  --floor-serial-device PATH" \
+"                        Host USB serial device for the floor-standing 314 Ah unit" \
 "  --inverter-transport MODE" \
 "                        Inverter connection: serial or solarman_v5" \
 "  --inverter-host HOST  LSW-5 LAN address; selects solarman_v5 transport" \
@@ -52,6 +56,8 @@ usage() {
 "  COLLECTOR_SERIAL_DEVICE  Same as --serial-device" \
 "  COLLECTOR_INVERTER_SERIAL_DEVICE" \
 "                           Same as --inverter-serial-device" \
+"  COLLECTOR_FLOOR_SERIAL_DEVICE" \
+"                           Same as --floor-serial-device" \
 "  BQS_INVERTER_TRANSPORT  Same as --inverter-transport" \
 "  BQS_INVERTER_HOST       Same as --inverter-host" \
 "  BQS_INVERTER_TCP_PORT   Same as --inverter-tcp-port" \
@@ -236,7 +242,7 @@ explain_container_start_failure() {
     if [[ "${INVERTER_TRANSPORT:-serial}" == "solarman_v5" ]]; then
       fail "Docker could not attach the battery serial device. Confirm it is connected and verify --serial-device."
     fi
-    fail "Docker could not attach a configured serial device. Confirm both USB adapters are connected and verify --serial-device and --inverter-serial-device."
+    fail "Docker could not attach a configured serial device. Confirm the USB adapters are connected and verify --serial-device, --inverter-serial-device and --floor-serial-device."
   fi
 
   if [[ "${output}" == *"net.ipv4.ip_unprivileged_port_start"* ]]; then
@@ -319,6 +325,11 @@ while [[ $# -gt 0 ]]; do
       export COLLECTOR_INVERTER_SERIAL_DEVICE="$2"
       shift 2
       ;;
+    --floor-serial-device)
+      [[ $# -ge 2 ]] || fail "--floor-serial-device requires a path"
+      export COLLECTOR_FLOOR_SERIAL_DEVICE="$2"
+      shift 2
+      ;;
     --inverter-transport)
       [[ $# -ge 2 ]] || fail "--inverter-transport requires a mode"
       export BQS_INVERTER_TRANSPORT="$2"
@@ -385,6 +396,7 @@ compose_command
 
 export COLLECTOR_SERIAL_DEVICE="${COLLECTOR_SERIAL_DEVICE:-${DEFAULT_SERIAL_DEVICE}}"
 export COLLECTOR_INVERTER_SERIAL_DEVICE="${COLLECTOR_INVERTER_SERIAL_DEVICE:-${DEFAULT_INVERTER_SERIAL_DEVICE}}"
+export COLLECTOR_FLOOR_SERIAL_DEVICE="${COLLECTOR_FLOOR_SERIAL_DEVICE:-${DEFAULT_FLOOR_SERIAL_DEVICE}}"
 export BQS_INVERTER_TRANSPORT="${BQS_INVERTER_TRANSPORT:-${DEFAULT_INVERTER_TRANSPORT}}"
 export BQS_INVERTER_HOST="${BQS_INVERTER_HOST:-${DEFAULT_INVERTER_HOST}}"
 export BQS_INVERTER_TCP_PORT="${BQS_INVERTER_TCP_PORT:-${DEFAULT_INVERTER_TCP_PORT}}"
@@ -416,7 +428,25 @@ elif [[ ! -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
   export COLLECTOR_INVERTER_SERIAL_DEVICE="/dev/null"
 fi
 
+# The floor-standing unit's adapter: like the inverter's, an absent adapter is
+# mapped to /dev/null so the container still starts and the other packs keep
+# reporting; that pack then shows an error until the adapter is back.
+FLOOR_SERIAL_DEVICE_DISPLAY="${COLLECTOR_FLOOR_SERIAL_DEVICE}"
+if [[ -e "${COLLECTOR_FLOOR_SERIAL_DEVICE}" ]]; then
+  for other in "${COLLECTOR_SERIAL_DEVICE}" "${COLLECTOR_INVERTER_SERIAL_DEVICE}"; do
+    if [[ -e "${other}" && "${other}" != "/dev/null" \
+      && "$(readlink -f "${other}")" == "$(readlink -f "${COLLECTOR_FLOOR_SERIAL_DEVICE}")" ]]; then
+      fail "The floor-standing unit's serial device resolves to the same adapter as ${other}. Configure a separate USB-to-RS485 device with --floor-serial-device."
+    fi
+  done
+else
+  log "WARNING: Floor-standing unit serial device is not present: ${COLLECTOR_FLOOR_SERIAL_DEVICE}"
+  log "The collector will keep running with that pack in an error state."
+  export COLLECTOR_FLOOR_SERIAL_DEVICE="/dev/null"
+fi
+
 log "Battery serial device: ${COLLECTOR_SERIAL_DEVICE} -> /dev/ttyUSB0"
+log "Floor-standing unit serial device: ${FLOOR_SERIAL_DEVICE_DISPLAY} -> /dev/ttyUSB2"
 if [[ "${INVERTER_TRANSPORT}" == "solarman_v5" ]]; then
   log "Inverter transport: SOLARMAN V5 over TCP (LSW-5 logger)"
 else

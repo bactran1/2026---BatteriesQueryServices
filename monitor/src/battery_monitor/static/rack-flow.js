@@ -43,6 +43,22 @@ const BUS_FOOT = 0.4;
 const BUS_HEAD = 0.9;
 const BUS_OUT = 1.15;
 
+// The first-generation Eco-worthy 51.2 V 314 Ah unit is not a rack module: it is a
+// floor-standing tower on four casters, about 83 cm tall, 52 cm wide and 25 cm deep,
+// drawn to the modules' scale. It stands on the floor to the right of the bus riser
+// and taps the riser like the modules do; the rack output climbs past it. Up to
+// MAX_FLOOR_UNITS such units line up to the right of the first.
+const TOWER = { width: 3.85, height: 6.6, depth: 1.9 };
+const CASTER = { radius: 0.17, width: 0.1, lift: 0.34 };
+const TOWER_GAP = 0.8;
+const TOWER_PITCH = TOWER.width + 0.6;
+const TOWER_BUS_CLEARANCE = 0.75;
+const TOWER_FACE_Z = TOWER.depth / 2 + FACE.thickness / 2;
+const TOWER_FRONT = TOWER_FACE_Z + FACE.thickness / 2;
+const TOWER_Z = FACE_FRONT - TOWER_FRONT;
+const TOWER_TERMINAL = { x: -TOWER.width / 2 + 0.55, y: TOWER.height / 2 - 1.25 };
+const MAX_FLOOR_UNITS = 4;
+
 const CAMERA_POSITION = new THREE.Vector3(5.4, 3.3, 10.6);
 const CAMERA_LOOK_AT = new THREE.Vector3(0, 0, 0);
 const BLOOM = { strength: 0.12, radius: 0.6, threshold: 0.62 };
@@ -91,14 +107,16 @@ function startRackFlowScene() {
   scene.add(root);
 
   const materials = createRackMaterials();
-  let rackCount = DEFAULT_MODULES;
-  let rack = buildRack(materials, rackCount);
+  let rackCounts = normalizeRackCounts(DEFAULT_MODULES);
+  let rack = buildRack(materials, rackCounts);
   root.add(rack.group);
 
   // The framing basis never moves, so the stage can be framed from the camera's
-  // resting orientation while per-frame parallax still nudges the live camera.
+  // resting orientation while per-frame parallax still nudges the live camera. It
+  // has to be a camera: a plain object's lookAt points its +z at the target, which
+  // mirrors x and would centre the frame on the wrong side of the stage.
   const frameBasis = (() => {
-    const helper = new THREE.Object3D();
+    const helper = new THREE.OrthographicCamera();
     helper.position.copy(CAMERA_POSITION);
     helper.lookAt(CAMERA_LOOK_AT);
     helper.updateMatrixWorld(true);
@@ -109,11 +127,11 @@ function startRackFlowScene() {
   const keyLight = new THREE.DirectionalLight(0xffffff, 3.2);
   keyLight.position.set(-3.4, 6.6, 8.4);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(1024, 1024);
-  keyLight.shadow.camera.left = -6;
-  keyLight.shadow.camera.right = 6;
-  keyLight.shadow.camera.top = 6;
-  keyLight.shadow.camera.bottom = -6;
+  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.camera.left = -10;
+  keyLight.shadow.camera.right = 10;
+  keyLight.shadow.camera.top = 10;
+  keyLight.shadow.camera.bottom = -10;
   keyLight.shadow.bias = -0.0004;
   const rimLight = new THREE.DirectionalLight(0xcfe2ea, 1.5);
   rimLight.position.set(6.2, 2.4, -4.6);
@@ -174,58 +192,67 @@ function startRackFlowScene() {
     };
   }
 
-  // Grow or shrink the stack to the rack's real pack count. Rebuilding is cheap and
-  // rare (only when the collector's inventory changes) and keeps the stack centred.
-  function ensureRackSize(count) {
-    const next = clamp(Math.round(count) || DEFAULT_MODULES, 1, MAX_MODULES);
-    if (next === rackCount) return false;
+  // Grow or shrink the hardware to the rack's real inventory: so many modules in the
+  // stack, so many floor-standing units beside it. Rebuilding is cheap and rare (only
+  // when the collector's inventory changes) and keeps the stack centred.
+  function ensureRackSize(counts) {
+    const next = normalizeRackCounts(counts);
+    if (next.rack === rackCounts.rack && next.floor === rackCounts.floor) return false;
     root.remove(rack.group);
     disposeObject(rack.group);
-    rackCount = next;
-    rack = buildRack(materials, rackCount);
+    rackCounts = next;
+    rack = buildRack(materials, rackCounts);
     root.add(rack.group);
     return true;
   }
 
+  // One pack drives one unit, whether a module in the stack or a floor-standing one.
+  function applyPackToUnit(unit, pack) {
+    const reporting = Boolean(pack?.reporting);
+    const mode = reporting ? validMode(pack.mode) : "stale";
+    const color = FLOW_COLORS[mode];
+    const soc = clamp(pack?.soc ?? 0, 0, 100);
+    const known = reporting && pack?.soc !== null && pack?.soc !== undefined;
+    const lit = known ? Math.max(1, Math.ceil((soc / 100) * SOC_LEDS)) : 0;
+
+    unit.litLeds = lit;
+    unit.mode = mode;
+    unit.reporting = reporting;
+    const plate = sharedBrandMaterial(moduleModelLine(pack, unit.kind), unit.kind);
+    if (unit.brand.material !== plate) unit.brand.material = plate;
+    unit.socLedMaterials.forEach((material, ledIndex) => {
+      const on = ledIndex < lit;
+      material.color.setHex(on ? color : 0x2a2e33);
+      material.emissive.setHex(on ? color : 0x101214);
+      material.emissiveIntensity = on ? 1.3 : 0.05;
+    });
+    setSignal(unit.runMaterial, reporting ? 0x51d48a : 0x2b3034, reporting);
+    setSignal(unit.alarmMaterial, pack?.alarm ? 0xff4d4d : 0x35292b, Boolean(pack?.alarm));
+    setSignal(unit.portMaterial, reporting ? color : FLOW_COLORS.stale, reporting && isActiveRouteMode(mode));
+    unit.stripeMaterial.color.setHex(color);
+    unit.stripeMaterial.emissive.setHex(color);
+    unit.stripeMaterial.emissiveIntensity = reporting && isActiveRouteMode(mode) ? 1.15 : 0.12;
+    drawModuleScreen(unit, pack, reporting, mode);
+
+    if (!unit.tap) return;
+    const packPower = pack?.power ?? 0;
+    const active = reporting && isActiveRouteMode(mode);
+    // The tap curve runs pack -> bus, so discharging travels forward and charging back.
+    configureRoute(unit.tap, mode, routeMagnitude(packPower), active, mode === "charging" ? -1 : 1, reporting, color);
+  }
+
   function applyRackState(detail = {}) {
     Object.assign(rackState, readSectionState(detail));
-    const resized = ensureRackSize(Math.max(rackState.packs.length, rackState.batteryCount));
+    const resized = ensureRackSize(rackCountsFor(rackState.packs, rackState.batteryCount));
     const rackColor = FLOW_COLORS[rackState.mode];
     const rackLive = rackState.mode !== "stale";
 
-    rack.modules.forEach((module, index) => {
-      const pack = rackState.packs[index];
-      const reporting = Boolean(pack?.reporting);
-      const mode = reporting ? validMode(pack.mode) : "stale";
-      const color = FLOW_COLORS[mode];
-      const soc = clamp(pack?.soc ?? 0, 0, 100);
-      const known = reporting && pack?.soc !== null && pack?.soc !== undefined;
-      const lit = known ? Math.max(1, Math.ceil((soc / 100) * SOC_LEDS)) : 0;
-
-      module.litLeds = lit;
-      module.mode = mode;
-      module.reporting = reporting;
-      module.socLedMaterials.forEach((material, ledIndex) => {
-        const on = ledIndex < lit;
-        material.color.setHex(on ? color : 0x2a2e33);
-        material.emissive.setHex(on ? color : 0x101214);
-        material.emissiveIntensity = on ? 1.3 : 0.05;
-      });
-      setSignal(module.runMaterial, reporting ? 0x51d48a : 0x2b3034, reporting);
-      setSignal(module.alarmMaterial, pack?.alarm ? 0xff4d4d : 0x35292b, Boolean(pack?.alarm));
-      setSignal(module.portMaterial, reporting ? color : FLOW_COLORS.stale, reporting && isActiveRouteMode(mode));
-      module.stripeMaterial.color.setHex(color);
-      module.stripeMaterial.emissive.setHex(color);
-      module.stripeMaterial.emissiveIntensity = reporting && isActiveRouteMode(mode) ? 1.15 : 0.12;
-      drawModuleScreen(module, pack, reporting, mode);
-
-      const tap = rack.network.taps[index];
-      if (!tap) return;
-      const packPower = pack?.power ?? 0;
-      const active = reporting && isActiveRouteMode(mode);
-      // The tap curve runs pack -> bus, so discharging travels forward and charging back.
-      configureRoute(tap, mode, routeMagnitude(packPower), active, mode === "charging" ? -1 : 1, reporting, color);
-    });
+    // Rack packs fill the stack in inventory order; floor-standing packs take the
+    // floor units, so a pack never lands in hardware of the other kind.
+    const rackPacks = rackState.packs.filter((pack) => pack.form !== "floor");
+    const floorPacks = rackState.packs.filter((pack) => pack.form === "floor");
+    rack.modules.forEach((module, index) => applyPackToUnit(module, rackPacks[index]));
+    rack.floorUnits.forEach((unit, index) => applyPackToUnit(unit, floorPacks[index]));
 
     const trunkActive = rackLive && isActiveRouteMode(rackState.mode);
     configureRoute(
@@ -239,6 +266,7 @@ function startRackFlowScene() {
     );
 
     canvas.dataset.rackModules = String(rack.modules.length);
+    canvas.dataset.floorUnits = String(rack.floorUnits.length);
     canvas.dataset.rackMode = rackState.mode;
     canvas.dataset.activeRoutes = String(rack.network.routes.filter(isRouteActive).length);
     canvas.dataset.rackDirection = rackState.mode === "charging"
@@ -284,7 +312,7 @@ function startRackFlowScene() {
       route.particleGlowMaterial.opacity = active ? 0.08 : 0;
     });
 
-    rack.modules.forEach((module, index) => {
+    rack.units.forEach((module, index) => {
       // The topmost lit cell breathes while the pack is moving power, the way a real
       // SOC gauge steps as it fills or drains.
       if (module.reporting && isActiveRouteMode(module.mode) && module.litLeds > 0) {
@@ -550,6 +578,7 @@ function createRackMaterials() {
     terminalNegative: shared(new THREE.MeshStandardMaterial({ color: 0x14171a, metalness: 0.42, roughness: 0.46 })),
     port: shared(new THREE.MeshStandardMaterial({ color: 0x0b0d10, metalness: 0.3, roughness: 0.6 })),
     busbar: shared(new THREE.MeshStandardMaterial({ color: 0x8b9298, metalness: 0.82, roughness: 0.28 })),
+    wheel: shared(new THREE.MeshStandardMaterial({ color: 0x17191c, metalness: 0.18, roughness: 0.86 })),
     flowLine: new THREE.MeshStandardMaterial({
       color: FLOW_COLORS.stale,
       emissive: FLOW_COLORS.stale,
@@ -574,19 +603,53 @@ function createRackMaterials() {
       color: FLOW_COLORS.stale, transparent: true, opacity: 0,
       blending: THREE.AdditiveBlending, depthWrite: false,
     }),
-    brand: sharedBrandMaterial(),
+    brand: sharedBrandMaterial(GENERIC_MODEL_LINES.rack, "rack"),
+    brandFloor: sharedBrandMaterial(GENERIC_MODEL_LINES.floor, "floor"),
   };
 }
 
-// The Eco-worthy faceplate label is one texture shared by every module in the stack.
-function sharedBrandMaterial() {
-  const texture = brandTexture();
-  const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
-  material.userData.shared = true;
+// The Eco-worthy label plate: one texture per hardware kind and model line, shared
+// by every unit that carries that pair. The 100 Ah rack packs and the 314 Ah
+// floor-standing unit each get their own, and a pack whose size is not yet known
+// wears the generic plate for its kind.
+const NOMINAL_PACK_VOLTAGE = 51.2;
+const GENERIC_MODEL_LINES = {
+  rack: "LiFePO4  51.2V  SERVER RACK BATTERY",
+  floor: "LiFePO4  51.2V  FLOOR-STANDING BATTERY",
+};
+const GENERIC_MODEL_LINE = GENERIC_MODEL_LINES.rack;
+const HARDWARE_LINES = {
+  rack: "SERVER RACK BATTERY  ·  RS485 / CAN",
+  floor: "FLOOR-STANDING BATTERY  ·  RS485 / CAN / RS232",
+};
+
+function moduleModelLine(pack, kind = "rack") {
+  const capacity = Number(pack?.capacityAh);
+  if (!Number.isFinite(capacity) || capacity <= 0) {
+    return GENERIC_MODEL_LINES[kind] || GENERIC_MODEL_LINE;
+  }
+  const kilowattHours = (NOMINAL_PACK_VOLTAGE * capacity) / 1000;
+  return `LiFePO4  ${NOMINAL_PACK_VOLTAGE}V  ${Math.round(capacity)}Ah  ·  ${kilowattHours.toFixed(2)} kWh`;
+}
+
+const brandMaterials = new Map();
+
+function sharedBrandMaterial(modelLine = GENERIC_MODEL_LINE, kind = "rack") {
+  const hardwareLine = HARDWARE_LINES[kind] || HARDWARE_LINES.rack;
+  const key = `${hardwareLine}|${modelLine}`;
+  let material = brandMaterials.get(key);
+  if (!material) {
+    const texture = brandTexture(modelLine, hardwareLine);
+    material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+    material.userData.shared = true;
+    material.userData.modelLine = modelLine;
+    material.userData.hardwareLine = hardwareLine;
+    brandMaterials.set(key, material);
+  }
   return material;
 }
 
-function brandTexture() {
+function brandTexture(modelLine = GENERIC_MODEL_LINE, hardwareLine = HARDWARE_LINES.rack) {
   const canvas = document.createElement("canvas");
   canvas.width = 640;
   canvas.height = 220;
@@ -606,10 +669,10 @@ function brandTexture() {
   ctx.fillText("-WORTHY", 200, 62);
   ctx.fillStyle = "rgba(226,232,236,0.68)";
   ctx.font = "600 34px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.fillText("LiFePO4  48V  100Ah  ·  5.12 kWh", 20, 136);
+  ctx.fillText(modelLine, 20, 136);
   ctx.fillStyle = "rgba(226,232,236,0.34)";
   ctx.font = "600 26px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.fillText("SERVER RACK BATTERY  ·  RS485 / CAN", 20, 182);
+  ctx.fillText(hardwareLine, 20, 182);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
@@ -617,34 +680,116 @@ function brandTexture() {
   return texture;
 }
 
+// Vertical centres of the stack's modules, top first, centred on the origin; empty
+// when the rack holds no modules (a floor-standing unit on its own).
 function rackLayout(count) {
-  const total = clamp(Math.round(count) || DEFAULT_MODULES, 1, MAX_MODULES);
+  const total = clamp(Math.round(count) || 0, 0, MAX_MODULES);
   const top = ((total - 1) * MODULE.pitch) / 2;
   return Array.from({ length: total }, (_, index) => top - index * MODULE.pitch);
 }
 
-function buildRack(materials, count) {
+// How much hardware to build: so many modules in the stack and so many floor-standing
+// units. A bare number is a stack of that many modules; nothing at all falls back to
+// the default stack so the stage is never empty.
+function normalizeRackCounts(counts) {
+  if (typeof counts !== "object" || counts === null) {
+    return { rack: clamp(Math.round(Number(counts)) || DEFAULT_MODULES, 1, MAX_MODULES), floor: 0 };
+  }
+  const rack = clamp(Math.round(Number(counts.rack)) || 0, 0, MAX_MODULES);
+  const floor = clamp(Math.round(Number(counts.floor)) || 0, 0, MAX_FLOOR_UNITS);
+  if (rack + floor === 0) return { rack: DEFAULT_MODULES, floor: 0 };
+  return { rack, floor };
+}
+
+// The counts the dashboard's pack list implies: floor-standing packs become floor
+// units, every other listed or expected pack a module in the stack.
+function rackCountsFor(packs, batteryCount = 0) {
+  const floor = packs.filter((pack) => pack.form === "floor").length;
+  const listed = Math.max(packs.length, Math.round(Number(batteryCount)) || 0);
+  return normalizeRackCounts({ rack: listed - floor, floor });
+}
+
+// The floor the stack sits over and the floor-standing units stand on.
+function rackFloorY(layout) {
+  const lowest = layout.length ? layout[layout.length - 1] : 0;
+  return lowest - MODULE.height / 2 - 0.12;
+}
+
+// Floor-standing units line up on the floor to the right of the bus riser, the first
+// nearest it. Each carries where its terminal block (and so its conduit) sits.
+function floorLayout(count, floorY) {
+  const total = clamp(Math.round(count) || 0, 0, MAX_FLOOR_UNITS);
+  return Array.from({ length: total }, (_, index) => {
+    const x = BUS_X + TOWER_GAP + TOWER.width / 2 + index * TOWER_PITCH;
+    const y = floorY + CASTER.lift + TOWER.height / 2;
+    return {
+      x,
+      y,
+      top: y + TOWER.height / 2,
+      terminal: { x: x + TOWER_TERMINAL.x, y: y + TOWER_TERMINAL.y },
+    };
+  });
+}
+
+// Where the bus riser starts and ends: a foot below the lowest tap and a head above the
+// highest, raised further so the rack output clears any floor-standing unit it passes.
+function busExtent(layout, floors = []) {
+  const tapYs = layout.concat(floors.map((unit) => unit.terminal.y));
+  if (!tapYs.length) tapYs.push(0);
+  const foot = Math.min(...tapYs) - BUS_FOOT;
+  const head = Math.max(
+    Math.max(...tapYs) + BUS_HEAD,
+    ...floors.map((unit) => unit.top + TOWER_BUS_CLEARANCE),
+  );
+  return { foot, head };
+}
+
+function buildRack(materials, counts) {
+  const { rack: rackCount, floor: floorCount } = normalizeRackCounts(counts);
   const group = new THREE.Group();
-  const layout = rackLayout(count);
+  const layout = rackLayout(rackCount);
   const modules = layout.map((y, index) => {
     const module = createBatteryModule(materials, index);
     module.group.position.y = y;
     group.add(module.group);
     return module;
   });
-  const network = createRackNetwork(materials, layout);
-  const grounding = createGrounding(layout[layout.length - 1] - MODULE.height / 2 - 0.12);
+  const floorY = rackFloorY(layout);
+  const floors = floorLayout(floorCount, floorY);
+  const floorUnits = floors.map((slot, index) => {
+    const unit = createFloorUnit(materials, index);
+    unit.group.position.set(slot.x, slot.y, TOWER_Z);
+    group.add(unit.group);
+    return unit;
+  });
+  const network = createRackNetwork(materials, layout, floors);
+  modules.forEach((module, index) => { module.tap = network.taps[index]; });
+  floorUnits.forEach((unit, index) => { unit.tap = network.floorTaps[index]; });
+  const grounding = createGrounding(floorY, floors);
   group.add(network.group, grounding.group);
-  return { group, layout, modules, network, puddle: grounding.puddle, bounds: rackBounds(layout) };
+  return {
+    group,
+    layout,
+    floors,
+    modules,
+    floorUnits,
+    units: modules.concat(floorUnits),
+    network,
+    puddle: grounding.puddle,
+    bounds: rackBounds(layout, floors),
+  };
 }
 
-// World-space box the stack, its bus riser, and the rack output occupy.
-function rackBounds(layout) {
-  const top = layout[0];
-  const bottom = layout[layout.length - 1];
+// World-space box the stack, the floor-standing units, the bus riser and the rack
+// output occupy.
+function rackBounds(layout, floors = []) {
+  const { foot, head } = busExtent(layout, floors);
+  const floorY = rackFloorY(layout);
+  const minX = layout.length ? -MODULE.width / 2 : BUS_X - 0.6;
+  const maxX = Math.max(BUS_X + BUS_OUT, ...floors.map((unit) => unit.x + TOWER.width / 2 + 0.1));
   return new THREE.Box3(
-    new THREE.Vector3(-MODULE.width / 2, bottom - MODULE.height / 2 - 0.3, -MODULE.depth / 2),
-    new THREE.Vector3(BUS_X + BUS_OUT, top + BUS_HEAD, PORT_Z),
+    new THREE.Vector3(minX, Math.min(floorY - 0.18, foot - 0.1), -MODULE.depth / 2),
+    new THREE.Vector3(maxX, head, PORT_Z),
   );
 }
 
@@ -695,7 +840,7 @@ function createBatteryModule(materials, index) {
   const handleBar = mesh(new THREE.BoxGeometry(0.36, 0.06, 0.05), materials.trim);
   place(handleBar, -1.28, -0.1, front + 0.03);
 
-  // Branding plate.
+  // Branding plate; its label follows the pack's size once that is known.
   const brand = new THREE.Mesh(new THREE.PlaneGeometry(1.24, 0.43), materials.brand);
   place(brand, -0.42, 0.11, front + 0.006);
 
@@ -769,8 +914,10 @@ function createBatteryModule(materials, index) {
   return {
     group,
     index,
+    kind: "rack",
     body,
     face,
+    brand,
     terminals,
     socLedMaterials,
     runMaterial,
@@ -783,6 +930,148 @@ function createBatteryModule(materials, index) {
     litLeds: 0,
     mode: "stale",
     reporting: false,
+    tap: null,
+  };
+}
+
+// The first-generation floor-standing 314 Ah unit: a tower on four casters carrying
+// the same hardware the rack modules do (branding, LCD, SOC gauge, RUN and ALM,
+// breakers, comms ports and the DC terminal block the conduit leaves from), so one
+// telemetry path drives both kinds. Its local origin is the tower's centre.
+function createFloorUnit(materials, index) {
+  const group = new THREE.Group();
+  const { width: W, height: H, depth: D } = TOWER;
+  const front = TOWER_FRONT;
+  const place = (object, x, y, z = front) => {
+    object.position.set(x, y, z);
+    group.add(object);
+    return object;
+  };
+
+  const body = mesh(new THREE.BoxGeometry(W, H, D), materials.chassis, true, true);
+  group.add(body);
+  [-1, 1].forEach((side) => {
+    const skin = mesh(new THREE.BoxGeometry(0.03, H - 0.1, D - 0.1), materials.chassisSide);
+    place(skin, side * (W / 2 - 0.005), 0, -0.03);
+    // Recessed lifting handle on each flank.
+    const handle = mesh(new THREE.BoxGeometry(0.035, 0.3, 0.6), materials.faceInset);
+    place(handle, side * (W / 2 + 0.004), H / 2 - 1.1, -0.1);
+  });
+  for (let slot = 0; slot < 5; slot += 1) {
+    const vent = mesh(new THREE.BoxGeometry(W - 0.9, 0.012, 0.07), materials.faceInset);
+    place(vent, 0, H / 2 + 0.002, -0.55 + slot * 0.2);
+  }
+
+  const face = mesh(new THREE.BoxGeometry(W - 0.12, H - 0.12, FACE.thickness), materials.face, true);
+  place(face, 0, 0, TOWER_FACE_Z);
+
+  // Base plinth and four lockable casters; the body rides CASTER.lift above the floor.
+  const plinth = mesh(new THREE.BoxGeometry(W - 0.5, 0.12, D - 0.4), materials.chassisSide, true);
+  place(plinth, 0, -H / 2 - 0.06, 0);
+  const wheels = [];
+  [-1, 1].forEach((sideX) => {
+    [-1, 1].forEach((sideZ) => {
+      const fork = mesh(new THREE.BoxGeometry(0.16, 0.2, 0.08), materials.trim);
+      place(fork, sideX * (W / 2 - 0.5), -H / 2 - 0.07, sideZ * (D / 2 - 0.38));
+      const wheel = mesh(
+        new THREE.CylinderGeometry(CASTER.radius, CASTER.radius, CASTER.width, 18),
+        materials.wheel,
+        true,
+      );
+      wheel.rotation.z = Math.PI / 2;
+      place(wheel, sideX * (W / 2 - 0.5), -H / 2 - CASTER.lift + CASTER.radius, sideZ * (D / 2 - 0.38));
+      wheels.push(wheel);
+    });
+  });
+
+  // Branding plate; its label follows the unit's size once telemetry says it.
+  const brand = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.655), materials.brandFloor);
+  place(brand, 0.3, H / 2 - 0.75, front + 0.006);
+
+  // Seven-inch LCD readout.
+  const screenWell = mesh(new THREE.BoxGeometry(1.74, 0.9, 0.035), materials.faceInset);
+  place(screenWell, 0.3, H / 2 - 1.75, front + 0.004);
+  const { texture: screenTexture, context: screenContext } = screenSurface();
+  const screenMaterial = new THREE.MeshBasicMaterial({ map: screenTexture });
+  screenMaterial.userData.ownTexture = true;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.78), screenMaterial);
+  place(screen, 0.3, H / 2 - 1.75, front + 0.024);
+
+  // Six-cell SOC gauge under the screen, RUN / ALM beside it, the power button above.
+  const socLedMaterials = [];
+  for (let led = 0; led < SOC_LEDS; led += 1) {
+    const material = createSignalMaterial(FLOW_COLORS.stale);
+    const cell = mesh(new THREE.BoxGeometry(0.15, 0.11, 0.03), material);
+    place(cell, -0.2 + led * 0.2, H / 2 - 2.45, front + 0.008);
+    socLedMaterials.push(material);
+  }
+  const runMaterial = createSignalMaterial(0x2b3034);
+  const alarmMaterial = createSignalMaterial(0x35292b);
+  place(mesh(new THREE.SphereGeometry(0.045, 12, 8), runMaterial), -0.95, H / 2 - 2.45, front + 0.012);
+  place(mesh(new THREE.SphereGeometry(0.045, 12, 8), alarmMaterial), -0.78, H / 2 - 2.45, front + 0.012);
+  const button = mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 18), materials.trim);
+  button.rotation.x = Math.PI / 2;
+  place(button, -1.0, H / 2 - 1.75, front + 0.02);
+
+  // Twin breakers, the RS485 / CAN / RS232 port bank and the DIP address switch.
+  [-1.05, -0.72].forEach((x) => {
+    place(mesh(new THREE.BoxGeometry(0.26, 0.44, 0.03), materials.faceInset), x, H / 2 - 3.2, front + 0.004);
+    place(mesh(new THREE.BoxGeometry(0.16, 0.3, 0.06), materials.trim), x, H / 2 - 3.2, front + 0.03);
+  });
+  [0, 1, 2].forEach((port) => {
+    const socket = mesh(new THREE.BoxGeometry(0.16, 0.18, 0.05), materials.port);
+    place(socket, -0.2 + port * 0.22, H / 2 - 3.2, front + 0.008);
+  });
+  place(mesh(new THREE.BoxGeometry(0.4, 0.14, 0.035), materials.trim), 0.85, H / 2 - 3.2, front + 0.006);
+  for (let pin = 0; pin < 4; pin += 1) {
+    const toggle = mesh(new THREE.BoxGeometry(0.045, 0.07, 0.02), materials.faceInset);
+    place(toggle, 0.72 + pin * 0.085, H / 2 - 3.19, front + 0.024);
+  }
+
+  // Ventilation slits across the lower door.
+  for (let slit = 0; slit < 12; slit += 1) {
+    const vent = mesh(new THREE.BoxGeometry(W - 1.3, 0.022, 0.014), materials.faceInset);
+    place(vent, 0, -0.75 - slit * 0.14, front + 0.005);
+  }
+
+  // DC terminal block: the flow conduit leaves the unit from here.
+  const terminals = [
+    [0.28, materials.terminalPositive],
+    [-0.28, materials.terminalNegative],
+  ].map(([offset, material]) => {
+    const post = mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.14, 14), material, true);
+    post.rotation.x = Math.PI / 2;
+    return place(post, TOWER_TERMINAL.x, TOWER_TERMINAL.y + offset, front + 0.07);
+  });
+  place(mesh(new THREE.BoxGeometry(0.4, 0.9, 0.03), materials.faceInset), TOWER_TERMINAL.x, TOWER_TERMINAL.y, front + 0.004);
+  const portMaterial = createSignalMaterial(FLOW_COLORS.stale);
+  place(mesh(new THREE.BoxGeometry(0.14, 0.1, 0.05), portMaterial), TOWER_TERMINAL.x, TOWER_TERMINAL.y, front + 0.03);
+
+  // Flow stripe down the left edge, like the modules' faceplates.
+  const stripeMaterial = createSignalMaterial(FLOW_COLORS.stale);
+  place(mesh(new THREE.BoxGeometry(0.05, H - 0.5, 0.05), stripeMaterial), -W / 2 + 0.16, 0, front + 0.004);
+
+  return {
+    group,
+    index,
+    kind: "floor",
+    body,
+    face,
+    brand,
+    wheels,
+    terminals,
+    socLedMaterials,
+    runMaterial,
+    alarmMaterial,
+    portMaterial,
+    stripeMaterial,
+    screenTexture,
+    screenContext,
+    screenSignature: "",
+    litLeds: 0,
+    mode: "stale",
+    reporting: false,
+    tap: null,
   };
 }
 
@@ -849,12 +1138,12 @@ const MODE_BADGES = {
   stale: "NO DATA",
 };
 
-// Each pack taps the rack bus riser through its terminal block; the riser carries the
-// combined rack flow out of the frame. Every segment is single-axis, like the home scene.
-function createRackNetwork(materials, layout) {
+// Each pack taps the rack bus riser through its terminal block, the modules from the
+// left and the floor-standing units from the right; the riser carries the combined
+// rack flow out of the frame. Every segment is single-axis, like the home scene.
+function createRackNetwork(materials, layout, floors = []) {
   const group = new THREE.Group();
-  const top = layout[0];
-  const bottom = layout[layout.length - 1];
+  const { foot, head } = busExtent(layout, floors);
 
   const taps = layout.map((y, index) => createFlowRoute(
     createStraightPath([
@@ -866,12 +1155,22 @@ function createRackNetwork(materials, layout) {
     (index * 0.37) % 1,
     0.026,
   ));
+  const floorTaps = floors.map((unit, index) => createFlowRoute(
+    createStraightPath([
+      new THREE.Vector3(unit.terminal.x, unit.terminal.y, PORT_Z),
+      new THREE.Vector3(BUS_X, unit.terminal.y, PORT_Z),
+    ]),
+    materials,
+    1,
+    ((layout.length + index) * 0.37) % 1,
+    0.03,
+  ));
 
   const trunk = createFlowRoute(
     createStraightPath([
-      new THREE.Vector3(BUS_X, bottom - BUS_FOOT, PORT_Z),
-      new THREE.Vector3(BUS_X, top + BUS_HEAD, PORT_Z),
-      new THREE.Vector3(BUS_X + BUS_OUT, top + BUS_HEAD, PORT_Z),
+      new THREE.Vector3(BUS_X, foot, PORT_Z),
+      new THREE.Vector3(BUS_X, head, PORT_Z),
+      new THREE.Vector3(BUS_X + BUS_OUT, head, PORT_Z),
     ]),
     materials,
     1,
@@ -880,22 +1179,18 @@ function createRackNetwork(materials, layout) {
   );
 
   // Copper riser behind the conduit so the bus reads as hardware, not just a line.
-  const riser = mesh(
-    new THREE.BoxGeometry(0.075, (top - bottom) + BUS_FOOT + BUS_HEAD, 0.04),
-    materials.busbar,
-    true,
-  );
-  riser.position.set(BUS_X, (top + BUS_HEAD + bottom - BUS_FOOT) / 2, PORT_Z - 0.07);
+  const riser = mesh(new THREE.BoxGeometry(0.075, head - foot, 0.04), materials.busbar, true);
+  riser.position.set(BUS_X, (head + foot) / 2, PORT_Z - 0.07);
   group.add(riser);
-  layout.forEach((y) => {
+  layout.concat(floors.map((unit) => unit.terminal.y)).forEach((y) => {
     const lug = mesh(new THREE.BoxGeometry(0.14, 0.1, 0.05), materials.busbar);
     lug.position.set(BUS_X, y, PORT_Z - 0.05);
     group.add(lug);
   });
 
-  const routes = taps.concat(trunk);
+  const routes = taps.concat(floorTaps, trunk);
   routes.forEach((route) => group.add(route.group));
-  return { group, taps, trunk, routes };
+  return { group, taps, floorTaps, trunk, routes };
 }
 
 function createStraightPath(points) {
@@ -977,17 +1272,17 @@ function styleRouteGlow(route, lineGlow, activeOpacity) {
 
 // Soft contact shadow under the stack plus an additive puddle that catches the
 // conduit light while power is moving, exactly like the home scene's grounding.
-function createGrounding(baseY) {
+function createGrounding(baseY, floors = []) {
   const group = new THREE.Group();
-  const addPlane = (width, depth, y, material) => {
+  const addPlane = (width, depth, x, y, z, material) => {
     const plane = mesh(new THREE.PlaneGeometry(width, depth), material);
     plane.rotation.x = -Math.PI / 2;
-    plane.position.set(0.35, y, 0.1);
+    plane.position.set(x, y, z);
     plane.renderOrder = -1;
     group.add(plane);
     return plane;
   };
-  addPlane(7.2, 5.1, baseY, new THREE.MeshBasicMaterial({
+  const shadowMaterial = new THREE.MeshBasicMaterial({
     map: radialGradientTexture([
       [0, "rgba(0,0,0,0.55)"],
       [0.58, "rgba(0,0,0,0.22)"],
@@ -996,7 +1291,8 @@ function createGrounding(baseY) {
     transparent: true,
     depthWrite: false,
     opacity: 0.92,
-  }));
+  });
+  addPlane(7.2, 5.1, 0.35, baseY, 0.1, shadowMaterial);
   const glowMaterial = new THREE.MeshBasicMaterial({
     map: radialGradientTexture([
       [0, "rgba(255,255,255,0.95)"],
@@ -1008,7 +1304,12 @@ function createGrounding(baseY) {
     blending: THREE.AdditiveBlending,
     opacity: 0,
   });
-  addPlane(5.6, 3.9, baseY + 0.012, glowMaterial);
+  addPlane(5.6, 3.9, 0.35, baseY + 0.012, 0.1, glowMaterial);
+  // Each floor-standing unit gets its own contact shadow and glow pool.
+  floors.forEach((unit) => {
+    addPlane(TOWER.width + 1.8, 4.4, unit.x, baseY, 0.35, shadowMaterial);
+    addPlane(TOWER.width + 0.6, 3.2, unit.x, baseY + 0.012, 0.35, glowMaterial);
+  });
   return { group, puddle: { material: glowMaterial, intensity: 0.58 } };
 }
 
@@ -1083,6 +1384,8 @@ function normalizeRackPacks(value) {
     power: optionalFinite(pack?.power),
     current: optionalFinite(pack?.current),
     voltage: optionalFinite(pack?.voltage),
+    capacityAh: optionalFinite(pack?.capacityAh),
+    form: pack?.form === "floor" ? "floor" : "rack",
     alarm: Boolean(pack?.alarm),
     reporting: Boolean(pack?.reporting),
   }));

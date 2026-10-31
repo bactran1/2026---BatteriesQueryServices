@@ -954,10 +954,12 @@ button {
   animation: energy-flow-leader-pulse 1.7s ease-in-out infinite;
 }
 
+/* The top row rests at 210px but clears the copy block's measured bottom edge
+   (set by app.js) when a long status line wraps it past that. */
 .energy-flow__callout--inverter {
   --callout-color: #ffb24a;
   --leader-length: 168px;
-  top: 210px;
+  top: max(210px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
   left: 6%;
   width: 150px;
 }
@@ -965,14 +967,14 @@ button {
 .energy-flow__callout--solar {
   --callout-color: #f2ef50;
   --leader-length: 148px;
-  top: 210px;
+  top: max(210px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
   left: 50%;
 }
 
 .energy-flow__callout--grid {
   --callout-color: #72d7ff;
   --leader-length: 166px;
-  top: 210px;
+  top: max(210px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
   right: 6%;
 }
 
@@ -4640,13 +4642,19 @@ select {
     white-space: nowrap;
   }
 
+  /* How far a tall copy block (a long status line, the weather card) pushes
+     the top callouts past their resting place. The section grows by that
+     much and the scene and the bottom callouts move down with it, so every
+     leader keeps its length instead of a callout landing on its anchor. */
   .energy-flow {
-    height: clamp(640px, 168vw, 670px);
+    --energy-flow-copy-overflow: max(0px, var(--energy-flow-copy-bottom, 0px) + 14px - 276px);
+    height: calc(clamp(640px, 168vw, 670px) + var(--energy-flow-copy-overflow));
     min-height: 0;
   }
 
   .energy-flow__stage {
-    transform: translateY(72px);
+    height: clamp(640px, 168vw, 670px);
+    transform: translateY(calc(72px + var(--energy-flow-copy-overflow)));
   }
 
   .energy-flow__copy h2 {
@@ -4675,15 +4683,17 @@ select {
     font-size: 9px;
   }
 
+  /* Every callout moves by the same overflow as the scene, so each leader
+     keeps its resting length whatever the copy block's height. */
   .energy-flow__callout--inverter,
   .energy-flow__callout--solar,
   .energy-flow__callout--grid {
-    top: max(276px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
+    top: calc(276px + var(--energy-flow-copy-overflow));
   }
 
   .energy-flow__callout--inverter {
     --leader-length: 138px;
-    top: max(322px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
+    top: calc(322px + var(--energy-flow-copy-overflow));
     left: 2%;
     width: 104px;
   }
@@ -4700,7 +4710,7 @@ select {
 
   .energy-flow__callout--grid {
     --leader-length: 144px;
-    top: max(289px, calc(var(--energy-flow-copy-bottom, 0px) + 14px));
+    top: calc(289px + var(--energy-flow-copy-overflow));
     right: 0;
     width: 80px;
   }
@@ -4709,26 +4719,33 @@ select {
     bottom: auto;
   }
 
+  /* The bottom row hangs from the section's bottom edge, so it follows both
+     the copy overflow and the taller section of a wider phone, where the
+     house is bigger and its anchors sit lower. */
   .energy-flow__callout--load {
     --leader-length: 110px;
-    top: 534px;
+    top: calc(100% - 106px);
     left: 4%;
-    width: 26%;
+    width: 24%;
   }
 
   .energy-flow__callout--backup {
     --leader-length: 98px;
-    top: 556px;
-    left: 36%;
-    width: 26%;
+    top: calc(100% - 84px);
+    left: 29%;
+    width: 24%;
   }
 
+  /* Wide enough for a live reading ("66.6% · 2.32 kW discharging") plus its
+     runtime line, in either language, to wrap within the scene; at 31% the
+     words broke mid-word and the card ran off the bottom. Capped so a wider
+     phone does not push the card into the cabinet it points at. */
   .energy-flow__callout--battery {
     --leader-length: 110px;
-    top: 540px;
+    top: calc(100% - 104px);
     right: 3%;
     left: auto;
-    width: 31%;
+    width: min(42%, 140px);
   }
 
   .energy-flow__fallback {

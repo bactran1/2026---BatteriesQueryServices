@@ -124,12 +124,12 @@ const translations = {
     "rack.flowHardware": "Eco-worthy 48 V LiFePO4 server rack packs",
     "rack.flowSummary": "Eco-worthy 48 V LiFePO4 · {packs} · {power} on the bus",
     "rack.flowUnavailable": "Eco-worthy 48 V LiFePO4 · {packs} · waiting for telemetry",
-    "rack.sceneAria": "Animated Eco-worthy battery rack showing live energy flow",
+    "rack.sceneAria": "Animated Eco-worthy battery rack and floor-standing battery showing live energy flow",
     "energy.eyebrow": "Live home energy",
     "energy.title": "Home power flow",
     "energy.waiting": "Waiting for live energy telemetry",
     "energy.waitingShort": "Waiting",
-    "energy.sceneAria": "Three-dimensional home with solar, CT-side home load, grid, hybrid inverter, three rack batteries, and separate backup load",
+    "energy.sceneAria": "Three-dimensional home with solar, CT-side home load, grid, hybrid inverter, three rack batteries, a floor-standing battery, and separate backup load",
     "weather.clearDay": "Clear sky",
     "weather.clearNight": "Clear night",
     "weather.mainlyClear": "Mostly clear",
@@ -420,6 +420,7 @@ const translations = {
     "battery.notEqualizing": "Not equalizing",
     "inventory.defaultHardware": "Eco-worthy battery",
     "inventory.defaultModel": "Eco-worthy server rack battery",
+    "inventory.floorModel": "Eco-worthy 51.2V 314Ah floor-standing battery (first generation)",
     "workbench.aria": "Monitoring workbench",
     "history.eyebrow": "History",
     "history.powerTitle": "Power history",
@@ -568,12 +569,12 @@ const translations = {
     "rack.flowHardware": "Các bộ pin tủ máy chủ Eco-worthy 48 V LiFePO4",
     "rack.flowSummary": "Eco-worthy 48 V LiFePO4 · {packs} · {power} trên thanh cái",
     "rack.flowUnavailable": "Eco-worthy 48 V LiFePO4 · {packs} · đang chờ dữ liệu",
-    "rack.sceneAria": "Hoạt ảnh tủ pin Eco-worthy hiển thị dòng năng lượng trực tiếp",
+    "rack.sceneAria": "Hoạt ảnh tủ pin Eco-worthy và bộ pin đứng sàn hiển thị dòng năng lượng trực tiếp",
     "energy.eyebrow": "Năng lượng trong nhà",
     "energy.title": "Dòng điện trong nhà",
     "energy.waiting": "Đang chờ dữ liệu năng lượng trực tiếp",
     "energy.waitingShort": "Đang chờ",
-    "energy.sceneAria": "Nhà ba chiều với điện mặt trời, phụ tải nhà phía CT, lưới điện, biến tần hybrid, ba bộ pin và phụ tải dự phòng riêng",
+    "energy.sceneAria": "Nhà ba chiều với điện mặt trời, phụ tải nhà phía CT, lưới điện, biến tần hybrid, ba bộ pin rack, một bộ pin đứng sàn và phụ tải dự phòng riêng",
     "weather.clearDay": "Trời quang",
     "weather.clearNight": "Đêm quang",
     "weather.mainlyClear": "Ít mây",
@@ -638,7 +639,7 @@ const translations = {
     "energy.batteryIdlePhrase": "Pin đang nghỉ",
     "energy.batteryUnavailablePhrase": "Chưa có dữ liệu trực tiếp từ pin",
     "energy.runtimeRemaining": "còn khoảng {time} đến mức {reserve}% ở tốc độ xả hiện tại",
-    "energy.runtimeCallout": "còn khoảng {time} đến mức {reserve}%",
+    "energy.runtimeCallout": "còn ~{time} đến {reserve}%",
     "energy.chargeFullRemaining": "còn khoảng {time} đến khi đầy ở mức sạc hiện tại",
     "energy.chargeFullCallout": "còn khoảng {time} đến khi đầy",
     "energy.liveDescription": "{sources} · {load} · {battery}",
@@ -864,6 +865,7 @@ const translations = {
     "battery.notEqualizing": "Không cân bằng",
     "inventory.defaultHardware": "Pin Eco-worthy",
     "inventory.defaultModel": "Pin tủ máy chủ Eco-worthy",
+    "inventory.floorModel": "Pin đứng sàn Eco-worthy 51.2V 314Ah (thế hệ đầu)",
     "workbench.aria": "Bảng điều khiển giám sát",
     "history.eyebrow": "Lịch sử",
     "history.powerTitle": "Lịch sử công suất",
@@ -1522,6 +1524,8 @@ function renderRackFlow(flow, summary = state.summary || {}) {
       power: finiteNumber(reading.power_w),
       current: finiteNumber(reading.current_a),
       voltage: finiteNumber(reading.voltage_v),
+      capacityAh: packCapacityAh(reading),
+      form: packFormFactor(battery),
       alarm: packHasAlert(battery, reading),
       reporting,
     };
@@ -1581,7 +1585,7 @@ function renderEnergyFlow(flow) {
   const soc = battery.soc;
   const batteryEstimate = batteryTimeEstimate(mode, battery);
   const batteryCount = battery.count;
-  const packTelemetry = state.batteries.slice(0, 3).map((battery) => {
+  const packTelemetry = state.batteries.map((battery) => {
     const reading = battery.last_reading || {};
     const reporting = state.collectorOnline && battery.status === "ok" && Boolean(battery.last_reading);
     return {
@@ -1590,6 +1594,7 @@ function renderEnergyFlow(flow) {
       current: finiteNumber(reading.current_a),
       power: finiteNumber(reading.power_w),
       soc: finiteNumber(reading.soc_percent),
+      form: packFormFactor(battery),
       reporting,
     };
   });
@@ -1960,7 +1965,7 @@ function rackBatteryTelemetry(batteries = state.batteries) {
     power,
     current: total("current_a"),
     voltage: average("voltage_v"),
-    soc: average("soc_percent"),
+    soc: rackStateOfCharge(readings),
     temperature: average("mosfet_temperature_c"),
     usableEnergyWh,
     runtimeHours,
@@ -1971,11 +1976,53 @@ function rackBatteryTelemetry(batteries = state.batteries) {
   };
 }
 
+// The rack's state of charge from its packs. Packs of different sizes share the
+// bus (three 100 Ah modules and a 314 Ah one), so the figure is weighted by
+// capacity, remaining over full-charge amp-hours, whenever every pack that
+// reports an SOC also reports its capacity; otherwise the plain mean, which is
+// what identical packs get either way.
+function rackStateOfCharge(readings) {
+  const socs = [];
+  let remainingTotal = 0;
+  let fullTotal = 0;
+  let everyPackHasCapacity = true;
+  readings.forEach((reading) => {
+    const soc = finiteNumber(reading?.soc_percent);
+    if (soc === null) return;
+    socs.push(soc);
+    const remaining = finiteNumber(reading.remaining_capacity_ah);
+    const full = resolveFullCapacityAh(reading);
+    if (remaining === null || remaining < 0 || full === null) {
+      everyPackHasCapacity = false;
+      return;
+    }
+    remainingTotal += remaining;
+    fullTotal += full;
+  });
+  if (!socs.length) return null;
+  if (everyPackHasCapacity && fullTotal > 0) return (100 * remainingTotal) / fullTotal;
+  return socs.reduce((sum, value) => sum + value, 0) / socs.length;
+}
+
 // Discharge floor (SOC %) the runtime estimate counts down to, configured on the
 // monitor to match the inverter's depth of discharge (DoD 100% -> reserve 0).
 function batteryReservePercent() {
   const value = finiteNumber(state.batteryReservePercent);
   return value === null ? BATTERY_RESERVE_PERCENT : clamp(value, 0, 90);
+}
+
+// How the pack is built, from the inventory: "rack" for a module in the 19-inch
+// stack, "floor" for a floor-standing unit on casters that stands beside it.
+function packFormFactor(battery) {
+  return batteryProfile(battery)?.form_factor === "floor" ? "floor" : "rack";
+}
+
+// The pack's size as printed on it, for the rack scene's faceplate: the BMS's
+// rated capacity, or its present full-charge capacity when the rating is missing.
+function packCapacityAh(reading) {
+  const rated = finiteNumber(reading?.rated_capacity_ah);
+  if (rated !== null && rated > 0) return rated;
+  return resolveFullCapacityAh(reading || {});
 }
 
 // The BMS reports the pack's present full-charge capacity; fall back to the rated
@@ -4157,6 +4204,7 @@ function localizedBatteryModel(value) {
   if (!value || state.language !== "vi") return value;
   const model = String(value).trim();
   if (/^eco-worthy server rack battery$/i.test(model)) return t("inventory.defaultModel");
+  if (/^eco-worthy 51\.2v 314ah floor-standing battery/i.test(model)) return t("inventory.floorModel");
   if (/^eco-worthy battery$/i.test(model)) return t("inventory.defaultHardware");
   return value;
 }

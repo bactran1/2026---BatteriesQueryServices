@@ -21,6 +21,7 @@ from .assets import asset_version, cache_control_for, render_index
 from .collector import CollectorClient, CollectorError
 from .config import Settings, load_settings, rack_details
 from .service import MonitorService
+from .rack_state import rack_state_of_charge
 from .savings import build_savings_payload
 from .storage import EnergyView, HistoryMetric, RetentionStore
 from .weather import WeatherClient
@@ -581,11 +582,6 @@ def _summary(batteries: list[dict]) -> dict:
         if isinstance(battery.get("last_reading"), dict)
     ]
     online = sum(1 for battery in batteries if battery.get("status") == "ok")
-    soc_values = [
-        reading.get("soc_percent")
-        for reading in readings
-        if isinstance(reading.get("soc_percent"), (int, float))
-    ]
     power_values = [
         reading.get("power_w")
         for reading in readings
@@ -628,13 +624,15 @@ def _summary(batteries: list[dict]) -> dict:
     ]
     alarm_count = sum(len(reading.get("alarms") or []) for reading in readings)
     fault_count = sum(len(reading.get("faults") or []) for reading in readings)
+    # Packs of different sizes share the bus, so the rack figure is weighted
+    # by capacity where the packs report it; the key keeps its old name.
+    rack_soc, soc_weighting = rack_state_of_charge(readings)
     return {
         "source": "direct_battery_telemetry",
         "battery_count": len(batteries),
         "online_count": online,
-        "average_soc_percent": round(sum(soc_values) / len(soc_values), 1)
-        if soc_values
-        else None,
+        "average_soc_percent": rack_soc,
+        "soc_weighting": soc_weighting,
         "total_power_w": round(sum(power_values), 1) if power_values else None,
         "total_current_a": round(sum(current_values), 2) if current_values else None,
         "average_voltage_v": round(sum(voltage_values) / len(voltage_values), 2)

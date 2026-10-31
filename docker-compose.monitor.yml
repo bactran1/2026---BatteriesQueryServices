@@ -26,11 +26,12 @@ services:
       BQM_RACK_BUILDER: ${BQM_RACK_BUILDER:-Tran Thanh Tuan}
       BQM_RACK_LOCATION: ${BQM_RACK_LOCATION:-Battery room}
       BQM_COLLECTOR_NAME: ${BQM_COLLECTOR_NAME:-Raspberry Pi collector}
-      BQM_BATTERY_IDS: ${BQM_BATTERY_IDS:-rack-1,rack-2,rack-3}
-      BQM_BATTERY_ADDRESSES: ${BQM_BATTERY_ADDRESSES:-1,2,3}
-      BQM_BATTERY_NAMES: ${BQM_BATTERY_NAMES:-Rack Battery 1,Rack Battery 2,Rack Battery 3}
-      BQM_BATTERY_IPS: ${BQM_BATTERY_IPS:-,,}
-      BQM_BATTERY_MODELS: ${BQM_BATTERY_MODELS:-Eco-worthy server rack battery,Eco-worthy server rack battery,Eco-worthy server rack battery}
+      BQM_BATTERY_IDS: ${BQM_BATTERY_IDS:-rack-1,rack-2,rack-3,rack-4}
+      BQM_BATTERY_ADDRESSES: ${BQM_BATTERY_ADDRESSES:-1,2,3,4}
+      BQM_BATTERY_NAMES: ${BQM_BATTERY_NAMES:-Rack Battery 1,Rack Battery 2,Rack Battery 3,Rack Battery 4}
+      BQM_BATTERY_IPS: ${BQM_BATTERY_IPS:-,,,}
+      BQM_BATTERY_MODELS: ${BQM_BATTERY_MODELS:-Eco-worthy 48V 100Ah server rack battery,Eco-worthy 48V 100Ah server rack battery,Eco-worthy 48V 100Ah server rack battery,Eco-worthy 51.2V 314Ah floor-standing battery (first generation)}
+      BQM_BATTERY_FORM_FACTORS: ${BQM_BATTERY_FORM_FACTORS:-rack,rack,rack,floor}
       BQM_UTILITY_PROVIDER: ${BQM_UTILITY_PROVIDER:-Puget Sound Energy}
       BQM_UTILITY_SCHEDULE: ${BQM_UTILITY_SCHEDULE:-Residential Time-of-Use with Super Off-Peak (Schedule 327)}
       BQM_UTILITY_REGION: ${BQM_UTILITY_REGION:-King County, WA}
