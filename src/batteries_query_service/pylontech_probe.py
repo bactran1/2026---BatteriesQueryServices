@@ -35,8 +35,10 @@ from dataclasses import asdict, dataclass
 SOI = b"~"
 EOI = b"\r"
 CID1_BATTERY = 0x46
-DEFAULT_VERSIONS = (0x20, 0x25)
+DEFAULT_VERSIONS = "20,22,25"
 DEFAULT_ADDRESSES = "0-15"
+DEFAULT_BAUDRATES = "9600"
+BAUDRATE_CHOICES = (9600, 19200, 38400, 57600, 115200)
 
 # Read-only commands only. (name, CID2, whether INFO carries the pack address)
 COMMANDS = (
@@ -209,8 +211,24 @@ class SerialLink:
         start = reply.find(SOI)
         return reply[start:] if start > 0 else reply
 
+    def listen(self, seconds: float) -> bytes:
+        """Collect whatever arrives on the port for a while without sending anything."""
+        self._connection.reset_input_buffer()
+        deadline = time.monotonic() + seconds
+        heard = b""
+        while time.monotonic() < deadline:
+            chunk = self._connection.read(256)
+            if chunk:
+                heard += chunk
+        return heard
+
     def close(self) -> None:
         self._connection.close()
+
+
+def hexdump(data: bytes) -> str:
+    text = "".join(chr(byte) if 32 <= byte < 127 else "." for byte in data)
+    return f"{data.hex(' ')}\n    {text}"
 
 
 def describe(raw: bytes) -> dict:
@@ -241,7 +259,7 @@ def probe(link: SerialLink, versions: list[int], addresses: list[int], pause: fl
                 if verbose:
                     print(f"address {address:#04x} version {version:#04x}: no reply", file=sys.stderr)
                 continue
-            print(f"address {address:#04x} version {version:#04x}: answered {len(reply)} bytes")
+            print(f"address {address:#04x} version {version:#04x}: answered {len(reply)} bytes", file=sys.stderr)
             results = {"address": address, "version": version, "replies": {}}
             results["replies"]["analog_values"] = {"request": request.decode("ascii"), **describe(reply)}
             for name, cid2, carries_address in COMMANDS:
@@ -278,16 +296,39 @@ def report(found: list[dict]) -> None:
                 print(f"  text     {result['info_text']}")
 
 
+def parse_baudrates(spec: str) -> list[int]:
+    baudrates = [int(value.strip()) for value in spec.split(",") if value.strip()]
+    for baudrate in baudrates:
+        if baudrate not in BAUDRATE_CHOICES:
+            raise ValueError(f"baudrate {baudrate} is not one of {BAUDRATE_CHOICES}")
+    return baudrates
+
+
+NO_ANSWER_HINT = (
+    "no pack answered. In order: swap A and B on the adapter; try the other RJ45 pair "
+    "(PACE ports usually bus pins 1/2 and 7/8, with the rest unused); make sure the cable is on "
+    "the unit's RS485 port rather than a link, CAN or RS232 port; run --listen 10 to see "
+    "whether anything at all arrives; and try --baudrates 9600,19200,115200."
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Read-only probe for a Pylontech/PACE RS485 battery; prints the raw frames it answers with.",
     )
     parser.add_argument("--port", required=True, help="serial device, e.g. /dev/serial/by-id/usb-...-port0")
-    parser.add_argument("--baudrate", type=int, choices=(9600, 19200, 115200), default=9600)
+    parser.add_argument(
+        "--baudrates", "--baudrate", dest="baudrates", default=DEFAULT_BAUDRATES,
+        help=f"baud rates to try in turn, from {', '.join(map(str, BAUDRATE_CHOICES))} (default {DEFAULT_BAUDRATES})",
+    )
     parser.add_argument("--addresses", default=DEFAULT_ADDRESSES, help="addresses to try, e.g. 0-15 or 1,2,4 (default 0-15)")
-    parser.add_argument("--versions", default="20,25", help="protocol version bytes to try, hex (default 20,25)")
+    parser.add_argument("--versions", default=DEFAULT_VERSIONS, help=f"protocol version bytes to try, hex (default {DEFAULT_VERSIONS})")
     parser.add_argument("--timeout", type=float, default=1.0, help="seconds to wait for each reply")
     parser.add_argument("--pause", type=float, default=0.2, help="seconds between requests")
+    parser.add_argument(
+        "--listen", type=float, metavar="SECONDS", default=0.0,
+        help="before probing, only listen for this long and show whatever arrives (nothing is sent)",
+    )
     parser.add_argument("--json", action="store_true", help="print the results as JSON instead of a report")
     parser.add_argument("--verbose", action="store_true", help="also list the addresses that stay silent")
     return parser
@@ -298,28 +339,41 @@ def main(argv: list[str] | None = None) -> int:
     try:
         addresses = parse_addresses(args.addresses)
         versions = parse_versions(args.versions)
+        baudrates = parse_baudrates(args.baudrates)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    link = SerialLink(args.port, args.baudrate, args.timeout)
-    try:
-        print(
-            f"probing {args.port} at {args.baudrate} bps, addresses {args.addresses}, "
-            f"versions {', '.join(f'{version:#04x}' for version in versions)} (read-only)"
-        )
-        found = probe(link, versions, addresses, args.pause, args.verbose)
-    finally:
-        link.close()
+
+    found: list[dict] = []
+    for baudrate in baudrates:
+        link = SerialLink(args.port, baudrate, args.timeout)
+        try:
+            if args.listen > 0:
+                print(f"listening on {args.port} at {baudrate} bps for {args.listen:g} s without sending", file=sys.stderr)
+                heard = link.listen(args.listen)
+                if heard:
+                    print(f"heard {len(heard)} bytes at {baudrate} bps:\n    {hexdump(heard)}", file=sys.stderr)
+                else:
+                    print(f"heard nothing at {baudrate} bps", file=sys.stderr)
+            print(
+                f"probing {args.port} at {baudrate} bps, addresses {args.addresses}, "
+                f"versions {', '.join(f'{version:#04x}' for version in versions)} (read-only)",
+                file=sys.stderr,
+            )
+            found = probe(link, versions, addresses, args.pause, args.verbose)
+        finally:
+            link.close()
+        if found:
+            for pack in found:
+                pack["baudrate"] = baudrate
+            break
+
     if args.json:
         print(json.dumps(found, indent=2))
     elif found:
         report(found)
-    else:
-        print(
-            "no pack answered. Check A/B wiring (swap them if unsure), the adapter path, "
-            "that the pack's RS485 port is the one wired (not a link port), and try "
-            "--baudrate 115200 for a console-style port."
-        )
+    if not found:
+        print(NO_ANSWER_HINT, file=sys.stderr)
     return 0 if found else 1
 
 

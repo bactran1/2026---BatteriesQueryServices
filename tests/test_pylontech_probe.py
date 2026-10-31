@@ -62,11 +62,20 @@ class PylontechFrameTests(unittest.TestCase):
         codes = {cid2 for _, cid2, _ in probe.COMMANDS}
         self.assertEqual(codes, {0x42, 0x44, 0x47, 0x4F, 0x51, 0x92, 0x93})
 
-    def test_address_and_version_specs(self) -> None:
+    def test_address_version_and_baud_specs(self) -> None:
         self.assertEqual(probe.parse_addresses("0-3,0x10, 7"), [0, 1, 2, 3, 16, 7])
         self.assertEqual(probe.parse_versions("20,25"), [0x20, 0x25])
+        self.assertEqual(probe.parse_versions(probe.DEFAULT_VERSIONS), [0x20, 0x22, 0x25])
+        self.assertEqual(probe.parse_baudrates("9600, 115200"), [9600, 115200])
         with self.assertRaises(ValueError):
             probe.parse_addresses("300")
+        with self.assertRaises(ValueError):
+            probe.parse_baudrates("1200")
+
+    def test_hexdump_shows_bytes_and_their_text(self) -> None:
+        dump = probe.hexdump(b"~20\x00")
+        self.assertIn("7e 32 30 00", dump)
+        self.assertIn("~20.", dump)
 
 
 class ProbeRunTests(unittest.TestCase):

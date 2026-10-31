@@ -498,10 +498,13 @@ PYTHONPATH=src python3 -m batteries_query_service.pylontech_probe \
 
 The script has no other dependencies, so it can also be copied anywhere and
 run as `python3 pylontech_probe.py --port ...`. It tries addresses 0-15 with
-protocol versions 0x20 (Pylontech) and 0x25 (PACE) at 9600 bps; pass
-`--addresses 4`, `--versions 20`, `--baudrate 115200` or `--json` to narrow or
-reshape the run. If nothing answers, swap A and B on the adapter and make sure
-the cable is on the unit's RS485 port rather than a link port.
+protocol versions 0x20 and 0x22 (Pylontech) and 0x25 (PACE) at 9600 bps; pass
+`--addresses 4`, `--versions 20`, `--baudrates 9600,19200,115200` or `--json`
+to narrow or reshape the run, and `--listen 10` to first spend ten seconds
+only listening, which shows whether anything reaches the adapter at all. If
+nothing answers, swap A and B on the adapter, try the other RJ45 pair, and make
+sure the cable is on the unit's RS485 port rather than a link, CAN or RS232
+port.
 
 ## Docker serial devices
 
