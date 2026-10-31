@@ -502,9 +502,17 @@ protocol versions 0x20 and 0x22 (Pylontech) and 0x25 (PACE) at 9600 bps; pass
 `--addresses 4`, `--versions 20`, `--baudrates 9600,19200,115200` or `--json`
 to narrow or reshape the run, and `--listen 10` to first spend ten seconds
 only listening, which shows whether anything reaches the adapter at all. If
-nothing answers, swap A and B on the adapter, try the other RJ45 pair, and make
-sure the cable is on the unit's RS485 port rather than a link, CAN or RS232
-port.
+nothing answers, swap A and B on the adapter, try the other RJ45 pair (this
+BMS carries A on pins 2 and 7 and B on pins 1 and 8), and make sure the cable
+is on the unit's RS485 port rather than a link, CAN or RS232 port.
+
+The probe needs the port to itself. Raspberry Pi OS ships ModemManager
+enabled, and it opens every newly plugged USB serial adapter for a while,
+which shows up as stray bytes and a "device reports readiness to read but
+returned no data" failure; `sudo systemctl disable --now ModemManager` stops
+that for good, the collector does not use it. The collector container holds
+the adapter too once it has been deployed with it mapped, so stop the
+container (`docker compose stop`) while probing.
 
 ## Docker serial devices
 
