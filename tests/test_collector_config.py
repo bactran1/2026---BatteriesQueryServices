@@ -15,6 +15,21 @@ class CollectorConfigTests(unittest.TestCase):
         self.assertEqual([b.id for b in batteries], ["rack-1", "rack-2", "rack-3", "rack-4"])
         self.assertEqual([b.address for b in batteries], [1, 2, 3, 4])
 
+    def test_the_shipped_config_gives_the_floor_standing_unit_its_own_port(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        for name in ("config.toml", "config.example.toml"):
+            with patch.dict(os.environ, {"BQS_CONFIG": str(repo_root / name)}, clear=True):
+                settings = load_settings()
+            ports = {
+                battery.id: battery.resolved_serial_port(settings.serial.port)
+                for battery in settings.batteries
+            }
+            self.assertEqual(
+                ports,
+                {"rack-1": "/dev/ttyUSB0", "rack-2": "/dev/ttyUSB0", "rack-3": "/dev/ttyUSB0", "rack-4": "/dev/ttyUSB2"},
+                name,
+            )
+
     def test_build_commit_is_loaded_from_environment(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             config_path = Path(directory) / "missing.toml"

@@ -46,7 +46,9 @@ id = "rack-3"
 address = 3
 
 # The fourth pack, a first-generation Eco-worthy 51.2 V 314 Ah floor-standing
-# unit on casters, on DIP address 4.
+# unit on casters, on DIP address 4. Its PACE BMS has its own USB RS485 adapter,
+# mapped to /dev/ttyUSB2 by deploy-collector.sh (--floor-serial-device).
 [[batteries]]
 id = "rack-4"
 address = 4
+serial_port = "/dev/ttyUSB2"

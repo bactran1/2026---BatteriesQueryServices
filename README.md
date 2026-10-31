@@ -493,7 +493,7 @@ From the repository checkout on the Pi, with `pyserial` on the host
 ```bash
 ls -l /dev/serial/by-id/
 PYTHONPATH=src python3 -m batteries_query_service.pylontech_probe \
-  --port /dev/serial/by-id/usb-<second-adapter>-port0
+  --port /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG04TFN9-if00-port0
 ```
 
 The script has no other dependencies, so it can also be copied anywhere and
@@ -524,6 +524,13 @@ bash deploy-collector.sh \
 
 The serial fallback still accepts `--inverter-serial-device` and maps that
 adapter to `/dev/ttyUSB1` in the container.
+
+The floor-standing 314 Ah unit talks to a third adapter, mapped to
+`/dev/ttyUSB2` and named by `--floor-serial-device` (default
+`/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG04TFN9-if00-port0`); its `[[batteries]]`
+entry in `config.toml` carries `serial_port = "/dev/ttyUSB2"`. As with the
+inverter adapter, an absent device is mapped to `/dev/null` so the container
+still starts and the other packs keep reporting.
 
 The same settings can be supplied as `COLLECTOR_SERIAL_DEVICE`,
 `COLLECTOR_INVERTER_SERIAL_DEVICE`, and `COLLECTOR_CONFIG_FILE`. The running
