@@ -68,6 +68,18 @@ class FrameError(ValueError):
     """A frame that does not follow the protocol's shape."""
 
 
+class LinkError(RuntimeError):
+    """The serial port itself failed mid-run, typically because it is shared."""
+
+
+SHARED_PORT_HINT = (
+    "the port failed while reading, which almost always means another program has it open "
+    "at the same time: the collector container if it was deployed with this adapter mapped, "
+    "or ModemManager probing a newly plugged adapter. Check with: sudo fuser -v PORT "
+    "(and docker ps; sudo systemctl stop ModemManager), then run the probe again."
+)
+
+
 def length_field(info_hex: str) -> str:
     """LENGTH: a 4-bit checksum over the three nibbles of the 12-bit INFO length."""
     length = len(info_hex)
@@ -192,6 +204,7 @@ class SerialLink:
             raise SystemExit(
                 "pyserial is required: pip install pyserial (or apt install python3-serial)"
             ) from exc
+        self.port = port
         self._connection = serial.Serial(
             port=port,
             baudrate=baudrate,
@@ -203,23 +216,29 @@ class SerialLink:
         )
 
     def transact(self, request: bytes) -> bytes:
-        self._connection.reset_input_buffer()
-        self._connection.write(request)
-        self._connection.flush()
-        reply = self._connection.read_until(EOI)
+        try:
+            self._connection.reset_input_buffer()
+            self._connection.write(request)
+            self._connection.flush()
+            reply = self._connection.read_until(EOI)
+        except OSError as exc:  # pyserial's SerialException is an OSError
+            raise LinkError(f"{exc}; {SHARED_PORT_HINT.replace('PORT', self.port)}") from exc
         # Some firmware leads with stray bytes; keep from the frame start.
         start = reply.find(SOI)
         return reply[start:] if start > 0 else reply
 
     def listen(self, seconds: float) -> bytes:
         """Collect whatever arrives on the port for a while without sending anything."""
-        self._connection.reset_input_buffer()
         deadline = time.monotonic() + seconds
         heard = b""
-        while time.monotonic() < deadline:
-            chunk = self._connection.read(256)
-            if chunk:
-                heard += chunk
+        try:
+            self._connection.reset_input_buffer()
+            while time.monotonic() < deadline:
+                chunk = self._connection.read(256)
+                if chunk:
+                    heard += chunk
+        except OSError as exc:
+            raise LinkError(f"{exc}; {SHARED_PORT_HINT.replace('PORT', self.port)}") from exc
         return heard
 
     def close(self) -> None:
@@ -229,6 +248,41 @@ class SerialLink:
 def hexdump(data: bytes) -> str:
     text = "".join(chr(byte) if 32 <= byte < 127 else "." for byte in data)
     return f"{data.hex(' ')}\n    {text}"
+
+
+def is_noise(reply: bytes) -> bool:
+    """Bytes with no frame start are line noise, not a pack: a lone 0x00 is the
+    classic turnaround or floating-bus glitch, 0xFF a break, and so on."""
+    return SOI not in reply
+
+
+def other_openers(port: str) -> list[str]:
+    """Best effort: processes that hold the same device open (Linux, readable ones only)."""
+    import os
+
+    try:
+        target = os.path.realpath(port)
+        entries = os.listdir("/proc")
+    except OSError:
+        return []
+    me = os.getpid()
+    holders: list[str] = []
+    for entry in entries:
+        if not entry.isdigit() or int(entry) == me:
+            continue
+        fd_dir = f"/proc/{entry}/fd"
+        try:
+            for fd in os.listdir(fd_dir):
+                try:
+                    if os.readlink(f"{fd_dir}/{fd}") == target:
+                        with open(f"/proc/{entry}/comm", encoding="ascii", errors="replace") as comm:
+                            holders.append(f"pid {entry} ({comm.read().strip()})")
+                        break
+                except OSError:
+                    continue
+        except OSError:
+            continue
+    return holders
 
 
 def describe(raw: bytes) -> dict:
@@ -258,6 +312,13 @@ def probe(link: SerialLink, versions: list[int], addresses: list[int], pause: fl
             if not reply:
                 if verbose:
                     print(f"address {address:#04x} version {version:#04x}: no reply", file=sys.stderr)
+                continue
+            if is_noise(reply):
+                print(
+                    f"address {address:#04x} version {version:#04x}: {len(reply)} byte(s) of noise, "
+                    f"not a frame: {reply.hex(' ')}",
+                    file=sys.stderr,
+                )
                 continue
             print(f"address {address:#04x} version {version:#04x}: answered {len(reply)} bytes", file=sys.stderr)
             results = {"address": address, "version": version, "replies": {}}
@@ -305,10 +366,12 @@ def parse_baudrates(spec: str) -> list[int]:
 
 
 NO_ANSWER_HINT = (
-    "no pack answered. In order: swap A and B on the adapter; try the other RJ45 pair "
-    "(PACE ports usually bus pins 1/2 and 7/8, with the rest unused); make sure the cable is on "
-    "the unit's RS485 port rather than a link, CAN or RS232 port; run --listen 10 to see "
-    "whether anything at all arrives; and try --baudrates 9600,19200,115200."
+    "no pack answered. In order: make sure nothing else has the port open (sudo fuser -v PORT; "
+    "the collector container, ModemManager); swap A and B on the adapter; try the other RJ45 pair "
+    "(this BMS carries A on pins 2 and 7 and B on pins 1 and 8); make sure the cable is on the "
+    "unit's RS485 port rather than a link, CAN or RS232 port; run --listen 10 to see whether "
+    "anything at all arrives (a lone 00 now and then is a line glitch, not the pack); and try "
+    "--baudrates 9600,19200,115200."
 )
 
 
@@ -344,6 +407,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    holders = other_openers(args.port)
+    if holders:
+        print(
+            f"WARNING: {args.port} is also open in {', '.join(holders)}; stop that first, "
+            "the two will steal each other's bytes.",
+            file=sys.stderr,
+        )
+
     found: list[dict] = []
     for baudrate in baudrates:
         link = SerialLink(args.port, baudrate, args.timeout)
@@ -361,6 +432,11 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             found = probe(link, versions, addresses, args.pause, args.verbose)
+        except LinkError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            if args.json:
+                print(json.dumps(found, indent=2))
+            return 3
         finally:
             link.close()
         if found:
@@ -373,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
     elif found:
         report(found)
     if not found:
-        print(NO_ANSWER_HINT, file=sys.stderr)
+        print(NO_ANSWER_HINT.replace("PORT", args.port), file=sys.stderr)
     return 0 if found else 1
 
 

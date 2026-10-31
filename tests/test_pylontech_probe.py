@@ -77,6 +77,12 @@ class PylontechFrameTests(unittest.TestCase):
         self.assertIn("7e 32 30 00", dump)
         self.assertIn("~20.", dump)
 
+    def test_line_glitches_are_noise_rather_than_a_pack(self) -> None:
+        self.assertTrue(probe.is_noise(b"\x00"))
+        self.assertTrue(probe.is_noise(b"\x00\xff"))
+        self.assertFalse(probe.is_noise(b"~20044600C0040102FCD6\r"))
+        self.assertFalse(probe.is_noise(b"\x00~2004"))
+
 
 class ProbeRunTests(unittest.TestCase):
     def test_probe_runs_every_read_command_on_a_pack_that_answers(self) -> None:
@@ -92,6 +98,12 @@ class ProbeRunTests(unittest.TestCase):
 
         found = probe.probe(FakeLink(), [0x20, 0x25], [3, 4], pause=0, verbose=False)
         self.assertEqual(len(found), 1)
+
+        class NoisyLink:
+            def transact(self, request: bytes) -> bytes:
+                return b"\x00"
+
+        self.assertEqual(probe.probe(NoisyLink(), [0x20], [1, 2], pause=0, verbose=False), [])
         self.assertEqual(found[0]["address"], 4)
         self.assertEqual(found[0]["version"], 0x20)
         self.assertEqual(set(found[0]["replies"]), {name for name, _, _ in probe.COMMANDS})
