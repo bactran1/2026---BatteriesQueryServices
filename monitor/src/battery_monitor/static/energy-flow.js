@@ -34,6 +34,15 @@ const PULSE_SPEED_DEFAULT = 0.2;
 const PULSE_SPEED_MIN = 0.02;
 const PULSE_SPEED_MAX = 0.6;
 const PULSE_REFERENCE_LENGTH = 3.5;
+// The battery cabinet shows one module per pack, top to bottom, in the order
+// the collector lists them. Four slots cover the rack's four packs.
+const CABINET_MODULE_COUNT = 4;
+const CABINET_MODULE_PITCH = 0.37;
+const CABINET_MODULE_OFFSETS = Array.from(
+  {length: CABINET_MODULE_COUNT},
+  (_, index) => ((CABINET_MODULE_COUNT - 1) / 2 - index) * CABINET_MODULE_PITCH,
+);
+
 const POWER_PORTS = {
   solar: new THREE.Vector3(0.4, 1.4, 0.75),
   inverterSolar: new THREE.Vector3(0.4, 0.42, 2.2),
@@ -978,17 +987,17 @@ function createPowerCenter(materials) {
   addBox(inverter, [0.20, 0.025, 0.075], [0, 0.17, 0.25], materials.deviceFace);
 
   const battery = new THREE.Group();
-  battery.position.set(1.63, -0.33, 1.82);
-  const batteryBody = mesh(new THREE.BoxGeometry(0.92, 1.5, 0.46), materials.device, true);
-  const batteryFace = mesh(new THREE.BoxGeometry(0.76, 1.32, 0.06), materials.deviceFace);
+  battery.position.set(1.63, -0.22, 1.82);
+  const batteryBody = mesh(new THREE.BoxGeometry(0.92, 1.72, 0.46), materials.device, true);
+  const batteryFace = mesh(new THREE.BoxGeometry(0.76, 1.54, 0.06), materials.deviceFace);
   batteryFace.position.z = 0.27;
   const batterySignalMaterial = createSignalMaterial(FLOW_COLORS.stale);
-  const batteryStripe = mesh(new THREE.BoxGeometry(0.065, 1.32, 0.08), batterySignalMaterial);
+  const batteryStripe = mesh(new THREE.BoxGeometry(0.065, 1.54, 0.08), batterySignalMaterial);
   batteryStripe.position.set(-0.38, 0, 0.3);
   battery.add(batteryBody, batteryFace, batteryStripe);
 
   const batteryModules = [];
-  [0.42, 0, -0.42].forEach((y) => {
+  CABINET_MODULE_OFFSETS.forEach((y) => {
     const moduleFace = mesh(new THREE.BoxGeometry(0.58, 0.31, 0.055), materials.device);
     moduleFace.position.set(0.05, y, 0.32);
     const track = mesh(new THREE.BoxGeometry(0.51, 0.04, 0.055), materials.utility);
@@ -1206,7 +1215,7 @@ function normalizePackTelemetry(value) {
     }
   }
   if (!Array.isArray(packs)) return [];
-  return packs.slice(0, 3).map((pack) => ({
+  return packs.slice(0, CABINET_MODULE_COUNT).map((pack) => ({
     id: String(pack?.id || ""),
     mode: validMode(pack?.mode),
     current: finite(pack?.current),

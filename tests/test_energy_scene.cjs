@@ -53,10 +53,17 @@ test("Every pulse covers the same distance per second on every conduit, at any p
   assert.equal(rate(network.battery, speed), lowPower);
 });
 
-test("Modern equipment contains three distinct battery modules and independent load signals", async () => {
+test("Modern equipment contains four distinct battery modules and independent load signals", async () => {
   const {THREE, run} = await scene();
   const system = run("createRenogySystem(createMaterials())");
-  assert.equal(system.batteryModules.length, 3);
+  assert.equal(system.batteryModules.length, 4);
+  // One slot per rack pack, laid out top to bottom inside the cabinet face.
+  const offsets = run("CABINET_MODULE_OFFSETS");
+  assert.equal(offsets.length, system.batteryModules.length);
+  assert.deepEqual([...offsets], [...offsets].sort((a, b) => b - a));
+  assert.ok(Math.max(...offsets) + 0.31 / 2 < 1.54 / 2);
+  const packs = run('normalizePackTelemetry([{id: "rack-1"}, {id: "rack-2"}, {id: "rack-3"}, {id: "rack-4"}, {id: "rack-5"}])');
+  assert.deepEqual(Array.from(packs, (pack) => pack.id), ["rack-1", "rack-2", "rack-3", "rack-4"]);
   assert.notEqual(system.loadSignalMaterial, system.backupSignalMaterial);
   const bounds = new THREE.Box3().setFromObject(system.group);
   assert.ok(bounds.getSize(new THREE.Vector3()).x < 9);

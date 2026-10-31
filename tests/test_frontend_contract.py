@@ -204,7 +204,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('canvas.dataset.hardware = "eco-worthy-rack"', scene)
         self.assertIn('ctx.fillText("ECO", 78, 62)', scene)
         self.assertIn('ctx.fillText("-WORTHY", 200, 62)', scene)
-        self.assertIn("LiFePO4  48V  100Ah", scene)
+        # The faceplate's model line follows each pack's own size.
+        self.assertIn("function moduleModelLine", scene)
+        self.assertIn("capacityAh: optionalFinite(pack?.capacityAh)", scene)
+        self.assertIn("capacityAh: packCapacityAh(reading)", javascript)
+        self.assertIn("function rackStateOfCharge", javascript)
         # Nothing from the home scene's cast is modelled here: no house, no solar
         # array, no utility pole, no inverter, no metered grid or load.
         for absent in (

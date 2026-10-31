@@ -196,7 +196,7 @@ test("Pack telemetry from the dashboard is normalised before it reaches the scen
   ]));
   assert.deepEqual(JSON.parse(JSON.stringify(pack)), {
     id: "rack-1", mode: "charging", soc: 92, power: 324,
-    current: 6, voltage: 53.4, alarm: false, reporting: true,
+    current: 6, voltage: 53.4, capacityAh: null, alarm: false, reporting: true,
   });
   // Unknown modes and missing readings degrade to a stale pack with no readout.
   const [unknown] = normalize([{id: "rack-2", mode: "exploding", soc: null}]);
@@ -236,4 +236,19 @@ test("The stage frames the stack and its bus, and grows with the pack count", as
     assert.ok(bounds.min.x <= -run("MODULE.width") / 2 + 1e-9);
     assert.ok(bounds.max.x >= run("BUS_X") + run("BUS_OUT") - 1e-9);
   }
+});
+
+test("Each pack's faceplate names its own size, and the stack keeps one plate per size", async () => {
+  const {run} = await scene();
+  assert.equal(run("moduleModelLine({capacityAh: 100})"), "LiFePO4  51.2V  100Ah  ·  5.12 kWh");
+  assert.equal(run("moduleModelLine({capacityAh: 314})"), "LiFePO4  51.2V  314Ah  ·  16.08 kWh");
+  assert.equal(run("moduleModelLine({})"), run("GENERIC_MODEL_LINE"));
+  assert.equal(run("moduleModelLine({capacityAh: 0})"), run("GENERIC_MODEL_LINE"));
+  // The size travels with the pack into the scene.
+  const packs = run('normalizeRackPacks([{id: "rack-4", capacityAh: 314, reporting: true}, {id: "rack-1"}])');
+  assert.equal(packs[0].capacityAh, 314);
+  assert.equal(packs[1].capacityAh, null);
+  // One shared material per model line, not one per module.
+  assert.equal(run("sharedBrandMaterial(moduleModelLine({capacityAh: 314})) === sharedBrandMaterial(moduleModelLine({capacityAh: 314}))"), true);
+  assert.equal(run("sharedBrandMaterial(moduleModelLine({capacityAh: 314})) === sharedBrandMaterial(moduleModelLine({capacityAh: 100}))"), false);
 });

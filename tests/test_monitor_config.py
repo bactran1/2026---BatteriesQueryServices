@@ -65,6 +65,16 @@ class MonitorConfigTests(unittest.TestCase):
         self.assertEqual(settings.weather_longitude, -122.33)
         self.assertEqual(settings.weather_location, "Home")
 
+    def test_the_default_rack_is_four_packs_with_the_314_ah_unit_last(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            profiles = load_settings().battery_profiles
+        self.assertEqual([p.id for p in profiles], ["rack-1", "rack-2", "rack-3", "rack-4"])
+        self.assertEqual([p.address for p in profiles], [1, 2, 3, 4])
+        self.assertEqual(profiles[3].name, "Rack Battery 4")
+        self.assertEqual(profiles[3].model, "Eco-worthy 51.2V 314Ah server rack battery")
+        self.assertEqual(profiles[0].model, "Eco-worthy 48V 100Ah server rack battery")
+        self.assertTrue(all(p.ip_address is None for p in profiles))
+
     def test_tariff_defaults_follow_the_october_2026_statement(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             tariff = load_settings().utility_tariff
@@ -106,7 +116,7 @@ class MonitorConfigTests(unittest.TestCase):
             ],
         )
 
-        self.assertEqual(details["expected_battery_count"], 3)
+        self.assertEqual(details["expected_battery_count"], 4)
         self.assertEqual(details["observed_battery_count"], 1)
         self.assertEqual(details["online_battery_count"], 1)
         self.assertEqual(details["batteries"][0]["serial_number"], "EW123")

@@ -256,6 +256,7 @@ def _load_batteries(raw_batteries: Any) -> list[BatterySettings]:
             BatterySettings(id="rack-1", address=1),
             BatterySettings(id="rack-2", address=2),
             BatterySettings(id="rack-3", address=3),
+            BatterySettings(id="rack-4", address=4),
         ]
 
     batteries = []

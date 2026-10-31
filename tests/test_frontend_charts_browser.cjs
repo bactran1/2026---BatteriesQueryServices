@@ -28,7 +28,7 @@ const solarPeak = {
 };
 const live = {
   collector_status:"online", collector_error:null, monitor:{last_success_at:new Date().toISOString()},
-  snapshot:{batteries:[]}, summary:{}, rack:{expected_battery_count:3,batteries:[]}, storage:{},
+  snapshot:{batteries:[]}, summary:{}, rack:{expected_battery_count:4,batteries:[]}, storage:{},
   solar_peak_today:solarPeak,
 };
 const weather = {

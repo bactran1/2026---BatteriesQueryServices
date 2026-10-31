@@ -6,10 +6,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from batteries_query_service.config import load_settings
+from batteries_query_service.config import _load_batteries, load_settings
 
 
 class CollectorConfigTests(unittest.TestCase):
+    def test_the_default_battery_bus_has_four_packs(self) -> None:
+        batteries = _load_batteries(None)
+        self.assertEqual([b.id for b in batteries], ["rack-1", "rack-2", "rack-3", "rack-4"])
+        self.assertEqual([b.address for b in batteries], [1, 2, 3, 4])
+
     def test_build_commit_is_loaded_from_environment(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             config_path = Path(directory) / "missing.toml"
@@ -27,7 +32,7 @@ class CollectorConfigTests(unittest.TestCase):
         self.assertEqual(settings.buffer.path, "/tmp/replay.sqlite3")
         self.assertEqual(settings.buffer.retention_hours, 48)
         self.assertEqual(settings.buffer.sample_interval_seconds, 60.0)
-        self.assertEqual([battery.address for battery in settings.batteries], [1, 2, 3])
+        self.assertEqual([battery.address for battery in settings.batteries], [1, 2, 3, 4])
         self.assertFalse(settings.inverter.enabled)
 
     def test_inverter_settings_support_toml_and_environment_overrides(self) -> None:

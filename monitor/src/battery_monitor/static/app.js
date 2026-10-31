@@ -1522,6 +1522,7 @@ function renderRackFlow(flow, summary = state.summary || {}) {
       power: finiteNumber(reading.power_w),
       current: finiteNumber(reading.current_a),
       voltage: finiteNumber(reading.voltage_v),
+      capacityAh: packCapacityAh(reading),
       alarm: packHasAlert(battery, reading),
       reporting,
     };
@@ -1581,7 +1582,7 @@ function renderEnergyFlow(flow) {
   const soc = battery.soc;
   const batteryEstimate = batteryTimeEstimate(mode, battery);
   const batteryCount = battery.count;
-  const packTelemetry = state.batteries.slice(0, 3).map((battery) => {
+  const packTelemetry = state.batteries.map((battery) => {
     const reading = battery.last_reading || {};
     const reporting = state.collectorOnline && battery.status === "ok" && Boolean(battery.last_reading);
     return {
@@ -1960,7 +1961,7 @@ function rackBatteryTelemetry(batteries = state.batteries) {
     power,
     current: total("current_a"),
     voltage: average("voltage_v"),
-    soc: average("soc_percent"),
+    soc: rackStateOfCharge(readings),
     temperature: average("mosfet_temperature_c"),
     usableEnergyWh,
     runtimeHours,
@@ -1971,11 +1972,47 @@ function rackBatteryTelemetry(batteries = state.batteries) {
   };
 }
 
+// The rack's state of charge from its packs. Packs of different sizes share the
+// bus (three 100 Ah modules and a 314 Ah one), so the figure is weighted by
+// capacity, remaining over full-charge amp-hours, whenever every pack that
+// reports an SOC also reports its capacity; otherwise the plain mean, which is
+// what identical packs get either way.
+function rackStateOfCharge(readings) {
+  const socs = [];
+  let remainingTotal = 0;
+  let fullTotal = 0;
+  let everyPackHasCapacity = true;
+  readings.forEach((reading) => {
+    const soc = finiteNumber(reading?.soc_percent);
+    if (soc === null) return;
+    socs.push(soc);
+    const remaining = finiteNumber(reading.remaining_capacity_ah);
+    const full = resolveFullCapacityAh(reading);
+    if (remaining === null || remaining < 0 || full === null) {
+      everyPackHasCapacity = false;
+      return;
+    }
+    remainingTotal += remaining;
+    fullTotal += full;
+  });
+  if (!socs.length) return null;
+  if (everyPackHasCapacity && fullTotal > 0) return (100 * remainingTotal) / fullTotal;
+  return socs.reduce((sum, value) => sum + value, 0) / socs.length;
+}
+
 // Discharge floor (SOC %) the runtime estimate counts down to, configured on the
 // monitor to match the inverter's depth of discharge (DoD 100% -> reserve 0).
 function batteryReservePercent() {
   const value = finiteNumber(state.batteryReservePercent);
   return value === null ? BATTERY_RESERVE_PERCENT : clamp(value, 0, 90);
+}
+
+// The pack's size as printed on it, for the rack scene's faceplate: the BMS's
+// rated capacity, or its present full-charge capacity when the rating is missing.
+function packCapacityAh(reading) {
+  const rated = finiteNumber(reading?.rated_capacity_ah);
+  if (rated !== null && rated > 0) return rated;
+  return resolveFullCapacityAh(reading || {});
 }
 
 // The BMS reports the pack's present full-charge capacity; fall back to the rated

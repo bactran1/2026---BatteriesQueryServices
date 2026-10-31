@@ -577,6 +577,34 @@ class RetentionStoreTests(unittest.TestCase):
             self.assertEqual(points[0]["battery_power_w"], 150)
             store.close()
 
+    def test_power_history_weights_pack_soc_by_capacity_when_known(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = RetentionStore(Path(directory) / "monitor.sqlite3")
+            store.initialize()
+            self.addCleanup(store.close)
+            start = int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp())
+            # Three 100 Ah packs at 20% beside a 314 Ah pack at 80%.
+            packs = [("rack-1", 20, 20, 100), ("rack-2", 20, 20, 100),
+                     ("rack-3", 20, 20, 100), ("rack-4", 80, 251.2, 314)]
+            snapshot = _sample_snapshot()
+            snapshot["service"]["captured_at"] = datetime.fromtimestamp(start, timezone.utc).isoformat()
+            snapshot["batteries"] = [
+                {"id": name, "address": index + 1, "status": "ok",
+                 "last_reading": {"soc_percent": soc, "power_w": -100,
+                                  "remaining_capacity_ah": remaining, "full_capacity_ah": full}}
+                for index, (name, soc, remaining, full) in enumerate(packs)
+            ]
+            store.insert_snapshot(snapshot)
+            # A later bucket where one pack reports no capacity: the plain mean.
+            snapshot["service"]["captured_at"] = datetime.fromtimestamp(start + 300, timezone.utc).isoformat()
+            snapshot["batteries"][3]["last_reading"] = {"soc_percent": 80, "power_w": -100}
+            store.insert_snapshot(snapshot)
+
+            points = store.power_history(3600, 300, start, start + 600)
+            # 311.2 Ah of 614 Ah, to the series' three decimals.
+            self.assertEqual(points[0]["battery_soc_percent"], 50.684)
+            self.assertEqual(points[1]["battery_soc_percent"], 35)
+
     def test_hour_view_is_the_rolling_last_hour_in_five_minute_buckets(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = RetentionStore(Path(directory) / "monitor.sqlite3")

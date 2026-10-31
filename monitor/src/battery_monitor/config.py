@@ -299,21 +299,31 @@ def rack_details(
     }
 
 
+# The rack as installed: three Eco-worthy 48 V 100 Ah packs on DIP addresses
+# 1-3 and, since October 2026, an Eco-worthy 51.2 V 314 Ah pack on address 4.
+DEFAULT_BATTERY_IDS = "rack-1,rack-2,rack-3,rack-4"
+DEFAULT_BATTERY_ADDRESSES = "1,2,3,4"
+DEFAULT_BATTERY_NAMES = "Rack Battery 1,Rack Battery 2,Rack Battery 3,Rack Battery 4"
+DEFAULT_BATTERY_MODELS = (
+    "Eco-worthy 48V 100Ah server rack battery,"
+    "Eco-worthy 48V 100Ah server rack battery,"
+    "Eco-worthy 48V 100Ah server rack battery,"
+    "Eco-worthy 51.2V 314Ah server rack battery"
+)
+
+
 def _load_battery_profiles() -> tuple[BatteryProfile, ...]:
-    ids = _csv_values(os.getenv("BQM_BATTERY_IDS", "rack-1,rack-2,rack-3"))
-    addresses = _csv_ints(os.getenv("BQM_BATTERY_ADDRESSES", "1,2,3"))
+    ids = _csv_values(os.getenv("BQM_BATTERY_IDS", DEFAULT_BATTERY_IDS))
+    addresses = _csv_ints(os.getenv("BQM_BATTERY_ADDRESSES", DEFAULT_BATTERY_ADDRESSES))
     names = _csv_values(
-        os.getenv("BQM_BATTERY_NAMES", "Rack Battery 1,Rack Battery 2,Rack Battery 3"),
+        os.getenv("BQM_BATTERY_NAMES", DEFAULT_BATTERY_NAMES),
         preserve_empty=True,
     )
     ip_addresses = _csv_values(
-        os.getenv("BQM_BATTERY_IPS", ",,"), preserve_empty=True
+        os.getenv("BQM_BATTERY_IPS", ",,,"), preserve_empty=True
     )
     models = _csv_values(
-        os.getenv(
-            "BQM_BATTERY_MODELS",
-            "Eco-worthy server rack battery,Eco-worthy server rack battery,Eco-worthy server rack battery",
-        ),
+        os.getenv("BQM_BATTERY_MODELS", DEFAULT_BATTERY_MODELS),
         preserve_empty=True,
     )
 

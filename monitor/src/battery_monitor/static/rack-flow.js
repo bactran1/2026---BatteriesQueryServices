@@ -205,6 +205,10 @@ function startRackFlowScene() {
       module.litLeds = lit;
       module.mode = mode;
       module.reporting = reporting;
+      const modelLine = moduleModelLine(pack);
+      if (module.brand.material.userData?.modelLine !== modelLine) {
+        module.brand.material = sharedBrandMaterial(modelLine);
+      }
       module.socLedMaterials.forEach((material, ledIndex) => {
         const on = ledIndex < lit;
         material.color.setHex(on ? color : 0x2a2e33);
@@ -578,15 +582,34 @@ function createRackMaterials() {
   };
 }
 
-// The Eco-worthy faceplate label is one texture shared by every module in the stack.
-function sharedBrandMaterial() {
-  const texture = brandTexture();
-  const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
-  material.userData.shared = true;
+// The Eco-worthy faceplate label: one texture per model line, shared by every
+// module that carries that line. The 100 Ah packs and the 314 Ah pack each get
+// their own, and a pack whose size is not yet known wears the generic plate.
+const NOMINAL_PACK_VOLTAGE = 51.2;
+const GENERIC_MODEL_LINE = "LiFePO4  51.2V  SERVER RACK BATTERY";
+
+function moduleModelLine(pack) {
+  const capacity = Number(pack?.capacityAh);
+  if (!Number.isFinite(capacity) || capacity <= 0) return GENERIC_MODEL_LINE;
+  const kilowattHours = (NOMINAL_PACK_VOLTAGE * capacity) / 1000;
+  return `LiFePO4  ${NOMINAL_PACK_VOLTAGE}V  ${Math.round(capacity)}Ah  ·  ${kilowattHours.toFixed(2)} kWh`;
+}
+
+const brandMaterials = new Map();
+
+function sharedBrandMaterial(modelLine = GENERIC_MODEL_LINE) {
+  let material = brandMaterials.get(modelLine);
+  if (!material) {
+    const texture = brandTexture(modelLine);
+    material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+    material.userData.shared = true;
+    material.userData.modelLine = modelLine;
+    brandMaterials.set(modelLine, material);
+  }
   return material;
 }
 
-function brandTexture() {
+function brandTexture(modelLine = GENERIC_MODEL_LINE) {
   const canvas = document.createElement("canvas");
   canvas.width = 640;
   canvas.height = 220;
@@ -606,7 +629,7 @@ function brandTexture() {
   ctx.fillText("-WORTHY", 200, 62);
   ctx.fillStyle = "rgba(226,232,236,0.68)";
   ctx.font = "600 34px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.fillText("LiFePO4  48V  100Ah  ·  5.12 kWh", 20, 136);
+  ctx.fillText(modelLine, 20, 136);
   ctx.fillStyle = "rgba(226,232,236,0.34)";
   ctx.font = "600 26px 'Helvetica Neue', Helvetica, Arial, sans-serif";
   ctx.fillText("SERVER RACK BATTERY  ·  RS485 / CAN", 20, 182);
@@ -695,7 +718,7 @@ function createBatteryModule(materials, index) {
   const handleBar = mesh(new THREE.BoxGeometry(0.36, 0.06, 0.05), materials.trim);
   place(handleBar, -1.28, -0.1, front + 0.03);
 
-  // Branding plate.
+  // Branding plate; its label follows the pack's size once that is known.
   const brand = new THREE.Mesh(new THREE.PlaneGeometry(1.24, 0.43), materials.brand);
   place(brand, -0.42, 0.11, front + 0.006);
 
@@ -771,6 +794,7 @@ function createBatteryModule(materials, index) {
     index,
     body,
     face,
+    brand,
     terminals,
     socLedMaterials,
     runMaterial,
@@ -1083,6 +1107,7 @@ function normalizeRackPacks(value) {
     power: optionalFinite(pack?.power),
     current: optionalFinite(pack?.current),
     voltage: optionalFinite(pack?.voltage),
+    capacityAh: optionalFinite(pack?.capacityAh),
     alarm: Boolean(pack?.alarm),
     reporting: Boolean(pack?.reporting),
   }));
