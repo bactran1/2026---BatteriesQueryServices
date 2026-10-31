@@ -478,6 +478,31 @@ Environment overrides are also supported:
 For the optional direct RS-485 fallback, use `transport = "serial"` and set
 `serial_port`, `baudrate`, and `parity` as shown in `config.example.toml`.
 
+## Probing the floor-standing unit
+
+The 314 Ah floor-standing unit carries a PACE BMS whose RS485 port speaks the
+Pylontech protocol, not the JBD-style frames the battery driver reads, so it
+gets its own USB RS485 adapter. `pylontech_probe.py` is a read-only tool that
+finds the unit on that adapter and prints the raw frames it answers with
+(analog values, alarms, protocol version, manufacturer info, charge and
+discharge limits, serial number, system parameters). It never writes.
+
+From the repository checkout on the Pi, with `pyserial` on the host
+(`sudo apt install python3-serial`):
+
+```bash
+ls -l /dev/serial/by-id/
+PYTHONPATH=src python3 -m batteries_query_service.pylontech_probe \
+  --port /dev/serial/by-id/usb-<second-adapter>-port0
+```
+
+The script has no other dependencies, so it can also be copied anywhere and
+run as `python3 pylontech_probe.py --port ...`. It tries addresses 0-15 with
+protocol versions 0x20 (Pylontech) and 0x25 (PACE) at 9600 bps; pass
+`--addresses 4`, `--versions 20`, `--baudrate 115200` or `--json` to narrow or
+reshape the run. If nothing answers, swap A and B on the adapter and make sure
+the cable is on the unit's RS485 port rather than a link port.
+
 ## Docker serial devices
 
 In LSW-5 mode, only the battery adapter needs to be mapped:
