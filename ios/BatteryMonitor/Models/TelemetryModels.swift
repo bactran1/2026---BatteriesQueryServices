@@ -49,7 +49,7 @@ struct BatteryInventory: Codable, Identifiable, Hashable, Sendable {
     /// unit on casters beside it; absent on monitors that predate the field.
     let formFactor: String?
     /// How the collector talks to the pack: "ecoworthy" (JBD frames) or "pylontech".
-    let protocol: String?
+    let `protocol`: String?
     let status: String
     let lastError: String?
     let lastPolledAt: String?

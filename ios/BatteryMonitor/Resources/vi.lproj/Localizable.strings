@@ -66,6 +66,8 @@
 "Address" = "Địa chỉ";
 "Serial number" = "Số sê-ri";
 "Firmware" = "Phần mềm";
+"Rack module" = "Mô-đun tủ rack";
+"Floor-standing unit" = "Bộ pin đứng sàn";
 "IP address" = "Địa chỉ IP";
 "cycles" = "chu kỳ";
 "Power History" = "Lịch sử công suất";

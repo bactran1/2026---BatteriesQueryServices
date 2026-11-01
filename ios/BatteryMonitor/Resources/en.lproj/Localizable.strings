@@ -66,6 +66,8 @@
 "Address" = "Address";
 "Serial number" = "Serial number";
 "Firmware" = "Firmware";
+"Rack module" = "Rack module";
+"Floor-standing unit" = "Floor-standing unit";
 "IP address" = "IP address";
 "cycles" = "cycles";
 "Power History" = "Power History";
