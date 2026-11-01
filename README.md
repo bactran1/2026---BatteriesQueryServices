@@ -147,7 +147,7 @@ Both history charts support mouse hover, touch selection, and keyboard arrows. O
 
 In Live home energy, Home load uses `home_load_total_power_w` for the load between the CT meter and the inverter breaker. Backup load uses `load_total_power_w` for the inverter's direct load output. An unavailable Home load reading is shown as not metered and its animation pauses; a measured zero is shown as 0 W.
 
-The modern house scene uses straight conduit runs with separate CT-side Home load and inverter-fed Backup load branches. Direction on the inverter-to-CT link is derived from Home load minus signed grid import, and pauses if either reading is unavailable. The battery cabinet holds one module per rack pack, three for this rack, and the first-generation 314 Ah floor-standing unit stands on its casters between the cabinet and the meter; the diagram shown where WebGL is unavailable draws the same rack box and floor-standing cabinet. Each pack card names the pack's form factor next to its bus address, and its specs list the form factor and the BMS (vendor, model and the protocol the collector uses). The iOS app's flow diagram draws the rack's modules and the floor-standing unit as the battery node, and its battery list marks each pack with a rack or cabinet icon. Each is filled and lit from its own pack's telemetry, packs reaching the cabinet or the floor unit by their inventory form factor, and the modules and their charging direction continue to use direct battery telemetry.
+The modern house scene uses straight conduit runs with separate CT-side Home load and inverter-fed Backup load branches. Direction on the inverter-to-CT link is derived from Home load minus signed grid import, and pauses if either reading is unavailable. The battery cabinet holds one module per rack pack, three for this rack, and the first-generation 314 Ah floor-standing unit stands on its casters between the cabinet and the meter; the diagram shown where WebGL is unavailable draws the same rack box and floor-standing cabinet. Each pack card names the pack's form factor next to its bus address, and its specs list the form factor and the BMS (vendor, model and the protocol the collector uses). Each is filled and lit from its own pack's telemetry, packs reaching the cabinet or the floor unit by their inventory form factor, and the modules and their charging direction continue to use direct battery telemetry.
 
 Rack overview carries a second 3D scene in the same visual language, but its stage holds only the batteries and their energy flow: no house, inverter, solar, or grid. One Eco-worthy 19-inch 3U pack is modelled per configured rack battery, up to eight, stacked in rack order. A battery whose inventory form factor is `floor` is modelled instead as the first-generation floor-standing 314 Ah unit: a tower on four casters, about 83 cm tall, 52 cm wide and 25 cm deep at the modules' scale, standing on the floor to the right of the bus riser (up to four such units line up beside it). The stage is framed so a three-pack and an eight-pack rack both fill it, with or without floor-standing units. Each faceplate or door shows the branding with the pack's own model line (its rated capacity and kilowatt-hours, from telemetry, so the 314 Ah unit reads as 16.08 kWh) and its hardware line, the LCD readout, a six-cell SOC gauge, RUN and ALM indicators, the comms port bank (with breakers on the floor-standing unit), and the DC terminal block the conduit leaves from, all driven by that pack's own telemetry: SOC, voltage, current, mode, and whether the collector is still hearing from it. A pack that stops reporting goes dark and its conduit parks. Every pack taps a shared bus riser, the modules from its left and the floor-standing units from its right; the riser carries the combined rack flow out of the frame, climbing past any floor-standing unit first. Pulses run pack-to-bus while discharging and bus-to-pack while charging, at the same constant speed as the home scene. The Energy scene glow, conduit glow, and pulse-speed admin settings apply to both scenes.
 
@@ -212,23 +212,6 @@ For repeatable deployments, start with `.env.example`, put the real values in a 
 At the default 60-second interval, four batteries produce roughly 6.3 million log rows across 3 years. The dashboard stores the raw reading payload for each row so cell voltages, temperatures, alarms, faults, limits, and pack metadata remain available. Inverter day counters are stored separately as one updatable row per date and inverter, preventing repeated samples from overstating kWh totals while preserving date, month, and year views.
 
 The Pi collector stores one sequenced replay snapshot every 60 seconds for 24 hours at `./data/collector/collector-buffer.sqlite3`. When the monitor restarts or temporarily loses the Pi, it requests every missing sequence and inserts it idempotently. This repairs short archive gaps without changing the normal 60-second sampling rate or duplicating rows.
-
-## iPhone and iPad app
-
-The native SwiftUI companion app lives in [`ios/`](ios/README.md). It connects
-to the x86 monitor API over the local network and provides adaptive iPhone/iPad
-navigation, animated live power flow, direct battery details, interactive power
-and SOC charts, weather and irradiance, savings, English/Vietnamese localization,
-and a last-known dashboard cache. It does not connect directly to the Raspberry
-Pi collector or RS485 devices.
-
-Generate the Xcode project on a Mac with Xcode 16 or newer:
-
-```bash
-cd ios
-bash generate-project.sh
-open BatteryMonitor.xcodeproj
-```
 
 ## Raspberry Pi 4B deployment
 
