@@ -691,7 +691,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function localizedConnectionName", javascript)
         self.assertIn('"battery.defaultRackName": "Pin {number}"', javascript)
         self.assertIn('"inventory.defaultModel": "Pin tủ máy chủ Eco-worthy"', javascript)
-        self.assertIn('"rack.defaultConnection": "Modbus RTU qua RS485"', javascript)
+        self.assertIn('"rack.defaultConnection": "Modbus RTU và Pylontech qua RS485"', javascript)
         self.assertIn("localizedBatteryName(profile?.name || battery.id)", javascript)
 
 

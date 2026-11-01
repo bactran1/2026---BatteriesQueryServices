@@ -40,11 +40,13 @@ See [Renogy X inverter telemetry](docs/renogy-x-telemetry.md).
 
 ## Hardware assumptions
 
-This first driver targets Eco-worthy/JBD-UP style Modbus RTU frames at 9600 baud. Eco-worthy documentation lists RS485-1 for host computer/inverter access and RS232 for host computer access; their protocol table lists PYLON-LV on RS485-1 and JBD-UP/Solar Assistant/Overkill on RS232.
+The rack packs' driver targets Eco-worthy/JBD-UP style Modbus RTU frames at 9600 baud. Eco-worthy documentation lists RS485-1 for host computer/inverter access and RS232 for host computer access; their protocol table lists PYLON-LV on RS485-1 and JBD-UP/Solar Assistant/Overkill on RS232.
+
+The floor-standing 314 Ah unit carries a PACE BMS (it reports itself as "48100-9538" by "ShenZhen PACE") whose RS485 port is set to the Pylontech protocol, so it has a second, read-only driver: the Pylontech RS485 protocol at 9600 baud, asking for analog values, alarm status, charge and discharge limits, manufacturer info and serial number. Each `[[batteries]]` entry names its driver with `protocol = "ecoworthy"` (the default) or `"pylontech"`, and the unit answers at address 2 on its own adapter. Its current arrives in 0.1 A with charge positive, capacities in 10 mAh, and the first of its five temperatures is the BMS board, which the dashboard shows as the MOSFET temperature. The pack's ten raw status bytes are kept in the reading as `status_bytes_hex` for later interpretation; only the per-cell, temperature, current and voltage limit statuses are turned into alarms so far.
 
 For the four batteries (three Eco-worthy 48 V 100 Ah rack packs and a first-generation Eco-worthy 51.2 V 314 Ah floor-standing unit on casters, which stands beside the rack on the same RS485 bus) and the inverter, the usual deployment is:
 
-1. Set the battery DIP switches so the packs have addresses 1, 2, 3, and 4.
+1. Set the rack packs' DIP switches so they have addresses 1, 2 and 3 on the shared bus; the floor-standing unit answers Pylontech requests at address 2 on its own adapter.
 2. Connect the Raspberry Pi to the battery communication port through the first USB RS485 or RS232 adapter.
 3. Leave the SOLARMAN LSW-5 installed, give it a stable DHCP reservation, and
    confirm the Raspberry Pi can reach its LAN address on TCP port 8899.
@@ -191,11 +193,11 @@ Environment overrides:
 - `BQM_PORT`
 - `BQM_LOG_LEVEL`
 
-The dashboard defaults to the four batteries (three Eco-worthy 48 V 100 Ah rack packs on addresses 1-3 and the first-generation Eco-worthy 51.2 V 314 Ah floor-standing unit on address 4) and shows the rack builder as Tran Thanh Tuan. Set the inventory values as comma-separated lists before deployment to show your actual names and addresses; a host `.env` that still lists three packs must gain the fourth. `BQM_BATTERY_FORM_FACTORS` says how each battery is built, `rack` for a module in the 19-inch stack or `floor` for a floor-standing unit on casters, and both 3D scenes draw it that way:
+The dashboard defaults to the four batteries (three Eco-worthy 48 V 100 Ah rack packs on addresses 1-3 of the shared bus and the first-generation Eco-worthy 51.2 V 314 Ah floor-standing unit, which answers at address 2 on its own adapter) and shows the rack builder as Tran Thanh Tuan. Set the inventory values as comma-separated lists before deployment to show your actual names and addresses; a host `.env` that still lists three packs must gain the fourth. `BQM_BATTERY_FORM_FACTORS` says how each battery is built, `rack` for a module in the 19-inch stack or `floor` for a floor-standing unit on casters, and both 3D scenes draw it that way:
 
 ```bash
 export BQM_BATTERY_IDS="rack-1,rack-2,rack-3,rack-4"
-export BQM_BATTERY_ADDRESSES="1,2,3,4"
+export BQM_BATTERY_ADDRESSES="1,2,3,2"
 export BQM_BATTERY_NAMES="Top Battery,Upper Middle Battery,Lower Middle Battery,Bottom Battery"
 export BQM_BATTERY_IPS="192.168.1.61,192.168.1.62,192.168.1.63,"
 export BQM_BATTERY_MODELS="Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 48V 100Ah,Eco-worthy 51.2V 314Ah floor-standing"
@@ -463,8 +465,10 @@ Environment overrides are also supported:
 - `BQS_INVERTER_TIMEOUT_SECONDS`
 - `BQS_INVERTER_PARITY`
 - `BQS_INVERTER_RETRIES`
-- `BQS_BATTERY_ADDRESSES`, for example `1,2,3,4`
+- `BQS_BATTERY_ADDRESSES`, for example `1,2,3,2`
 - `BQS_BATTERY_IDS`, for example `rack-1,rack-2,rack-3,rack-4`
+- `BQS_BATTERY_PROTOCOLS`, for example `ecoworthy,ecoworthy,ecoworthy,pylontech`
+- `BQS_BATTERY_SERIAL_PORTS`, for example `,,,/dev/ttyUSB2` (blank keeps `BQS_SERIAL_PORT`)
 - `BQS_POLL_INTERVAL`
 - `BQS_BUFFER_ENABLED`
 - `BQS_BUFFER_PATH`
@@ -516,7 +520,9 @@ container (`docker compose stop`) while probing.
 
 ## Docker serial devices
 
-In LSW-5 mode, only the battery adapter needs to be mapped:
+The inverter is read over the LAN through the LSW-5 logger, so the compose file
+maps no adapter for it: only the rack bus adapter (`/dev/ttyUSB0`) and the
+floor-standing unit's adapter (`/dev/ttyUSB2`) are mapped.
 
 ```bash
 bash deploy-collector.sh \
@@ -533,8 +539,11 @@ bash deploy-collector.sh \
   --inverter-logger-serial 3503566593
 ```
 
-The serial fallback still accepts `--inverter-serial-device` and maps that
-adapter to `/dev/ttyUSB1` in the container.
+The direct RS485 fallback for the inverter (`transport = "serial"` in
+`config.toml`) adds `docker-compose.inverter-serial.yml`, which maps the
+adapter named by `--inverter-serial-device` to `/dev/ttyUSB1`;
+`deploy-collector.sh` includes that file on its own when the transport
+resolves to serial.
 
 The floor-standing 314 Ah unit talks to a third adapter, mapped to
 `/dev/ttyUSB2` and named by `--floor-serial-device` (default

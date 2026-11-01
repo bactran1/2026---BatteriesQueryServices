@@ -169,6 +169,20 @@ test("CT-side link obeys home and grid balance without using backup or battery r
   assert.equal(ui.events.at(-1).detail.acLinkPower, null);
 });
 
+test("A pack finds its inventory entry by id before address, so the floor unit at address 2 is not rack pack 2", () => {
+  const ui = dashboard(1500);
+  ui.state.rack = { batteries: [
+    { id: "rack-1", address: 1, form_factor: "rack" },
+    { id: "rack-2", address: 2, form_factor: "rack" },
+    { id: "rack-4", address: 2, form_factor: "floor" },
+  ] };
+  assert.equal(ui.run('batteryProfile({id: "rack-4", address: 2}).form_factor'), "floor");
+  assert.equal(ui.run('batteryProfile({id: "rack-2", address: 2}).id'), "rack-2");
+  // A pack the inventory does not list still matches by address.
+  assert.equal(ui.run('batteryProfile({id: "unknown", address: 1}).id'), "rack-1");
+  assert.equal(ui.run('packFormFactor({id: "rack-4", address: 2})'), "floor");
+});
+
 test("The rack's state of charge weights packs by capacity, so a 314 Ah pack counts for its size", () => {
   const ui = dashboard(1500);
   const pack = (id, soc, remaining, full, rated) => ({

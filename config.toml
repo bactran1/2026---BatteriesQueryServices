@@ -20,13 +20,17 @@ sample_interval_seconds = 60
 enabled = true
 id = "renogy-x-8k"
 model = "Renogy X 8K (Megarevo R8KLNA-compatible)"
-transport = "serial"
-serial_port = "/dev/ttyUSB1"
-# To use the installed LSW-5 instead of a second USB adapter, change transport
-# to "solarman_v5" and set the logger's LAN address and printed serial number:
-# host = "192.168.10.50"
-# tcp_port = 8899
-# logger_serial = 1234567890
+# The inverter is read through the installed SOLARMAN LSW-5 logger over the
+# LAN, not through a USB adapter. The logger's LAN address and the serial
+# number printed on it are what the V5 protocol needs.
+transport = "solarman_v5"
+host = "192.168.20.138"
+tcp_port = 8899
+logger_serial = 3503566593
+# Direct RS485 fallback: set transport = "serial", map the adapter with
+# docker-compose.inverter-serial.yml (deploy-collector.sh does so when the
+# transport is serial) and point serial_port at it.
+# serial_port = "/dev/ttyUSB1"
 address = 1
 baudrate = 9600
 timeout_seconds = 2.0
@@ -46,9 +50,11 @@ id = "rack-3"
 address = 3
 
 # The fourth pack, a first-generation Eco-worthy 51.2 V 314 Ah floor-standing
-# unit on casters, on DIP address 4. Its PACE BMS has its own USB RS485 adapter,
-# mapped to /dev/ttyUSB2 by deploy-collector.sh (--floor-serial-device).
+# unit on casters. Its PACE BMS speaks the Pylontech RS485 protocol, answers at
+# address 2, and has its own USB RS485 adapter, mapped to /dev/ttyUSB2 by
+# deploy-collector.sh (--floor-serial-device).
 [[batteries]]
 id = "rack-4"
-address = 4
+address = 2
 serial_port = "/dev/ttyUSB2"
+protocol = "pylontech"

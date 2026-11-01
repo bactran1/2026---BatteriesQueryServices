@@ -11,10 +11,11 @@ version, manufacturer info, charge and discharge limits, serial number and
 system parameters). There is no write path: nothing here can change a
 setting, switch a MOSFET or shut the pack down.
 
-The script has no dependency on the rest of the package so it can be copied
-to the Pi and run on its own:
+Run it from the repository checkout, where it shares its frame code with the
+collector's Pylontech driver:
 
-    python3 pylontech_probe.py --port /dev/serial/by-id/usb-...-port0
+    PYTHONPATH=src python3 -m batteries_query_service.pylontech_probe \\
+        --port /dev/serial/by-id/usb-...-port0
 
 Frames are ASCII. Request: ~ VER ADR CID1 CID2 LENGTH INFO CHKSUM \\r, where
 VER is the protocol version (0x20 for Pylontech, 0x25 for PACE), ADR the pack
@@ -30,11 +31,22 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 
-SOI = b"~"
-EOI = b"\r"
-CID1_BATTERY = 0x46
+from .pylontech import (  # noqa: F401  (re-exported for the tests and any caller)
+    CID1_BATTERY,
+    EOI,
+    RETURN_CODES,
+    SOI,
+    Frame,
+    FrameError,
+    build_frame,
+    build_request,
+    checksum,
+    length_field,
+    parse_frame,
+)
+
 DEFAULT_VERSIONS = "20,22,25"
 DEFAULT_ADDRESSES = "0-15"
 DEFAULT_BAUDRATES = "9600"
@@ -51,22 +63,6 @@ COMMANDS = (
     ("system_parameters", 0x47, False),
 )
 
-RETURN_CODES = {
-    0x00: "ok",
-    0x01: "version error",
-    0x02: "checksum error",
-    0x03: "length checksum error",
-    0x04: "invalid command",
-    0x05: "command format error",
-    0x06: "invalid data",
-    0x90: "address error",
-    0x91: "communication error",
-}
-
-
-class FrameError(ValueError):
-    """A frame that does not follow the protocol's shape."""
-
 
 class LinkError(RuntimeError):
     """The serial port itself failed mid-run, typically because it is shared."""
@@ -78,85 +74,6 @@ SHARED_PORT_HINT = (
     "or ModemManager probing a newly plugged adapter. Check with: sudo fuser -v PORT "
     "(and docker ps; sudo systemctl stop ModemManager), then run the probe again."
 )
-
-
-def length_field(info_hex: str) -> str:
-    """LENGTH: a 4-bit checksum over the three nibbles of the 12-bit INFO length."""
-    length = len(info_hex)
-    if length > 0xFFF:
-        raise ValueError("INFO is too long for a 12-bit length")
-    nibble_sum = (length & 0xF) + ((length >> 4) & 0xF) + ((length >> 8) & 0xF)
-    check = (~nibble_sum + 1) & 0xF
-    return f"{check:X}{length:03X}"
-
-
-def checksum(body: str) -> str:
-    """CHKSUM: two's complement of the ASCII sum of everything between ~ and itself."""
-    total = sum(body.encode("ascii"))
-    return f"{(~total + 1) & 0xFFFF:04X}"
-
-
-def build_frame(version: int, address: int, cid2: int, info_hex: str = "") -> bytes:
-    """A request frame; the same shape serves a reply when cid2 is its return code."""
-    for name, value in (("version", version), ("address", address), ("cid2", cid2)):
-        if not 0 <= value <= 0xFF:
-            raise ValueError(f"{name} must fit in one byte")
-    info_hex = info_hex.upper()
-    if len(info_hex) % 2 or any(char not in "0123456789ABCDEF" for char in info_hex):
-        raise ValueError("INFO must be an even number of hex characters")
-    body = f"{version:02X}{address:02X}{CID1_BATTERY:02X}{cid2:02X}{length_field(info_hex)}{info_hex}"
-    return SOI + body.encode("ascii") + checksum(body).encode("ascii") + EOI
-
-
-def build_request(version: int, address: int, cid2: int, carries_address: bool) -> bytes:
-    return build_frame(version, address, cid2, f"{address:02X}" if carries_address else "")
-
-
-@dataclass(frozen=True)
-class Frame:
-    version: int
-    address: int
-    cid1: int
-    code: int
-    info_hex: str
-    checksum_ok: bool
-    length_ok: bool
-
-    @property
-    def return_code(self) -> str:
-        return RETURN_CODES.get(self.code, f"unknown 0x{self.code:02X}")
-
-
-def parse_frame(raw: bytes) -> Frame:
-    """Split a reply into its fields, checking both checksums but keeping the data."""
-    if not raw.startswith(SOI) or not raw.endswith(EOI):
-        raise FrameError("frame must start with ~ and end with CR")
-    try:
-        text = raw[1:-1].decode("ascii")
-    except UnicodeDecodeError as exc:
-        raise FrameError("frame is not ASCII") from exc
-    if len(text) < 16:
-        raise FrameError("frame is too short for its header")
-    body, received = text[:-4], text[-4:]
-    try:
-        version = int(body[0:2], 16)
-        address = int(body[2:4], 16)
-        cid1 = int(body[4:6], 16)
-        code = int(body[6:8], 16)
-        length = int(body[8:12], 16)
-    except ValueError as exc:
-        raise FrameError("frame header is not hex") from exc
-    info_hex = body[12:]
-    declared = length & 0xFFF
-    return Frame(
-        version=version,
-        address=address,
-        cid1=cid1,
-        code=code,
-        info_hex=info_hex,
-        checksum_ok=checksum(body) == received.upper(),
-        length_ok=declared == len(info_hex) and length_field(info_hex) == body[8:12].upper(),
-    )
 
 
 def printable(info_hex: str) -> str:

@@ -27,7 +27,7 @@ services:
       BQM_RACK_LOCATION: ${BQM_RACK_LOCATION:-Battery room}
       BQM_COLLECTOR_NAME: ${BQM_COLLECTOR_NAME:-Raspberry Pi collector}
       BQM_BATTERY_IDS: ${BQM_BATTERY_IDS:-rack-1,rack-2,rack-3,rack-4}
-      BQM_BATTERY_ADDRESSES: ${BQM_BATTERY_ADDRESSES:-1,2,3,4}
+      BQM_BATTERY_ADDRESSES: ${BQM_BATTERY_ADDRESSES:-1,2,3,2}
       BQM_BATTERY_NAMES: ${BQM_BATTERY_NAMES:-Rack Battery 1,Rack Battery 2,Rack Battery 3,Rack Battery 4}
       BQM_BATTERY_IPS: ${BQM_BATTERY_IPS:-,,,}
       BQM_BATTERY_MODELS: ${BQM_BATTERY_MODELS:-Eco-worthy 48V 100Ah server rack battery,Eco-worthy 48V 100Ah server rack battery,Eco-worthy 48V 100Ah server rack battery,Eco-worthy 51.2V 314Ah floor-standing battery (first generation)}

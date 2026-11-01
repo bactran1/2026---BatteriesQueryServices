@@ -10,6 +10,41 @@ from batteries_query_service.poller import BatteryPoller
 
 
 class CollectorPollerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_each_battery_is_read_with_the_driver_its_protocol_names(self) -> None:
+        from batteries_query_service.config import BatterySettings
+
+        settings = Settings(
+            batteries=[
+                BatterySettings(id="rack-1", address=1),
+                BatterySettings(id="rack-4", address=2, serial_port="/dev/ttyUSB2", protocol="pylontech"),
+            ],
+        )
+        poller = BatteryPoller(settings, MetricsPublisher())
+
+        def reading(battery_id: str):
+            from batteries_query_service.pylontech import build_reading, parse_analog_values, parse_frame
+            from tests.test_pylontech import ANALOG
+
+            return build_reading(battery_id, 2, parse_analog_values(parse_frame(ANALOG).info))
+
+        with patch("batteries_query_service.poller.EcoWorthyModbusClient") as jbd, patch(
+            "batteries_query_service.poller.PylontechClient"
+        ) as pylontech:
+            jbd.return_value.read_pack_status.side_effect = lambda address, battery_id: reading(battery_id)
+            pylontech.return_value.read_pack_status.side_effect = lambda address, battery_id: reading(battery_id)
+            await poller.poll_once()
+
+        jbd.return_value.read_pack_status.assert_called_once_with(1, "rack-1")
+        pylontech.return_value.read_pack_status.assert_called_once_with(2, "rack-4")
+        self.assertEqual(pylontech.call_args.args[0].port, "/dev/ttyUSB2")
+        self.assertEqual(jbd.call_args.args[0].port, settings.serial.port)
+        snapshot = await poller.snapshot()
+        by_id = {battery["id"]: battery for battery in snapshot["batteries"]}
+        self.assertEqual(by_id["rack-1"]["protocol"], "ecoworthy")
+        self.assertEqual(by_id["rack-4"]["protocol"], "pylontech")
+        self.assertEqual(by_id["rack-4"]["status"], "ok")
+        self.assertEqual(by_id["rack-4"]["last_reading"]["full_capacity_ah"], 314.0)
+
     async def test_exposes_successful_inverter_reading(self) -> None:
         settings = Settings(
             inverter=InverterSettings(enabled=True),

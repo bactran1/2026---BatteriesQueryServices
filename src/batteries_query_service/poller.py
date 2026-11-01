@@ -11,6 +11,7 @@ from . import __version__
 from .buffer import SnapshotBuffer
 from .config import BatterySettings, InverterSettings, Settings
 from .ecoworthy import EcoWorthyModbusClient, SerialConnectionSettings
+from .pylontech import PylontechClient
 from .host import HostStats
 from .megarevo import MegarevoR8KLNAClient, R8KLNA_PROFILE
 from .metrics import MetricsPublisher
@@ -73,12 +74,15 @@ class BatteryPoller:
                 continue
 
             serial_port = battery.resolved_serial_port(self.settings.serial.port)
-            client = EcoWorthyModbusClient(
-                SerialConnectionSettings(
-                    port=serial_port,
-                    baudrate=self.settings.serial.baudrate,
-                    timeout_seconds=self.settings.serial.timeout_seconds,
-                )
+            connection = SerialConnectionSettings(
+                port=serial_port,
+                baudrate=self.settings.serial.baudrate,
+                timeout_seconds=self.settings.serial.timeout_seconds,
+            )
+            client = (
+                PylontechClient(connection)
+                if battery.protocol == "pylontech"
+                else EcoWorthyModbusClient(connection)
             )
 
             try:
@@ -102,6 +106,7 @@ class BatteryPoller:
                         "id": battery.id,
                         "address": battery.address,
                         "serial_port": serial_port,
+                        "protocol": battery.protocol,
                         "status": "error",
                         "last_polled_at": _utc_now(),
                         "last_error": str(exc),
@@ -117,6 +122,7 @@ class BatteryPoller:
                     "id": battery.id,
                     "address": battery.address,
                     "serial_port": serial_port,
+                    "protocol": battery.protocol,
                     "status": "ok",
                     "last_polled_at": _utc_now(),
                     "last_error": None,
