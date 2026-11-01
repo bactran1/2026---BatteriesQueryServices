@@ -18,6 +18,7 @@ class CollectorConfigTests(unittest.TestCase):
         self.assertEqual([b.address for b in batteries], [1, 2, 3, 2])
         self.assertEqual([b.protocol for b in batteries], ["ecoworthy"] * 3 + ["pylontech"])
         self.assertEqual([b.serial_port for b in batteries], [None, None, None, "/dev/ttyUSB2"])
+        self.assertEqual([b.form_factor for b in batteries], ["rack"] * 3 + ["floor"])
 
     def test_battery_protocols_and_ports_come_from_the_environment_too(self) -> None:
         environment = {
@@ -25,11 +26,15 @@ class CollectorConfigTests(unittest.TestCase):
             "BQS_BATTERY_IDS": "a,b,c",
             "BQS_BATTERY_PROTOCOLS": "ecoworthy,,Pylontech",
             "BQS_BATTERY_SERIAL_PORTS": ",,/dev/ttyUSB2",
+            "BQS_BATTERY_FORM_FACTORS": ",rack,Floor",
         }
         with patch.dict(os.environ, environment, clear=True):
             batteries = _load_batteries(None)
         self.assertEqual([b.protocol for b in batteries], ["ecoworthy", "ecoworthy", "pylontech"])
         self.assertEqual([b.serial_port for b in batteries], [None, None, "/dev/ttyUSB2"])
+        self.assertEqual([b.form_factor for b in batteries], ["rack", "rack", "floor"])
+        with self.assertRaises(ValueError):
+            _load_batteries([{"id": "x", "address": 1, "form_factor": "tower"}])
         with patch.dict(os.environ, {"BQS_BATTERY_ADDRESSES": "1", "BQS_BATTERY_PROTOCOLS": "modbus"}, clear=True):
             with self.assertRaises(ValueError):
                 _load_batteries(None)
@@ -51,7 +56,7 @@ class CollectorConfigTests(unittest.TestCase):
                 name,
             )
             floor = settings.batteries[3]
-            self.assertEqual((floor.protocol, floor.address), ("pylontech", 2), name)
+            self.assertEqual((floor.protocol, floor.address, floor.form_factor), ("pylontech", 2, "floor"), name)
             self.assertEqual([b.protocol for b in settings.batteries[:3]], ["ecoworthy"] * 3, name)
             # The inverter is read through the LSW-5 logger, not a USB adapter.
             self.assertEqual(settings.inverter.transport, "solarman_v5", name)

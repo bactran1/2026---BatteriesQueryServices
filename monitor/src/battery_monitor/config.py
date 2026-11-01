@@ -368,13 +368,18 @@ def _inventory_item(
     battery = battery or {}
     reading = battery.get("last_reading")
     reading = reading if isinstance(reading, dict) else {}
+    # The collector is wired to the hardware, so its form factor outranks the
+    # monitor's inventory: a host whose .env still lists three rack packs
+    # cannot turn the floor-standing unit back into a rack module.
+    reported_form = str(battery.get("form_factor") or "").strip().lower()
     return {
         "id": str(battery.get("id") or profile.id),
         "name": profile.name,
         "address": battery.get("address", profile.address),
         "ip_address": profile.ip_address,
         "model": profile.model,
-        "form_factor": profile.form_factor,
+        "form_factor": reported_form if reported_form in (RACK_FORM_FACTOR, FLOOR_FORM_FACTOR) else profile.form_factor,
+        "protocol": battery.get("protocol"),
         "status": (
             battery.get("status", "not_seen") if collector_online else "stale"
         ),

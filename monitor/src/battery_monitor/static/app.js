@@ -121,7 +121,7 @@ const translations = {
     "rack.packs": "packs",
     "rack.reporting": "{count} reporting",
     "rack.flowEyebrow": "Rack energy flow",
-    "rack.flowHardware": "Eco-worthy 48 V LiFePO4 server rack packs",
+    "rack.flowHardware": "Eco-worthy 48 V LiFePO4 rack packs and a floor-standing unit",
     "rack.flowSummary": "Eco-worthy 48 V LiFePO4 · {packs} · {power} on the bus",
     "rack.flowUnavailable": "Eco-worthy 48 V LiFePO4 · {packs} · waiting for telemetry",
     "rack.sceneAria": "Animated Eco-worthy battery rack and floor-standing battery showing live energy flow",
@@ -421,6 +421,10 @@ const translations = {
     "inventory.defaultHardware": "Eco-worthy battery",
     "inventory.defaultModel": "Eco-worthy server rack battery",
     "inventory.floorModel": "Eco-worthy 51.2V 314Ah floor-standing battery (first generation)",
+    "inventory.formRack": "Rack module",
+    "inventory.formFloor": "Floor-standing unit",
+    "inventory.protocolEcoworthy": "JBD Modbus RTU",
+    "inventory.protocolPylontech": "Pylontech RS485",
     "workbench.aria": "Monitoring workbench",
     "history.eyebrow": "History",
     "history.powerTitle": "Power history",
@@ -472,6 +476,8 @@ const translations = {
     "details.moreLabel": "Cells, temps & specs",
     "details.ipAddress": "IP address",
     "details.model": "Model",
+    "details.form": "Form factor",
+    "details.bms": "BMS",
     "details.soh": "SOH",
     "details.cycles": "Cycles",
     "details.remaining": "Remaining",
@@ -566,7 +572,7 @@ const translations = {
     "rack.packs": "bộ pin",
     "rack.reporting": "{count} đang báo dữ liệu",
     "rack.flowEyebrow": "Dòng năng lượng tủ pin",
-    "rack.flowHardware": "Các bộ pin tủ máy chủ Eco-worthy 48 V LiFePO4",
+    "rack.flowHardware": "Các bộ pin tủ rack Eco-worthy 48 V LiFePO4 và một bộ đứng sàn",
     "rack.flowSummary": "Eco-worthy 48 V LiFePO4 · {packs} · {power} trên thanh cái",
     "rack.flowUnavailable": "Eco-worthy 48 V LiFePO4 · {packs} · đang chờ dữ liệu",
     "rack.sceneAria": "Hoạt ảnh tủ pin Eco-worthy và bộ pin đứng sàn hiển thị dòng năng lượng trực tiếp",
@@ -866,6 +872,10 @@ const translations = {
     "inventory.defaultHardware": "Pin Eco-worthy",
     "inventory.defaultModel": "Pin tủ máy chủ Eco-worthy",
     "inventory.floorModel": "Pin đứng sàn Eco-worthy 51.2V 314Ah (thế hệ đầu)",
+    "inventory.formRack": "Mô-đun tủ rack",
+    "inventory.formFloor": "Bộ pin đứng sàn",
+    "inventory.protocolEcoworthy": "JBD Modbus RTU",
+    "inventory.protocolPylontech": "Pylontech RS485",
     "workbench.aria": "Bảng điều khiển giám sát",
     "history.eyebrow": "Lịch sử",
     "history.powerTitle": "Lịch sử công suất",
@@ -917,6 +927,8 @@ const translations = {
     "details.moreLabel": "Cell, nhiệt độ & thông số",
     "details.ipAddress": "Địa chỉ IP",
     "details.model": "Model",
+    "details.form": "Kiểu lắp đặt",
+    "details.bms": "BMS",
     "details.soh": "SOH",
     "details.cycles": "Chu kỳ",
     "details.remaining": "Còn lại",
@@ -2011,10 +2023,28 @@ function batteryReservePercent() {
   return value === null ? BATTERY_RESERVE_PERCENT : clamp(value, 0, 90);
 }
 
-// How the pack is built, from the inventory: "rack" for a module in the 19-inch
-// stack, "floor" for a floor-standing unit on casters that stands beside it.
+// How the pack is built: the collector says so with each pack (it is wired to
+// the hardware); the monitor's inventory is the fallback. "rack" is a module in
+// the 19-inch stack, "floor" a floor-standing unit on casters beside it.
 function packFormFactor(battery) {
+  const reported = String(battery?.form_factor || "").toLowerCase();
+  if (reported === "floor" || reported === "rack") return reported;
   return batteryProfile(battery)?.form_factor === "floor" ? "floor" : "rack";
+}
+
+function packFormLabel(battery) {
+  return t(packFormFactor(battery) === "floor" ? "inventory.formFloor" : "inventory.formRack");
+}
+
+// What the pack's BMS calls itself and how the collector talks to it.
+function packBmsLabel(reading, battery) {
+  const parts = [];
+  const identity = [reading?.bms_vendor, reading?.bms_model].filter(Boolean).join(" ");
+  if (identity) parts.push(identity);
+  const protocol = String(battery?.protocol || "").toLowerCase();
+  if (protocol === "pylontech") parts.push(t("inventory.protocolPylontech"));
+  else if (protocol === "ecoworthy") parts.push(t("inventory.protocolEcoworthy"));
+  return parts.join(" · ") || null;
 }
 
 // The pack's size as printed on it, for the rack scene's faceplate: the BMS's
@@ -2360,7 +2390,7 @@ function renderBatteryPacks() {
           <header class="pack__head">
             <span class="pack__id">
               <strong>${escapeHtml(displayName)}</strong>
-              <small>${escapeHtml(battery.id)} · RS485 ${escapeHtml(String(address))}</small>
+              <small>${escapeHtml(battery.id)} · RS485 ${escapeHtml(String(address))} · ${escapeHtml(packFormLabel(battery))}</small>
             </span>
             <span class="pack__status">
               <span class="${batteryDotClass(battery.status)}"></span>
@@ -2517,6 +2547,8 @@ function packTempsHtml(temperatures) {
 function packSpecsHtml(reading, battery, profile) {
   const specs = [
     [t("details.model"), localizedBatteryModel(profile?.model)],
+    [t("details.form"), packFormLabel(battery)],
+    [t("details.bms"), packBmsLabel(reading, battery)],
     [t("details.firmware"), reading.firmware_version],
     [t("details.ipAddress"), profile?.ip_address || t("common.notConfigured")],
     [t("details.serial"), reading.serial_number || profile?.serial_number],

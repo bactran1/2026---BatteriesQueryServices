@@ -7,5 +7,7 @@
 # deploy-collector.sh does this on its own when the transport resolves to serial.
 services:
   batteries-query-service:
+    environment:
+      BQS_INVERTER_SERIAL_PORT: /dev/ttyUSB1
     devices:
       - ${COLLECTOR_INVERTER_SERIAL_DEVICE:-/dev/ttyUSB1}:/dev/ttyUSB1

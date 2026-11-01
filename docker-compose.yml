@@ -10,7 +10,6 @@ services:
     environment:
       BQS_CONFIG: /config/config.toml
       BQS_SERIAL_PORT: /dev/ttyUSB0
-      BQS_INVERTER_SERIAL_PORT: /dev/ttyUSB1
       BQS_INVERTER_TRANSPORT: ${BQS_INVERTER_TRANSPORT:-solarman_v5}
       BQS_INVERTER_HOST: ${BQS_INVERTER_HOST:-192.168.20.138}
       BQS_INVERTER_TCP_PORT: ${BQS_INVERTER_TCP_PORT:-8899}
