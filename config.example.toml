@@ -58,3 +58,4 @@ id = "rack-4"
 address = 2
 serial_port = "/dev/ttyUSB2"
 protocol = "pylontech"
+form_factor = "floor"

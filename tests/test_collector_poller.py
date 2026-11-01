@@ -16,7 +16,9 @@ class CollectorPollerTests(unittest.IsolatedAsyncioTestCase):
         settings = Settings(
             batteries=[
                 BatterySettings(id="rack-1", address=1),
-                BatterySettings(id="rack-4", address=2, serial_port="/dev/ttyUSB2", protocol="pylontech"),
+                BatterySettings(
+                    id="rack-4", address=2, serial_port="/dev/ttyUSB2", protocol="pylontech", form_factor="floor"
+                ),
             ],
         )
         poller = BatteryPoller(settings, MetricsPublisher())
@@ -42,6 +44,9 @@ class CollectorPollerTests(unittest.IsolatedAsyncioTestCase):
         by_id = {battery["id"]: battery for battery in snapshot["batteries"]}
         self.assertEqual(by_id["rack-1"]["protocol"], "ecoworthy")
         self.assertEqual(by_id["rack-4"]["protocol"], "pylontech")
+        # The collector tells the monitor how each pack is built.
+        self.assertEqual(by_id["rack-1"]["form_factor"], "rack")
+        self.assertEqual(by_id["rack-4"]["form_factor"], "floor")
         self.assertEqual(by_id["rack-4"]["status"], "ok")
         self.assertEqual(by_id["rack-4"]["last_reading"]["full_capacity_ah"], 314.0)
 

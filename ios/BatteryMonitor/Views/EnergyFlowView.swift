@@ -39,8 +39,15 @@ struct EnergyFlowView: View {
                                 .position(point(.grid, in: proxy.size))
                             node("Inverter", icon: "bolt.fill", value: inverterState, color: .brandOrange)
                                 .position(point(.inverter, in: proxy.size))
-                            node("Battery", icon: "battery.100percent", value: batteryLabel, color: .batteryGreen)
-                                .position(point(.battery, in: proxy.size))
+                            node("Battery", value: batteryLabel, color: .batteryGreen) {
+                                RackIllustration(
+                                    color: .batteryGreen,
+                                    soc: live.summary.averageSocPercent,
+                                    rackUnits: rackUnits,
+                                    floorUnits: floorUnits
+                                )
+                            }
+                            .position(point(.battery, in: proxy.size))
                             node("Home", icon: "house.fill", value: ValueFormat.power(homePower), color: .orange)
                                 .position(point(.home, in: proxy.size))
                             node("Backup", icon: "powerplug.fill", value: ValueFormat.power(backupPower), color: .pink)
@@ -82,10 +89,22 @@ struct EnergyFlowView: View {
     }
 
     private func node(_ title: LocalizedStringKey, icon: String, value: String, color: Color) -> some View {
-        VStack(spacing: 4) {
+        node(title, value: value, color: color) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(color)
+        }
+    }
+
+    private func node<Icon: View>(
+        _ title: LocalizedStringKey,
+        value: String,
+        color: Color,
+        @ViewBuilder icon: () -> Icon
+    ) -> some View {
+        VStack(spacing: 4) {
+            icon()
+                .frame(height: 22)
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -118,6 +137,20 @@ struct EnergyFlowView: View {
 
     private func active(_ value: Double?) -> Bool { abs(value ?? 0) > 25 }
 
+    // The rack as the monitor lists it: modules in the stack and floor-standing
+    // units beside it. Before the inventory arrives, the rack as installed.
+    private var rackUnits: Int {
+        let packs = live.rack.batteries
+        guard !packs.isEmpty else { return 3 }
+        return packs.filter { !$0.isFloorStanding }.count
+    }
+
+    private var floorUnits: Int {
+        let packs = live.rack.batteries
+        guard !packs.isEmpty else { return 1 }
+        return packs.filter { $0.isFloorStanding }.count
+    }
+
     private var gridLabel: String {
         guard let gridPower else { return "--" }
         let suffix = gridPower < -25 ? L10n.text("export", locale: locale) : L10n.text("import", locale: locale)
@@ -145,4 +178,47 @@ struct EnergyFlowView: View {
 
 private enum FlowNode {
     case solar, grid, inverter, battery, home, backup
+}
+
+/// The battery node's icon: the rack's modules stacked in their box and, beside
+/// them, each floor-standing unit as a taller cabinet filled to the rack's state
+/// of charge, so the diagram shows the hardware that is actually installed.
+private struct RackIllustration: View {
+    let color: Color
+    let soc: Double?
+    let rackUnits: Int
+    let floorUnits: Int
+
+    private var fill: CGFloat { CGFloat(max(0, min(100, soc ?? 0)) / 100) }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            if rackUnits > 0 {
+                VStack(spacing: 2) {
+                    ForEach(0..<rackUnits, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(color.opacity(0.85))
+                            .frame(width: 18, height: 4)
+                    }
+                }
+                .padding(3)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .stroke(color.opacity(0.7), lineWidth: 1)
+                }
+            }
+            ForEach(0..<floorUnits, id: \.self) { _ in
+                ZStack(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .stroke(color.opacity(0.7), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(color.opacity(0.85))
+                        .frame(height: max(2, 18 * fill))
+                        .padding(2)
+                }
+                .frame(width: 10, height: 22)
+            }
+        }
+        .accessibilityHidden(true)
+    }
 }

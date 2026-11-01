@@ -34,6 +34,7 @@ class BufferSettings:
 
 
 BATTERY_PROTOCOLS = ("ecoworthy", "pylontech")
+BATTERY_FORM_FACTORS = ("rack", "floor")
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,10 @@ class BatterySettings:
     # "ecoworthy": the JBD-style frames the rack packs speak. "pylontech": the
     # Pylontech RS485 protocol the floor-standing unit's PACE BMS answers.
     protocol: str = "ecoworthy"
+    # How the pack is built: "rack" for a module in the 19-inch stack, "floor"
+    # for a floor-standing unit on casters. The collector knows the hardware, so
+    # it tells the monitor, which draws each pack accordingly.
+    form_factor: str = "rack"
 
     def resolved_serial_port(self, default_port: str) -> str:
         return self.serial_port or default_port
@@ -244,6 +249,15 @@ def _read_toml(path: Path) -> dict[str, Any]:
         return tomllib.load(file)
 
 
+def _battery_form_factor(value: Any) -> str:
+    form_factor = str(value or "rack").strip().lower()
+    if form_factor not in BATTERY_FORM_FACTORS:
+        raise ValueError(
+            f"Unknown battery form factor {form_factor!r}; expected one of {', '.join(BATTERY_FORM_FACTORS)}"
+        )
+    return form_factor
+
+
 def _battery_protocol(value: Any) -> str:
     protocol = str(value or "ecoworthy").strip().lower()
     if protocol not in BATTERY_PROTOCOLS:
@@ -261,12 +275,14 @@ def _load_batteries(raw_batteries: Any) -> list[BatterySettings]:
         # Blank entries keep the defaults, so positions stay aligned with the addresses.
         protocols = [part.strip() for part in os.getenv("BQS_BATTERY_PROTOCOLS", "").split(",")]
         ports = [part.strip() for part in os.getenv("BQS_BATTERY_SERIAL_PORTS", "").split(",")]
+        forms = [part.strip() for part in os.getenv("BQS_BATTERY_FORM_FACTORS", "").split(",")]
         return [
             BatterySettings(
                 id=ids[index] if index < len(ids) else f"rack-{address}",
                 address=address,
                 serial_port=ports[index] if index < len(ports) and ports[index] else None,
                 protocol=_battery_protocol(protocols[index] if index < len(protocols) else None),
+                form_factor=_battery_form_factor(forms[index] if index < len(forms) else None),
             )
             for index, address in enumerate(addresses)
         ]
@@ -276,7 +292,9 @@ def _load_batteries(raw_batteries: Any) -> list[BatterySettings]:
             BatterySettings(id="rack-1", address=1),
             BatterySettings(id="rack-2", address=2),
             BatterySettings(id="rack-3", address=3),
-            BatterySettings(id="rack-4", address=2, serial_port="/dev/ttyUSB2", protocol="pylontech"),
+            BatterySettings(
+                id="rack-4", address=2, serial_port="/dev/ttyUSB2", protocol="pylontech", form_factor="floor"
+            ),
         ]
 
     batteries = []
@@ -291,6 +309,7 @@ def _load_batteries(raw_batteries: Any) -> list[BatterySettings]:
                 serial_port=item.get("serial_port"),
                 enabled=bool(item.get("enabled", True)),
                 protocol=_battery_protocol(item.get("protocol")),
+                form_factor=_battery_form_factor(item.get("form_factor")),
             )
         )
     return batteries

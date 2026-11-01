@@ -30,13 +30,21 @@ struct BatteriesView: View {
 private struct BatteryRow: View {
     let inventory: BatteryInventory
     let battery: BatterySnapshot?
+    @Environment(\.locale) private var locale
 
     private var reading: BatteryReading? { battery?.lastReading }
     private var soc: Double { max(0, min(100, reading?.socPercent ?? 0)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 10) {
+                // A rack module reads as a slot in the stack, the floor-standing
+                // unit as the cabinet it is.
+                Image(systemName: inventory.isFloorStanding ? "cabinet.fill" : "server.rack")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(progressColor)
+                    .frame(width: 26)
+                    .accessibilityLabel(formLabel)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(inventory.name).font(.headline)
                     Text(identityLine).font(.caption).foregroundStyle(.secondary)
@@ -71,8 +79,15 @@ private struct BatteryRow: View {
     private var identityLine: String {
         var values: [String] = []
         if let address = inventory.address { values.append("RS485 \(address)") }
+        values.append(formLabel)
         if let model = inventory.model, !model.isEmpty { values.append(model) }
         return values.joined(separator: " · ")
+    }
+
+    private var formLabel: String {
+        inventory.isFloorStanding
+            ? L10n.text("Floor-standing unit", locale: locale)
+            : L10n.text("Rack module", locale: locale)
     }
 
     private var progressColor: Color {

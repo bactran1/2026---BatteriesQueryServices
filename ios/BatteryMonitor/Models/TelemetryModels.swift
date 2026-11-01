@@ -45,12 +45,19 @@ struct BatteryInventory: Codable, Identifiable, Hashable, Sendable {
     let address: Int?
     let ipAddress: String?
     let model: String?
+    /// "rack" for a module in the 19-inch stack, "floor" for the floor-standing
+    /// unit on casters beside it; absent on monitors that predate the field.
+    let formFactor: String?
+    /// How the collector talks to the pack: "ecoworthy" (JBD frames) or "pylontech".
+    let protocol: String?
     let status: String
     let lastError: String?
     let lastPolledAt: String?
     let serialNumber: String?
     let firmwareVersion: String?
     let rs485Protocol: String?
+
+    var isFloorStanding: Bool { formFactor == "floor" }
 }
 
 struct MonitorSnapshot: Codable, Sendable {

@@ -144,6 +144,32 @@ class MonitorConfigTests(unittest.TestCase):
             ["rack", "rack", "rack", "floor"],
         )
 
+    def test_the_collectors_form_factor_outranks_the_monitors_inventory(self) -> None:
+        # A monitor host whose .env still lists three rack packs: the collector
+        # reports a fourth, floor-standing pack, and says so.
+        environment = {"BQM_BATTERY_IDS": "rack-1,rack-2,rack-3", "BQM_BATTERY_ADDRESSES": "1,2,3"}
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+        live = [
+            {"id": "rack-1", "address": 1, "status": "ok", "form_factor": "rack", "protocol": "ecoworthy"},
+            {"id": "rack-4", "address": 2, "status": "ok", "form_factor": "floor", "protocol": "pylontech"},
+        ]
+        details = rack_details(settings, live)
+        by_id = {battery["id"]: battery for battery in details["batteries"]}
+        self.assertEqual(by_id["rack-4"]["form_factor"], "floor")
+        self.assertEqual(by_id["rack-4"]["protocol"], "pylontech")
+        self.assertEqual(by_id["rack-1"]["form_factor"], "rack")
+        # And it overrides a listed profile that says otherwise; nonsense is ignored.
+        with patch.dict(os.environ, {"BQM_BATTERY_IDS": "a,b", "BQM_BATTERY_FORM_FACTORS": "rack,floor"}, clear=True):
+            settings = load_settings()
+        details = rack_details(
+            settings,
+            [{"id": "a", "address": 1, "form_factor": "floor"}, {"id": "b", "address": 2, "form_factor": "tower"}],
+        )
+        by_id = {battery["id"]: battery for battery in details["batteries"]}
+        self.assertEqual(by_id["a"]["form_factor"], "floor")
+        self.assertEqual(by_id["b"]["form_factor"], "floor")
+
         stale_details = rack_details(settings, details["batteries"], collector_online=False)
         self.assertEqual(stale_details["online_battery_count"], 0)
         self.assertEqual(stale_details["batteries"][0]["status"], "stale")

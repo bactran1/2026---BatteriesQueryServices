@@ -217,6 +217,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("canvas.dataset.floorUnits", scene)
         self.assertIn("function packFormFactor", javascript)
         self.assertIn("form: packFormFactor(battery)", javascript)
+        # The collector's own form factor wins; the pack cards say how each pack
+        # is built and what BMS it carries; the no-WebGL diagram has the tower.
+        self.assertIn('const reported = String(battery?.form_factor || "").toLowerCase();', javascript)
+        self.assertIn("function packFormLabel", javascript)
+        self.assertIn("function packBmsLabel", javascript)
+        self.assertIn('"inventory.formFloor": "Floor-standing unit"', javascript)
+        self.assertIn('"inventory.formFloor": "Bộ pin đứng sàn"', javascript)
+        self.assertIn('"details.form": "Kiểu lắp đặt"', javascript)
+        self.assertIn('class="energy-flow__fallback-floor"', html)
+        self.assertIn(".energy-flow__fallback-floor {", css)
         # Nothing from the home scene's cast is modelled here: no house, no solar
         # array, no utility pole, no inverter, no metered grid or load.
         for absent in (

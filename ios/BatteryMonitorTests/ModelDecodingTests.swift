@@ -11,6 +11,9 @@ final class ModelDecodingTests: XCTestCase {
 
         XCTAssertEqual(response.collectorStatus, "online")
         XCTAssertEqual(response.rack.expectedBatteryCount, 3)
+        XCTAssertEqual(response.rack.batteries.first?.formFactor, "floor")
+        XCTAssertEqual(response.rack.batteries.first?.isFloorStanding, true)
+        XCTAssertEqual(response.rack.batteries.first?.protocol, "pylontech")
         XCTAssertEqual(response.snapshot.batteries.first?.lastReading?.socPercent, 82.4)
         XCTAssertEqual(response.snapshot.batteries.first?.lastReading?.cellVoltagesV?.count, 16)
         XCTAssertEqual(response.snapshot.inverter?.lastReading?.pvTotalPowerW, 4200)
@@ -31,7 +34,8 @@ final class ModelDecodingTests: XCTestCase {
         "expected_battery_count":3,"observed_battery_count":3,"online_battery_count":3,
         "connection":"Modbus RTU over RS485","retention_days":1095,
         "batteries":[{"id":"rack-1","name":"Rack Battery 1","address":1,
-          "ip_address":null,"model":"Eco-worthy","status":"ok","last_error":null,
+          "ip_address":null,"model":"Eco-worthy","form_factor":"floor","protocol":"pylontech",
+          "status":"ok","last_error":null,
           "last_polled_at":"2026-09-16T12:00:00Z","serial_number":"JBD1",
           "firmware_version":"1.0","rs485_protocol":"deye"}]},
       "snapshot":{"batteries":[{"id":"rack-1","address":1,"status":"ok",
