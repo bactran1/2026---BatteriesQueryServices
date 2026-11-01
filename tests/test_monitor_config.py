@@ -69,7 +69,7 @@ class MonitorConfigTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             profiles = load_settings().battery_profiles
         self.assertEqual([p.id for p in profiles], ["rack-1", "rack-2", "rack-3", "rack-4"])
-        self.assertEqual([p.address for p in profiles], [1, 2, 3, 4])
+        self.assertEqual([p.address for p in profiles], [1, 2, 3, 2])
         self.assertEqual(profiles[3].name, "Rack Battery 4")
         self.assertEqual(
             profiles[3].model,

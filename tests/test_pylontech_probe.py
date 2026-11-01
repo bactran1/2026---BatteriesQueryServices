@@ -62,11 +62,26 @@ class PylontechFrameTests(unittest.TestCase):
         codes = {cid2 for _, cid2, _ in probe.COMMANDS}
         self.assertEqual(codes, {0x42, 0x44, 0x47, 0x4F, 0x51, 0x92, 0x93})
 
-    def test_address_and_version_specs(self) -> None:
+    def test_address_version_and_baud_specs(self) -> None:
         self.assertEqual(probe.parse_addresses("0-3,0x10, 7"), [0, 1, 2, 3, 16, 7])
         self.assertEqual(probe.parse_versions("20,25"), [0x20, 0x25])
+        self.assertEqual(probe.parse_versions(probe.DEFAULT_VERSIONS), [0x20, 0x22, 0x25])
+        self.assertEqual(probe.parse_baudrates("9600, 115200"), [9600, 115200])
         with self.assertRaises(ValueError):
             probe.parse_addresses("300")
+        with self.assertRaises(ValueError):
+            probe.parse_baudrates("1200")
+
+    def test_hexdump_shows_bytes_and_their_text(self) -> None:
+        dump = probe.hexdump(b"~20\x00")
+        self.assertIn("7e 32 30 00", dump)
+        self.assertIn("~20.", dump)
+
+    def test_line_glitches_are_noise_rather_than_a_pack(self) -> None:
+        self.assertTrue(probe.is_noise(b"\x00"))
+        self.assertTrue(probe.is_noise(b"\x00\xff"))
+        self.assertFalse(probe.is_noise(b"~20044600C0040102FCD6\r"))
+        self.assertFalse(probe.is_noise(b"\x00~2004"))
 
 
 class ProbeRunTests(unittest.TestCase):
@@ -83,6 +98,12 @@ class ProbeRunTests(unittest.TestCase):
 
         found = probe.probe(FakeLink(), [0x20, 0x25], [3, 4], pause=0, verbose=False)
         self.assertEqual(len(found), 1)
+
+        class NoisyLink:
+            def transact(self, request: bytes) -> bytes:
+                return b"\x00"
+
+        self.assertEqual(probe.probe(NoisyLink(), [0x20], [1, 2], pause=0, verbose=False), [])
         self.assertEqual(found[0]["address"], 4)
         self.assertEqual(found[0]["version"], 0x20)
         self.assertEqual(set(found[0]["replies"]), {name for name, _, _ in probe.COMMANDS})

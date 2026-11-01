@@ -296,19 +296,21 @@ def rack_details(
             "name": settings.collector_name,
             "url": settings.collector_url,
         },
-        "connection": "Modbus RTU over RS485",
+        "connection": "Modbus RTU and Pylontech over RS485",
         "retention_days": settings.retention_days,
         "batteries": inventory,
     }
 
 
 # The rack as installed: three Eco-worthy 48 V 100 Ah rack packs on DIP
-# addresses 1-3 and, since October 2026, a first-generation Eco-worthy 51.2 V
-# 314 Ah floor-standing unit on casters, on address 4, standing beside the rack.
+# addresses 1-3 of the shared RS485 bus and, since October 2026, a
+# first-generation Eco-worthy 51.2 V 314 Ah floor-standing unit on casters
+# beside the rack, whose PACE BMS answers the Pylontech protocol at address 2
+# on its own adapter.
 RACK_FORM_FACTOR = "rack"
 FLOOR_FORM_FACTOR = "floor"
 DEFAULT_BATTERY_IDS = "rack-1,rack-2,rack-3,rack-4"
-DEFAULT_BATTERY_ADDRESSES = "1,2,3,4"
+DEFAULT_BATTERY_ADDRESSES = "1,2,3,2"
 DEFAULT_BATTERY_NAMES = "Rack Battery 1,Rack Battery 2,Rack Battery 3,Rack Battery 4"
 DEFAULT_BATTERY_MODELS = (
     "Eco-worthy 48V 100Ah server rack battery,"

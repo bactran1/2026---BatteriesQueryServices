@@ -33,12 +33,18 @@ class BufferSettings:
     sample_interval_seconds: float = 60.0
 
 
+BATTERY_PROTOCOLS = ("ecoworthy", "pylontech")
+
+
 @dataclass(frozen=True)
 class BatterySettings:
     id: str
     address: int
     serial_port: str | None = None
     enabled: bool = True
+    # "ecoworthy": the JBD-style frames the rack packs speak. "pylontech": the
+    # Pylontech RS485 protocol the floor-standing unit's PACE BMS answers.
+    protocol: str = "ecoworthy"
 
     def resolved_serial_port(self, default_port: str) -> str:
         return self.serial_port or default_port
@@ -238,15 +244,29 @@ def _read_toml(path: Path) -> dict[str, Any]:
         return tomllib.load(file)
 
 
+def _battery_protocol(value: Any) -> str:
+    protocol = str(value or "ecoworthy").strip().lower()
+    if protocol not in BATTERY_PROTOCOLS:
+        raise ValueError(
+            f"Unknown battery protocol {protocol!r}; expected one of {', '.join(BATTERY_PROTOCOLS)}"
+        )
+    return protocol
+
+
 def _load_batteries(raw_batteries: Any) -> list[BatterySettings]:
     env_addresses = os.getenv("BQS_BATTERY_ADDRESSES")
     if env_addresses:
         addresses = _csv_ints(env_addresses)
         ids = _csv_strings(os.getenv("BQS_BATTERY_IDS", ""))
+        # Blank entries keep the defaults, so positions stay aligned with the addresses.
+        protocols = [part.strip() for part in os.getenv("BQS_BATTERY_PROTOCOLS", "").split(",")]
+        ports = [part.strip() for part in os.getenv("BQS_BATTERY_SERIAL_PORTS", "").split(",")]
         return [
             BatterySettings(
                 id=ids[index] if index < len(ids) else f"rack-{address}",
                 address=address,
+                serial_port=ports[index] if index < len(ports) and ports[index] else None,
+                protocol=_battery_protocol(protocols[index] if index < len(protocols) else None),
             )
             for index, address in enumerate(addresses)
         ]
@@ -256,7 +276,7 @@ def _load_batteries(raw_batteries: Any) -> list[BatterySettings]:
             BatterySettings(id="rack-1", address=1),
             BatterySettings(id="rack-2", address=2),
             BatterySettings(id="rack-3", address=3),
-            BatterySettings(id="rack-4", address=4),
+            BatterySettings(id="rack-4", address=2, serial_port="/dev/ttyUSB2", protocol="pylontech"),
         ]
 
     batteries = []
@@ -270,6 +290,7 @@ def _load_batteries(raw_batteries: Any) -> list[BatterySettings]:
                 address=address,
                 serial_port=item.get("serial_port"),
                 enabled=bool(item.get("enabled", True)),
+                protocol=_battery_protocol(item.get("protocol")),
             )
         )
     return batteries

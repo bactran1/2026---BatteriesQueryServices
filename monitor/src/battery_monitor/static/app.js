@@ -113,7 +113,7 @@ const translations = {
     "rack.batteries": "Batteries",
     "rack.collector": "Collector",
     "rack.defaultCollector": "Raspberry Pi collector",
-    "rack.defaultConnection": "Modbus RTU over RS485",
+    "rack.defaultConnection": "Modbus RTU and Pylontech over RS485",
     "rack.bus": "Bus",
     "rack.allOnline": "All batteries online",
     "rack.onlineCount": "{online} of {expected} online",
@@ -558,7 +558,7 @@ const translations = {
     "rack.batteries": "Pin",
     "rack.collector": "Bộ thu thập",
     "rack.defaultCollector": "Bộ thu thập Raspberry Pi",
-    "rack.defaultConnection": "Modbus RTU qua RS485",
+    "rack.defaultConnection": "Modbus RTU và Pylontech qua RS485",
     "rack.bus": "Kết nối",
     "rack.allOnline": "Tất cả pin đang trực tuyến",
     "rack.onlineCount": "{online}/{expected} đang trực tuyến",
@@ -4184,10 +4184,12 @@ function formatChartTimestamp(value) {
   }).format(new Date(value));
 }
 
+// A pack's inventory entry: by id first, since the floor-standing unit answers
+// at address 2 on its own bus and would otherwise collide with rack pack 2.
 function batteryProfile(battery) {
-  return (state.rack.batteries || []).find(
-    (profile) => profile.id === battery.id || profile.address === battery.address,
-  );
+  const profiles = state.rack.batteries || [];
+  return profiles.find((profile) => profile.id === battery.id)
+    || profiles.find((profile) => profile.address === battery.address);
 }
 
 function localizedBatteryName(value) {

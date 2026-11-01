@@ -8,6 +8,8 @@ case "${SCRIPT_PATH}" in
 esac
 REPO_ROOT="${SCRIPT_DIR}"
 COMPOSE_FILE="${REPO_ROOT}/docker-compose.yml"
+INVERTER_SERIAL_COMPOSE_FILE="${REPO_ROOT}/docker-compose.inverter-serial.yml"
+COMPOSE_FILES=(-f "${COMPOSE_FILE}")
 SERVICE_NAME="batteries-query-service"
 DEFAULT_SERIAL_DEVICE="/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
 DEFAULT_INVERTER_SERIAL_DEVICE="/dev/ttyUSB1"
@@ -34,7 +36,7 @@ usage() {
 "Options:" \
 "  --serial-device PATH  Host USB serial device for the battery bus" \
 "  --inverter-serial-device PATH" \
-"                        Host USB serial device for the Renogy X inverter" \
+"                        Host USB serial device for the Renogy X inverter (serial transport only)" \
 "  --floor-serial-device PATH" \
 "                        Host USB serial device for the floor-standing 314 Ah unit" \
 "  --inverter-transport MODE" \
@@ -257,7 +259,7 @@ explain_container_start_failure() {
 compose_up() {
   local output
 
-  if ! output="$("${COMPOSE[@]}" -f "${COMPOSE_FILE}" up -d --force-recreate --remove-orphans "${SERVICE_NAME}" 2>&1)"; then
+  if ! output="$("${COMPOSE[@]}" "${COMPOSE_FILES[@]}" up -d --force-recreate --remove-orphans "${SERVICE_NAME}" 2>&1)"; then
     explain_container_start_failure "${output}"
   fi
 
@@ -413,19 +415,23 @@ if [[ ! -e "${COLLECTOR_SERIAL_DEVICE}" ]]; then
   log "WARNING: Serial device is not currently present: ${COLLECTOR_SERIAL_DEVICE}"
 fi
 
-if [[ "${INVERTER_TRANSPORT}" == "serial" && -e "${COLLECTOR_SERIAL_DEVICE}" && -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
-  if [[ "$(readlink -f "${COLLECTOR_SERIAL_DEVICE}")" == "$(readlink -f "${COLLECTOR_INVERTER_SERIAL_DEVICE}")" ]]; then
-    fail "Battery and inverter serial devices resolve to the same adapter. Configure two different USB-to-RS485 devices."
-  fi
-fi
-
+# The inverter is normally read over the LAN through the LSW-5 logger, so no
+# adapter is mapped for it. The direct RS485 fallback adds the override compose
+# file, and only then does the inverter adapter matter.
 INVERTER_SERIAL_DEVICE_DISPLAY="${COLLECTOR_INVERTER_SERIAL_DEVICE}"
-if [[ "${INVERTER_TRANSPORT}" == "solarman_v5" ]]; then
-  export COLLECTOR_INVERTER_SERIAL_DEVICE="/dev/null"
-elif [[ ! -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
-  log "WARNING: Inverter serial device is not present: ${COLLECTOR_INVERTER_SERIAL_DEVICE}"
-  log "The collector will keep running with inverter telemetry in an error state."
-  export COLLECTOR_INVERTER_SERIAL_DEVICE="/dev/null"
+if [[ "${INVERTER_TRANSPORT}" == "serial" ]]; then
+  [[ -f "${INVERTER_SERIAL_COMPOSE_FILE}" ]] || fail "Missing ${INVERTER_SERIAL_COMPOSE_FILE}"
+  COMPOSE_FILES+=(-f "${INVERTER_SERIAL_COMPOSE_FILE}")
+  if [[ -e "${COLLECTOR_SERIAL_DEVICE}" && -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
+    if [[ "$(readlink -f "${COLLECTOR_SERIAL_DEVICE}")" == "$(readlink -f "${COLLECTOR_INVERTER_SERIAL_DEVICE}")" ]]; then
+      fail "Battery and inverter serial devices resolve to the same adapter. Configure two different USB-to-RS485 devices."
+    fi
+  fi
+  if [[ ! -e "${COLLECTOR_INVERTER_SERIAL_DEVICE}" ]]; then
+    log "WARNING: Inverter serial device is not present: ${COLLECTOR_INVERTER_SERIAL_DEVICE}"
+    log "The collector will keep running with inverter telemetry in an error state."
+    export COLLECTOR_INVERTER_SERIAL_DEVICE="/dev/null"
+  fi
 fi
 
 # The floor-standing unit's adapter: like the inverter's, an absent adapter is
@@ -434,6 +440,9 @@ fi
 FLOOR_SERIAL_DEVICE_DISPLAY="${COLLECTOR_FLOOR_SERIAL_DEVICE}"
 if [[ -e "${COLLECTOR_FLOOR_SERIAL_DEVICE}" ]]; then
   for other in "${COLLECTOR_SERIAL_DEVICE}" "${COLLECTOR_INVERTER_SERIAL_DEVICE}"; do
+    if [[ "${other}" == "${COLLECTOR_INVERTER_SERIAL_DEVICE}" && "${INVERTER_TRANSPORT}" != "serial" ]]; then
+      continue
+    fi
     if [[ -e "${other}" && "${other}" != "/dev/null" \
       && "$(readlink -f "${other}")" == "$(readlink -f "${COLLECTOR_FLOOR_SERIAL_DEVICE}")" ]]; then
       fail "The floor-standing unit's serial device resolves to the same adapter as ${other}. Configure a separate USB-to-RS485 device with --floor-serial-device."
@@ -448,9 +457,9 @@ fi
 log "Battery serial device: ${COLLECTOR_SERIAL_DEVICE} -> /dev/ttyUSB0"
 log "Floor-standing unit serial device: ${FLOOR_SERIAL_DEVICE_DISPLAY} -> /dev/ttyUSB2"
 if [[ "${INVERTER_TRANSPORT}" == "solarman_v5" ]]; then
-  log "Inverter transport: SOLARMAN V5 over TCP (LSW-5 logger)"
+  log "Inverter transport: SOLARMAN V5 over TCP (LSW-5 logger); no inverter adapter mapped"
 else
-  log "Inverter serial device: ${INVERTER_SERIAL_DEVICE_DISPLAY} -> /dev/ttyUSB1"
+  log "Inverter serial device: ${INVERTER_SERIAL_DEVICE_DISPLAY} -> /dev/ttyUSB1 (docker-compose.inverter-serial.yml)"
 fi
 log "Config file: ${COLLECTOR_CONFIG_FILE}"
 log "Image: ${COLLECTOR_IMAGE_NAME}:${COLLECTOR_IMAGE_TAG}"
@@ -460,7 +469,7 @@ BUILD_ARGS=(build --pull)
 if [[ "${USE_CACHE}" -eq 0 ]]; then
   BUILD_ARGS+=(--no-cache)
 fi
-"${COMPOSE[@]}" -f "${COMPOSE_FILE}" "${BUILD_ARGS[@]}" "${SERVICE_NAME}"
+"${COMPOSE[@]}" "${COMPOSE_FILES[@]}" "${BUILD_ARGS[@]}" "${SERVICE_NAME}"
 
 if container_exists; then
   log "Existing ${SERVICE_NAME} container found; updating it with the new image..."
@@ -484,5 +493,5 @@ fi
 log "Deployment complete. Collector API: http://localhost:8000"
 
 if [[ "${FOLLOW_LOGS}" -eq 1 ]]; then
-  "${COMPOSE[@]}" -f "${COMPOSE_FILE}" logs -f "${SERVICE_NAME}"
+  "${COMPOSE[@]}" "${COMPOSE_FILES[@]}" logs -f "${SERVICE_NAME}"
 fi

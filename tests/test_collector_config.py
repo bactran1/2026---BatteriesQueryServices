@@ -13,7 +13,28 @@ class CollectorConfigTests(unittest.TestCase):
     def test_the_default_battery_bus_has_four_packs(self) -> None:
         batteries = _load_batteries(None)
         self.assertEqual([b.id for b in batteries], ["rack-1", "rack-2", "rack-3", "rack-4"])
-        self.assertEqual([b.address for b in batteries], [1, 2, 3, 4])
+        # The floor-standing unit answers the Pylontech protocol at address 2 on
+        # its own adapter; the rack packs keep the JBD driver on the shared bus.
+        self.assertEqual([b.address for b in batteries], [1, 2, 3, 2])
+        self.assertEqual([b.protocol for b in batteries], ["ecoworthy"] * 3 + ["pylontech"])
+        self.assertEqual([b.serial_port for b in batteries], [None, None, None, "/dev/ttyUSB2"])
+
+    def test_battery_protocols_and_ports_come_from_the_environment_too(self) -> None:
+        environment = {
+            "BQS_BATTERY_ADDRESSES": "1,2,2",
+            "BQS_BATTERY_IDS": "a,b,c",
+            "BQS_BATTERY_PROTOCOLS": "ecoworthy,,Pylontech",
+            "BQS_BATTERY_SERIAL_PORTS": ",,/dev/ttyUSB2",
+        }
+        with patch.dict(os.environ, environment, clear=True):
+            batteries = _load_batteries(None)
+        self.assertEqual([b.protocol for b in batteries], ["ecoworthy", "ecoworthy", "pylontech"])
+        self.assertEqual([b.serial_port for b in batteries], [None, None, "/dev/ttyUSB2"])
+        with patch.dict(os.environ, {"BQS_BATTERY_ADDRESSES": "1", "BQS_BATTERY_PROTOCOLS": "modbus"}, clear=True):
+            with self.assertRaises(ValueError):
+                _load_batteries(None)
+        with self.assertRaises(ValueError):
+            _load_batteries([{"id": "x", "address": 1, "protocol": "pace"}])
 
     def test_the_shipped_config_gives_the_floor_standing_unit_its_own_port(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -29,6 +50,11 @@ class CollectorConfigTests(unittest.TestCase):
                 {"rack-1": "/dev/ttyUSB0", "rack-2": "/dev/ttyUSB0", "rack-3": "/dev/ttyUSB0", "rack-4": "/dev/ttyUSB2"},
                 name,
             )
+            floor = settings.batteries[3]
+            self.assertEqual((floor.protocol, floor.address), ("pylontech", 2), name)
+            self.assertEqual([b.protocol for b in settings.batteries[:3]], ["ecoworthy"] * 3, name)
+            # The inverter is read through the LSW-5 logger, not a USB adapter.
+            self.assertEqual(settings.inverter.transport, "solarman_v5", name)
 
     def test_build_commit_is_loaded_from_environment(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -47,7 +73,7 @@ class CollectorConfigTests(unittest.TestCase):
         self.assertEqual(settings.buffer.path, "/tmp/replay.sqlite3")
         self.assertEqual(settings.buffer.retention_hours, 48)
         self.assertEqual(settings.buffer.sample_interval_seconds, 60.0)
-        self.assertEqual([battery.address for battery in settings.batteries], [1, 2, 3, 4])
+        self.assertEqual([battery.address for battery in settings.batteries], [1, 2, 3, 2])
         self.assertFalse(settings.inverter.enabled)
 
     def test_inverter_settings_support_toml_and_environment_overrides(self) -> None:

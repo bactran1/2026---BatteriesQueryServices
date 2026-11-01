@@ -55,6 +55,11 @@ class BatteryReading:
     can_protocol: str | None
     rs485_protocol_code: int | None
     rs485_protocol: str | None
+    # Filled by the Pylontech driver: what the BMS calls itself, who made it,
+    # and the pack's raw status words for later interpretation.
+    bms_model: str | None = None
+    bms_vendor: str | None = None
+    status_bytes_hex: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -1,0 +1,11 @@
+# Direct RS485 fallback for the inverter. The normal deployment reads it through
+# the SOLARMAN LSW-5 logger over the LAN and maps no adapter for it; add this
+# file only when config.toml sets the inverter transport to "serial":
+#
+#   docker compose -f docker-compose.yml -f docker-compose.inverter-serial.yml up -d
+#
+# deploy-collector.sh does this on its own when the transport resolves to serial.
+services:
+  batteries-query-service:
+    devices:
+      - ${COLLECTOR_INVERTER_SERIAL_DEVICE:-/dev/ttyUSB1}:/dev/ttyUSB1

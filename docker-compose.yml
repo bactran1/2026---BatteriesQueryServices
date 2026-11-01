@@ -23,9 +23,11 @@ services:
     volumes:
       - ${COLLECTOR_CONFIG_FILE:-./config.toml}:/config/config.toml:ro
       - ./data/collector:/data
+    # The inverter is read over the LAN through the LSW-5 logger, so no adapter
+    # is mapped for it here; docker-compose.inverter-serial.yml adds one for the
+    # direct RS485 fallback.
     devices:
       - ${COLLECTOR_SERIAL_DEVICE:-/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0}:/dev/ttyUSB0
-      - ${COLLECTOR_INVERTER_SERIAL_DEVICE:-/dev/ttyUSB1}:/dev/ttyUSB1
       # The floor-standing 314 Ah unit's own RS485 adapter (its PACE BMS does not
       # share the rack packs' bus); deploy-collector.sh maps /dev/null when absent.
       - ${COLLECTOR_FLOOR_SERIAL_DEVICE:-/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG04TFN9-if00-port0}:/dev/ttyUSB2
