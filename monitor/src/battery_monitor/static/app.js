@@ -195,6 +195,7 @@ const translations = {
     "energy.batteryUnavailablePhrase": "Battery telemetry unavailable",
     "energy.runtimeRemaining": "~{time} to {reserve}% charge at this discharge rate",
     "energy.runtimeCallout": "~{time} to {reserve}%",
+    "energy.remainingCallout": "{value} left",
     "energy.chargeFullRemaining": "~{time} until full at this charge rate",
     "energy.chargeFullCallout": "~{time} to full",
     "energy.liveDescription": "{sources} · {load} · {battery}",
@@ -646,6 +647,7 @@ const translations = {
     "energy.batteryUnavailablePhrase": "Chưa có dữ liệu trực tiếp từ pin",
     "energy.runtimeRemaining": "còn khoảng {time} đến mức {reserve}% ở tốc độ xả hiện tại",
     "energy.runtimeCallout": "còn ~{time} đến {reserve}%",
+    "energy.remainingCallout": "còn {value}",
     "energy.chargeFullRemaining": "còn khoảng {time} đến khi đầy ở mức sạc hiện tại",
     "energy.chargeFullCallout": "còn khoảng {time} đến khi đầy",
     "energy.liveDescription": "{sources} · {load} · {battery}",
@@ -1680,6 +1682,7 @@ function renderEnergyFlow(flow) {
   section.dataset.batteryPower = String(power ?? 0);
   section.dataset.batteryRuntimeHours = String(battery.runtimeHours ?? 0);
   section.dataset.batteryChargeToFullHours = String(battery.chargeToFullHours ?? 0);
+  section.dataset.batteryEnergyWh = String(battery.remainingEnergyWh ?? 0);
   section.dataset.batteryDepthOfDischarge = String(battery.depthOfDischarge ?? 0);
   section.dataset.gridActive = String(inverter.available && Math.abs(inverter.gridPower ?? 0) > 25);
   section.dataset.gridDirection = (inverter.gridPower ?? 0) < 0 ? "export" : "import";
@@ -1730,6 +1733,13 @@ function renderEnergyFlow(flow) {
   const energyRuntime = $("energyBatteryRuntime");
   energyRuntime.hidden = !batteryEstimate.callout;
   energyRuntime.textContent = batteryEstimate.callout ?? "";
+  // What the packs still hold, shown only while every reporting pack says so.
+  const energyStored = $("energyBatteryEnergy");
+  const storedLabel = mode !== "stale" && battery.remainingEnergyWh !== null
+    ? t("energy.remainingCallout", { value: formatValue(battery.remainingEnergyWh / 1000, " kWh", 1) })
+    : null;
+  energyStored.hidden = !storedLabel;
+  energyStored.textContent = storedLabel ?? "";
 
   window.dispatchEvent(new CustomEvent("battery-energy-flow", {
     detail: {
@@ -1749,6 +1759,7 @@ function renderEnergyFlow(flow) {
       acLinkAvailable: inverter.available && inverter.acLinkPower !== null,
       batteryPower: power,
       batteryRuntimeHours: battery.runtimeHours,
+      batteryEnergyWh: battery.remainingEnergyWh,
     },
   }));
 }
@@ -1950,6 +1961,12 @@ function rackBatteryTelemetry(batteries = state.batteries) {
   const usableEnergyWh = usableEnergyValues.length === readings.length
     ? usableEnergyValues.reduce((sum, value) => sum + value, 0)
     : null;
+  const storedEnergyValues = readings
+    .map((reading) => storedBatteryEnergyWh(reading))
+    .filter((value) => value !== null);
+  const remainingEnergyWh = storedEnergyValues.length === readings.length
+    ? storedEnergyValues.reduce((sum, value) => sum + value, 0)
+    : null;
   const chargeDeficitValues = readings
     .map((reading) => chargeDeficitEnergyWh(reading))
     .filter((value) => value !== null);
@@ -1980,6 +1997,7 @@ function rackBatteryTelemetry(batteries = state.batteries) {
     soc: rackStateOfCharge(readings),
     temperature: average("mosfet_temperature_c"),
     usableEnergyWh,
+    remainingEnergyWh,
     runtimeHours,
     chargeDeficitWh,
     chargeToFullHours,
@@ -2070,6 +2088,15 @@ function resolveFullCapacityAh(reading) {
     }
   }
   return fullCapacity !== null && fullCapacity > 0 ? fullCapacity : null;
+}
+
+// Energy still in one pack, in Wh: its remaining capacity at its present
+// voltage, the same basis the usable-energy and runtime figures use.
+function storedBatteryEnergyWh(reading) {
+  const remainingCapacity = finiteNumber(reading.remaining_capacity_ah);
+  const voltage = finiteNumber(reading.voltage_v);
+  if (remainingCapacity === null || voltage === null) return null;
+  return Math.max(0, remainingCapacity) * voltage;
 }
 
 function usableBatteryEnergyWh(reading, reservePercent = BATTERY_RESERVE_PERCENT) {
