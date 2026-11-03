@@ -608,6 +608,18 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("grid-template-columns: 1.45fr repeat(4, minmax(0, 1fr));", css)
         self.assertNotIn("Estimated electricity value", html + javascript)
 
+    def test_live_home_energy_shows_the_energy_left_in_the_packs(self) -> None:
+        javascript = (STATIC / "app.js").read_text(encoding="utf-8")
+        css = (STATIC / "styles.css").read_text(encoding="utf-8")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="energyBatteryEnergy"', html)
+        self.assertIn("function storedBatteryEnergyWh", javascript)
+        self.assertIn("Math.max(0, remainingCapacity) * voltage", javascript)
+        self.assertIn('"energy.remainingCallout": "{value} left"', javascript)
+        self.assertIn('"energy.remainingCallout": "còn {value}"', javascript)
+        self.assertIn(".energy-flow__energy[hidden]", css)
+
     def test_live_views_show_estimated_battery_support_time(self) -> None:
         javascript = (STATIC / "app.js").read_text(encoding="utf-8")
         css = (STATIC / "styles.css").read_text(encoding="utf-8")

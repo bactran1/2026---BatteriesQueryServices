@@ -183,6 +183,40 @@ test("A pack finds its inventory entry by id before address, so the floor unit a
   assert.equal(ui.run('packFormFactor({id: "rack-4", address: 2})'), "floor");
 });
 
+test("The battery callout shows the energy still in the packs", () => {
+  const ui = dashboard(1500);
+  const pack = (id, remaining, voltage) => ({
+    id, status: "ok",
+    last_reading: {
+      power_w: -100, current_a: -2, voltage_v: voltage, soc_percent: 50,
+      remaining_capacity_ah: remaining, full_capacity_ah: remaining * 2,
+    },
+  });
+  ui.state.batteries = [pack("rack-1", 50, 52), pack("rack-2", 50, 52), pack("rack-3", 50, 52), pack("rack-4", 157, 52)];
+  ui.run('renderEnergyFlow({mode: "discharging"})');
+  // 307 Ah at 52 V is 15,964 Wh, shown to the nearest tenth of a kWh.
+  assert.equal(ui.run("rackBatteryTelemetry().remainingEnergyWh"), 15964);
+  assert.equal(ui.element("energyBatteryEnergy").hidden, false);
+  assert.equal(ui.element("energyBatteryEnergy").textContent, "16 kWh left");
+  assert.equal(ui.element("energyFlowSection").dataset.batteryEnergyWh, "15964");
+  assert.equal(ui.events.filter((event) => event.type === "battery-energy-flow").at(-1).detail.batteryEnergyWh, 15964);
+  // A pack that does not report its remaining capacity hides the figure rather than understating it.
+  ui.state.batteries[3].last_reading = { power_w: -100, current_a: -2, voltage_v: 52, soc_percent: 50 };
+  ui.run('renderEnergyFlow({mode: "discharging"})');
+  assert.equal(ui.run("rackBatteryTelemetry().remainingEnergyWh"), null);
+  assert.equal(ui.element("energyBatteryEnergy").hidden, true);
+  assert.equal(ui.element("energyBatteryEnergy").textContent, "");
+  // Stale data hides it too, and Vietnamese has its own phrasing.
+  ui.state.batteries[3] = pack("rack-4", 157, 52);
+  ui.state.collectorOnline = false;
+  ui.run('renderEnergyFlow({mode: "discharging"})');
+  assert.equal(ui.element("energyBatteryEnergy").hidden, true);
+  ui.state.collectorOnline = true;
+  ui.state.language = "vi";
+  ui.run('renderEnergyFlow({mode: "discharging"})');
+  assert.equal(ui.element("energyBatteryEnergy").textContent, "còn 16 kWh");
+});
+
 test("The rack's state of charge weights packs by capacity, so a 314 Ah pack counts for its size", () => {
   const ui = dashboard(1500);
   const pack = (id, soc, remaining, full, rated) => ({

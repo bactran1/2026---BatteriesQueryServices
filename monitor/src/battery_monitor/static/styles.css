@@ -904,7 +904,8 @@ button {
   text-transform: uppercase;
 }
 
-.energy-flow__runtime {
+.energy-flow__runtime,
+.energy-flow__energy {
   display: block;
   margin-top: 3px;
   color: #fff;
@@ -914,7 +915,8 @@ button {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.94), 0 0 9px rgba(0, 0, 0, 0.68);
 }
 
-.energy-flow__runtime[hidden] {
+.energy-flow__runtime[hidden],
+.energy-flow__energy[hidden] {
   display: none;
 }
 
@@ -4670,7 +4672,10 @@ select {
      leader keeps its length instead of a callout landing on its anchor. */
   .energy-flow {
     --energy-flow-copy-overflow: max(0px, var(--energy-flow-copy-bottom, 0px) + 14px - 276px);
-    height: calc(clamp(640px, 168vw, 670px) + var(--energy-flow-copy-overflow));
+    /* The extra 16px is the battery callout's energy line, which the bottom
+       row's offsets below absorb so the callouts keep their place by the
+       house and their clearance from the section's edge. */
+    height: calc(clamp(640px, 168vw, 670px) + 16px + var(--energy-flow-copy-overflow));
     min-height: 0;
   }
 
@@ -4746,25 +4751,25 @@ select {
      house is bigger and its anchors sit lower. */
   .energy-flow__callout--load {
     --leader-length: 110px;
-    top: calc(100% - 106px);
+    top: calc(100% - 122px);
     left: 4%;
     width: 24%;
   }
 
   .energy-flow__callout--backup {
     --leader-length: 98px;
-    top: calc(100% - 84px);
+    top: calc(100% - 100px);
     left: 29%;
     width: 24%;
   }
 
   /* Wide enough for a live reading ("66.6% · 2.32 kW discharging") plus its
-     runtime line, in either language, to wrap within the scene; at 31% the
+     energy and runtime lines, in either language, to wrap within the scene; at 31% the
      words broke mid-word and the card ran off the bottom. Capped so a wider
      phone does not push the card into the cabinet it points at. */
   .energy-flow__callout--battery {
     --leader-length: 110px;
-    top: calc(100% - 104px);
+    top: calc(100% - 120px);
     right: 3%;
     left: auto;
     width: min(42%, 140px);
