@@ -213,7 +213,8 @@ class RetentionStore:
     # rebuilds the archive from the raw readings, newest days first.
     #   1  unseeded: a day's first reading credited with its whole counter
     #   2  seeded from the last reading before the day (see _recompute_tou_day_locked)
-    TOU_ROLLUP_VERSION = 2
+    #   3  a small drop in a counter is a glitch, not a reset (COUNTER_RESET_FRACTION)
+    TOU_ROLLUP_VERSION = 3
 
     def _migrate_tou_rollup_locked(self) -> None:
         row = self.connection.execute(
@@ -1333,8 +1334,16 @@ class RetentionStore:
                 if value is None:
                     continue
                 meter_value = float(value)
-                bucket[field] += _counter_rise(last.get(field), meter_value)
-                last[field] = meter_value
+                previous_value = last.get(field)
+                bucket[field] += _counter_rise(previous_value, meter_value)
+                # A glitch below the last good reading is not a new baseline;
+                # otherwise the recovery after it would count the dip twice.
+                if (
+                    previous_value is None
+                    or meter_value >= previous_value
+                    or _is_counter_reset(previous_value, meter_value)
+                ):
+                    last[field] = meter_value
 
         self.connection.execute(
             "DELETE FROM tou_energy WHERE energy_date = ?", (day.isoformat(),)
@@ -1866,31 +1875,47 @@ def _energy_sample_time(
     return _snapshot_time(snapshot)
 
 
+# A daily counter that restarts falls to (nearly) nothing, so a reading counts
+# as a reset only when it falls below this share of the reading before it. A
+# smaller drop is a glitch -- a torn register read, a reading re-sent out of
+# order -- and adds nothing. Treating every drop as a reset re-adds the whole
+# day's total each time one happens, which is how a 30 kWh day billed as 45.
+COUNTER_RESET_FRACTION = 0.5
+
+
+def _is_counter_reset(previous: float, meter: float) -> bool:
+    return meter < previous * COUNTER_RESET_FRACTION
+
+
 def _counter_rise(previous: float | None, meter: float) -> float:
     """Energy one reading adds to a resetting counter.
 
     The Python twin of ``_counter_delta_expression``: the rise since the
-    previous reading, or the reading's own value when the counter dropped (it
-    reset) or when there is no previous reading yet.
+    previous reading, the reading's own value when the counter reset (fell
+    below half of the previous reading) or when there is no previous reading
+    yet, and nothing for a smaller drop, which is a glitch, not a reset.
     """
-    if previous is None or meter < previous:
+    if previous is None or _is_counter_reset(previous, meter):
         return max(0.0, meter)
-    return meter - previous
+    return max(0.0, meter - previous)
 
 
 def _counter_delta_expression(meter: str, previous: str) -> str:
     """Energy a reading adds to a resetting daily counter.
 
     The rise since the previous reading, or the reading's own value when the
-    counter has dropped (it reset since the previous reading) or has no previous
-    reading in the partition. Summed over a day partition this yields the day's
-    total even if the counter resets more than once within the day.
+    counter has reset (fallen below half of the previous reading) or has no
+    previous reading in the partition. A smaller drop is a glitch and adds
+    nothing (see ``COUNTER_RESET_FRACTION``). Summed over a day partition this
+    yields the day's total even if the counter resets more than once within
+    the day.
     """
     return f"""
         CASE
             WHEN {previous} IS NULL THEN {meter}
             WHEN {meter} >= {previous} THEN {meter} - {previous}
-            ELSE {meter}
+            WHEN {meter} < {previous} * {COUNTER_RESET_FRACTION} THEN {meter}
+            ELSE 0
         END
     """
 
