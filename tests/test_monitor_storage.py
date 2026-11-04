@@ -786,6 +786,119 @@ class HourlyEnergyResetTests(unittest.TestCase):
         )
 
 
+class CounterGlitchTests(unittest.TestCase):
+    """A reading a little below the one before it is a glitch, not a reset.
+
+    The inverter's "today" counters only fall when they restart at midnight,
+    and then they fall to almost nothing. Counting every small drop as a
+    restart re-added the whole day's total each time one happened, so a single
+    glitchy reading at noon billed a 30 kWh day as about 45 kWh.
+    """
+
+    ZONE = ZoneInfo("America/Los_Angeles")
+    DAY_KWH = 30.0
+
+    def _store(self) -> RetentionStore:
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        store = RetentionStore(Path(directory) / "monitor.sqlite3", "America/Los_Angeles")
+        store.initialize()
+        self.addCleanup(store.close)
+        return store
+
+    def _day(self) -> datetime:
+        return (datetime.now(self.ZONE) - timedelta(days=2)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
+    def _log(self, store: RetentionStore, day: datetime, glitches: dict[int, float]) -> None:
+        """Five-minute readings rising evenly to DAY_KWH; ``glitches`` maps a
+        minute of the day to the value its reading reports instead."""
+        snapshots = []
+        for minute in range(0, 24 * 60, 5):
+            value = round(self.DAY_KWH * minute / 1440, 3)
+            value = glitches.get(minute, value)
+            moment = day + timedelta(minutes=minute, seconds=30)
+            snapshots.append(
+                _energy_snapshot(
+                    moment.astimezone(timezone.utc).isoformat(),
+                    consumption_kwh=value,
+                    solar_generation_kwh=0.0,
+                    grid_import_kwh=value,
+                )
+            )
+        store.insert_snapshots(snapshots)
+
+    def _rollup_grid(self, store: RetentionStore, day: datetime) -> float:
+        totals = store.tou_energy_totals(
+            int(day.timestamp()), int((day + timedelta(days=1)).timestamp())
+        )
+        return sum(period["grid_import_kwh"] for period in totals.values())
+
+    def _month_grid(self, store: RetentionStore, day: datetime) -> float:
+        history = store.energy_history(
+            "month", day.date().isoformat(), "America/Los_Angeles"
+        )
+        point = next(p for p in history["points"] if p["period"] == day.date().isoformat())
+        return point["grid_import_kwh"]
+
+    def test_a_small_drop_does_not_re_add_the_days_total(self) -> None:
+        store = self._store()
+        day = self._day()
+        clean = round(self.DAY_KWH * 1435 / 1440, 3)
+        # Readings at 8:00, noon and 18:00 each report a hair below the one
+        # before them, as a torn or re-sent register read would.
+        glitches = {
+            minute: round(self.DAY_KWH * (minute - 5) / 1440 - 0.001, 3)
+            for minute in (480, 720, 1080)
+        }
+        self._log(store, day, glitches)
+        self.assertAlmostEqual(self._rollup_grid(store, day), clean, places=3)
+        self.assertAlmostEqual(self._month_grid(store, day), clean, delta=0.005)
+
+    def test_the_time_of_use_split_keeps_each_period_honest(self) -> None:
+        day = self._day()
+        span = (int(day.timestamp()), int((day + timedelta(days=1)).timestamp()))
+        clean_store, glitch_store = self._store(), self._store()
+        self._log(clean_store, day, {})
+        # A glitch at 9:00, inside a weekday's morning on-peak or a weekend's
+        # off-peak, must not credit that period with the whole morning's total.
+        self._log(glitch_store, day, {540: round(self.DAY_KWH * 535 / 1440 - 0.002, 3)})
+        clean = clean_store.tou_energy_totals(*span)
+        glitched = glitch_store.tou_energy_totals(*span)
+        for period in clean:
+            self.assertAlmostEqual(
+                glitched[period]["grid_import_kwh"],
+                clean[period]["grid_import_kwh"],
+                places=3,
+                msg=period,
+            )
+
+    def test_a_real_midnight_reset_is_still_counted(self) -> None:
+        store = self._store()
+        day = self._day()
+        self._log(store, day - timedelta(days=1), {})
+        self._log(store, day, {})
+        clean = round(self.DAY_KWH * 1435 / 1440, 3)
+        # Seeded from yesterday's ~30 kWh, today's first reading of 0 is a
+        # reset and the day still totals its own energy, no more and no less.
+        self.assertAlmostEqual(self._rollup_grid(store, day), clean, places=3)
+        self.assertAlmostEqual(self._month_grid(store, day), clean, places=3)
+
+    def test_a_reset_partway_through_the_day_is_still_counted(self) -> None:
+        store = self._store()
+        day = self._day()
+        # An inverter restart at noon drops the counter to 0.2 kWh and it
+        # carries on from there: the morning and the afternoon both count.
+        glitches = {}
+        for minute in range(720, 24 * 60, 5):
+            glitches[minute] = round(0.2 + self.DAY_KWH * (minute - 720) / 1440, 3)
+        self._log(store, day, glitches)
+        expected = round(self.DAY_KWH * 715 / 1440, 3) + glitches[1435]
+        self.assertAlmostEqual(self._rollup_grid(store, day), expected, places=3)
+        self.assertAlmostEqual(self._month_grid(store, day), expected, places=3)
+
+
 def _sample_snapshot() -> dict:
     return {
         "service": {"poll_count": 1},
@@ -1014,7 +1127,7 @@ class TimeOfUseRollupTests(unittest.TestCase):
     def test_rollups_written_before_the_seed_are_dropped_and_rebuilt(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = self._store(directory)
-            self.assertEqual(store.get_metadata("tou_rollup_version"), "2")
+            self.assertEqual(store.get_metadata("tou_rollup_version"), str(RetentionStore.TOU_ROLLUP_VERSION))
             first = datetime(2026, 1, 13, tzinfo=self.ZONE)
             self._log_steady_load(store, first, days=2, reset_offset_minutes=2)
             day = first + timedelta(days=1)
@@ -1034,7 +1147,7 @@ class TimeOfUseRollupTests(unittest.TestCase):
 
             # Opening the store again is what a deploy does.
             store.initialize()
-            self.assertEqual(store.get_metadata("tou_rollup_version"), "2")
+            self.assertEqual(store.get_metadata("tou_rollup_version"), str(RetentionStore.TOU_ROLLUP_VERSION))
             self.assertEqual(
                 store.connection.execute("SELECT COUNT(*) FROM tou_energy").fetchone()[0],
                 0,
